@@ -40,7 +40,8 @@ type SocialContext = {
   enabled: boolean;
   mode: "off" | "read" | "manage";
   reason?: string | null;
-  publishingEnabled: false;
+  publishingEnabled: boolean;
+  publicationGate?: { reason: string | null; allowedProviders: string[] };
   tenantId?: string;
   organizationId?: string;
 };
@@ -64,7 +65,7 @@ type SocialOverview = {
   accountCounts: Array<{ status: string; count: number | string }>;
   publicationCounts: Array<{ status: string; count: number | string }>;
   briefs: SocialBrief[];
-  publishingEnabled: false;
+  publishingEnabled: boolean;
 };
 
 type SocialAccount = {
@@ -76,6 +77,25 @@ type SocialAccount = {
   status: string;
   created_at: string;
   updated_at: string;
+};
+
+type SocialPublication = {
+  id: string;
+  brief_id: string;
+  account_id: string;
+  title: string;
+  content_kind: string;
+  provider: string;
+  account_name: string;
+  scheduled_for: string;
+  status: string;
+  attempt_count: number;
+  max_attempts: number;
+  next_attempt_at: string | null;
+  last_error_code: string | null;
+  published_at: string | null;
+  created_by_legacy_user_id: number;
+  approved_by_legacy_user_id: number | null;
 };
 
 type Integration = {
@@ -144,6 +164,7 @@ export default function SocialOperations() {
   const queryClient = useQueryClient();
   const [briefOpen, setBriefOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [publicationOpen, setPublicationOpen] = useState(false);
   const [briefForm, setBriefForm] = useState({
     title: "",
     objective: "",
@@ -164,6 +185,12 @@ export default function SocialOperations() {
     integrationKey: "",
     externalAccountRef: "",
   });
+  const [publicationForm, setPublicationForm] = useState({
+    briefId: "",
+    accountId: "",
+    scheduledFor: "",
+    maxAttempts: 5,
+  });
 
   const context = useQuery<SocialContext>({
     queryKey: ["social-operations", "context"],
@@ -183,6 +210,12 @@ export default function SocialOperations() {
     enabled,
     retry: false,
   });
+  const publications = useQuery<{ data: SocialPublication[] }>({
+    queryKey: ["social-operations", "publications"],
+    queryFn: () => customFetch("/api/social/publications?limit=100"),
+    enabled,
+    retry: false,
+  });
   const integrations = useQuery<{ data: Integration[] }>({
     queryKey: ["social-operations", "integrations"],
     queryFn: () => customFetch("/api/integrations"),
@@ -197,6 +230,9 @@ export default function SocialOperations() {
       queryClient.invalidateQueries({
         queryKey: ["social-operations", "accounts"],
       }),
+      queryClient.invalidateQueries({
+        queryKey: ["social-operations", "publications"],
+      }),
     ]);
   };
 
@@ -205,6 +241,7 @@ export default function SocialOperations() {
       customFetch("/api/social/briefs", {
         method: "POST",
         body: JSON.stringify({
+          requestKey: requestKey("social-brief-create"),
           title: briefForm.title,
           objective: briefForm.objective,
           audience: briefForm.audience,
@@ -258,6 +295,7 @@ export default function SocialOperations() {
       customFetch("/api/social/accounts", {
         method: "POST",
         body: JSON.stringify({
+          requestKey: requestKey("social-account-create"),
           provider: accountForm.provider,
           accountKey: accountForm.accountKey,
           displayName: accountForm.displayName,
@@ -291,11 +329,115 @@ export default function SocialOperations() {
 
   const submitBrief = useMutation({
     mutationFn: (id: string) =>
-      customFetch(`/api/social/briefs/${id}/submit`, { method: "POST" }),
+      customFetch(`/api/social/briefs/${id}/submit`, {
+        method: "POST",
+        body: JSON.stringify({ requestKey: requestKey("social-brief-submit") }),
+      }),
     onSuccess: invalidate,
     onError: (error) =>
       toast({
         title: tr ? "Onaya gönderilemedi" : "Could not submit for review",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const createPublication = useMutation({
+    mutationFn: () =>
+      customFetch("/api/social/publications", {
+        method: "POST",
+        body: JSON.stringify({
+          briefId: publicationForm.briefId,
+          accountId: publicationForm.accountId,
+          scheduledFor: publicationForm.scheduledFor
+            ? new Date(publicationForm.scheduledFor).toISOString()
+            : new Date().toISOString(),
+          maxAttempts: publicationForm.maxAttempts,
+          requestKey: requestKey("social-publication-create"),
+        }),
+      }),
+    onSuccess: async () => {
+      setPublicationOpen(false);
+      setPublicationForm({
+        briefId: "",
+        accountId: "",
+        scheduledFor: "",
+        maxAttempts: 5,
+      });
+      await invalidate();
+      toast({
+        title: tr ? "Yayın taslağı oluşturuldu" : "Publication draft created",
+      });
+    },
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "Yayın taslağı oluşturulamadı"
+          : "Publication draft could not be created",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const submitPublication = useMutation({
+    mutationFn: (id: string) =>
+      customFetch(`/api/social/publications/${id}/submit`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestKey: requestKey("social-publication-submit"),
+        }),
+      }),
+    onSuccess: invalidate,
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "Yayın onaya gönderilemedi"
+          : "Publication could not be submitted",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const reviewPublication = useMutation({
+    mutationFn: ({
+      id,
+      decision,
+    }: {
+      id: string;
+      decision: "APPROVE" | "REJECT";
+    }) =>
+      customFetch(`/api/social/publications/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify({
+          decision,
+          requestKey: requestKey("social-publication-review"),
+        }),
+      }),
+    onSuccess: invalidate,
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "Yayın kararı kaydedilemedi"
+          : "Publication decision could not be saved",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const cancelPublication = useMutation({
+    mutationFn: (id: string) =>
+      customFetch(`/api/social/publications/${id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestKey: requestKey("social-publication-cancel"),
+        }),
+      }),
+    onSuccess: invalidate,
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "Yayın iptal edilemedi"
+          : "Publication could not be canceled",
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       }),
@@ -339,6 +481,12 @@ export default function SocialOperations() {
   );
   const briefCounts = numericCounts(overview.data?.briefCounts ?? []);
   const accountCounts = numericCounts(overview.data?.accountCounts ?? []);
+  const publicationCounts = numericCounts(
+    overview.data?.publicationCounts ?? [],
+  );
+  const verifiedAccounts = (accounts.data?.data ?? []).filter(
+    (account) => account.status === "VERIFIED",
+  );
   const canManage =
     context.data?.mode === "manage" && hasPermission("social.manage");
   const canApprove = hasPermission("social.approve");
@@ -428,8 +576,11 @@ export default function SocialOperations() {
             icon: Users,
           },
           {
-            label: tr ? "Otomatik yayın" : "Auto publishing",
-            value: 0,
+            label: tr ? "Yayın kuyruğu" : "Publishing queue",
+            value:
+              (publicationCounts.APPROVED ?? 0) +
+              (publicationCounts.QUEUED ?? 0) +
+              (publicationCounts.RUNNING ?? 0),
             icon: Send,
           },
         ].map(({ label, value, icon: Icon }) => (
@@ -451,8 +602,12 @@ export default function SocialOperations() {
         <ShieldCheck className="mt-0.5 size-4 shrink-0" />
         <span>
           {tr
-            ? "Provider'a gerçek yayın bu sürümde bilerek kapalıdır. 'Onaylandı', yalnız içerik onayını ifade eder; yayın başarısı değildir."
-            : "Real provider publishing is intentionally disabled in this version. Approved means content approval only, never publication success."}
+            ? context.data?.publishingEnabled
+              ? "Yayın worker'ı yalnız ikinci onaydan sonra çalışır; başarı ancak provider receipt ve post referansı doğrulanınca kaydedilir."
+              : `Gerçek provider yayını güvenlik kapısında kapalıdır (${context.data?.publicationGate?.reason ?? "SOCIAL_PROVIDER_PUBLISHING_DISABLED"}). İçerik ve yayın onayı birbirinden ayrıdır.`
+            : context.data?.publishingEnabled
+              ? "The publishing worker runs only after a second approval; success is recorded only with verified provider receipt and post references."
+              : `Real provider publishing is safety-gated (${context.data?.publicationGate?.reason ?? "SOCIAL_PROVIDER_PUBLISHING_DISABLED"}). Content and publication approvals are separate.`}
         </span>
       </div>
 
@@ -469,6 +624,10 @@ export default function SocialOperations() {
           <TabsTrigger value="accounts">
             <Link2 className="mr-2 size-4" />
             {tr ? "Hesaplar" : "Accounts"}
+          </TabsTrigger>
+          <TabsTrigger value="publications">
+            <Send className="mr-2 size-4" />
+            {tr ? "Yayın kuyruğu" : "Publishing queue"}
           </TabsTrigger>
           <TabsTrigger value="performance">
             <BarChart3 className="mr-2 size-4" />
@@ -695,6 +854,159 @@ export default function SocialOperations() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="publications">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">
+                    {tr
+                      ? "Onaylı yayın orkestrasyonu"
+                      : "Approved publication orchestration"}
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {tr
+                      ? "Her yayın ayrı onaylanır; retry ve dead-letter kayıtları diğer hesapların akışını durdurmaz."
+                      : "Every publication is approved separately; retries and dead letters do not block other accounts."}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={
+                    !canManage ||
+                    verifiedAccounts.length === 0 ||
+                    briefCounts.APPROVED === 0
+                  }
+                  onClick={() => setPublicationOpen(true)}
+                >
+                  <Plus className="mr-2 size-4" />
+                  {tr ? "Yayın taslağı" : "Publication draft"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {verifiedAccounts.length === 0 && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                  {tr
+                    ? "Yayın oluşturmak için en az bir hesabın bağlantı testiyle VERIFIED olması gerekir."
+                    : "At least one account must be VERIFIED by a connection test before creating a publication."}
+                </div>
+              )}
+              {(publications.data?.data ?? []).length === 0 ? (
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  {tr
+                    ? "Henüz yayın niyeti yok."
+                    : "No publication intents yet."}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {publications.data!.data.map((publication) => (
+                    <div key={publication.id} className="rounded-xl border p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium">{publication.title}</p>
+                            <Badge
+                              className={`border-0 ${statusTone(publication.status)}`}
+                            >
+                              {publication.status}
+                            </Badge>
+                            <Badge variant="outline">
+                              {publication.provider}
+                            </Badge>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {publication.account_name} ·{" "}
+                            {date(publication.scheduled_for)} ·{" "}
+                            {tr ? "deneme" : "attempt"}{" "}
+                            {publication.attempt_count}/
+                            {publication.max_attempts}
+                          </p>
+                          {publication.last_error_code && (
+                            <p className="mt-1 text-xs text-red-600">
+                              {publication.last_error_code}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          {publication.status === "DRAFT" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                !canManage || submitPublication.isPending
+                              }
+                              onClick={() =>
+                                submitPublication.mutate(publication.id)
+                              }
+                            >
+                              {tr
+                                ? "Yayın onayına gönder"
+                                : "Submit publication"}
+                            </Button>
+                          )}
+                          {publication.status === "PENDING_APPROVAL" &&
+                            canApprove &&
+                            publication.created_by_legacy_user_id !==
+                              user?.id && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={reviewPublication.isPending}
+                                  onClick={() =>
+                                    reviewPublication.mutate({
+                                      id: publication.id,
+                                      decision: "REJECT",
+                                    })
+                                  }
+                                >
+                                  {tr ? "Reddet" : "Reject"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  disabled={reviewPublication.isPending}
+                                  onClick={() =>
+                                    reviewPublication.mutate({
+                                      id: publication.id,
+                                      decision: "APPROVE",
+                                    })
+                                  }
+                                >
+                                  {tr ? "Yayını onayla" : "Approve publication"}
+                                </Button>
+                              </>
+                            )}
+                          {[
+                            "DRAFT",
+                            "PENDING_APPROVAL",
+                            "APPROVED",
+                            "QUEUED",
+                            "FAILED",
+                          ].includes(publication.status) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={
+                                !canManage || cancelPublication.isPending
+                              }
+                              onClick={() =>
+                                cancelPublication.mutate(publication.id)
+                              }
+                            >
+                              {tr ? "İptal" : "Cancel"}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="performance">
           <Card>
             <CardHeader>
@@ -743,6 +1055,113 @@ export default function SocialOperations() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={publicationOpen} onOpenChange={setPublicationOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {tr ? "Yeni yayın taslağı" : "New publication draft"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>{tr ? "Onaylı içerik" : "Approved content"}</Label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={publicationForm.briefId}
+                onChange={(event) =>
+                  setPublicationForm({
+                    ...publicationForm,
+                    briefId: event.target.value,
+                  })
+                }
+              >
+                <option value="">—</option>
+                {briefs
+                  .filter((brief) => brief.status === "APPROVED")
+                  .map((brief) => (
+                    <option key={brief.id} value={brief.id}>
+                      {brief.title}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <Label>{tr ? "Doğrulanmış hesap" : "Verified account"}</Label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={publicationForm.accountId}
+                onChange={(event) =>
+                  setPublicationForm({
+                    ...publicationForm,
+                    accountId: event.target.value,
+                  })
+                }
+              >
+                <option value="">—</option>
+                {verifiedAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.display_name} ({account.provider})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>
+                {tr ? "Planlanan yayın zamanı" : "Scheduled publication time"}
+              </Label>
+              <Input
+                type="datetime-local"
+                className="mt-1"
+                value={publicationForm.scheduledFor}
+                onChange={(event) =>
+                  setPublicationForm({
+                    ...publicationForm,
+                    scheduledFor: event.target.value,
+                  })
+                }
+              />
+            </div>
+            <div>
+              <Label>{tr ? "Azami deneme" : "Maximum attempts"}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                className="mt-1"
+                value={publicationForm.maxAttempts}
+                onChange={(event) =>
+                  setPublicationForm({
+                    ...publicationForm,
+                    maxAttempts: Math.max(
+                      1,
+                      Math.min(12, Number(event.target.value) || 1),
+                    ),
+                  })
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublicationOpen(false)}>
+              {tr ? "İptal" : "Cancel"}
+            </Button>
+            <Button
+              disabled={
+                createPublication.isPending ||
+                !publicationForm.briefId ||
+                !publicationForm.accountId
+              }
+              onClick={() => createPublication.mutate()}
+            >
+              {createPublication.isPending && (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              )}
+              {tr ? "Taslak oluştur" : "Create draft"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={briefOpen} onOpenChange={setBriefOpen}>
         <DialogContent className="max-w-2xl">

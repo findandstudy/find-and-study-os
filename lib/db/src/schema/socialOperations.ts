@@ -197,6 +197,16 @@ export const socialPublicationIntentsTable = pgTable(
     providerJobRefHash: text("provider_job_ref_hash"),
     executionReceiptHash: text("execution_receipt_hash"),
     lastErrorCode: text("last_error_code"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    leaseTokenHash: text("lease_token_hash"),
+    leasedAt: timestamp("leased_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    workerId: text("worker_id"),
+    providerPostRefHash: text("provider_post_ref_hash"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
     createdByLegacyUserId: integer("created_by_legacy_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
@@ -248,6 +258,147 @@ export const socialPublicationIntentsTable = pgTable(
   ],
 );
 
+export const socialPublicationReviewsTable = pgTable(
+  "social_publication_reviews",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    publicationIntentId: uuid("publication_intent_id").notNull(),
+    reviewerLegacyUserId: integer("reviewer_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    decision: text("decision").notNull(),
+    reason: text("reason"),
+    requestKey: text("request_key").notNull(),
+    evidenceSha256: text("evidence_sha256").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenantId, table.id],
+      name: "social_publication_reviews_pk",
+    }),
+    unique("social_publication_reviews_once_uq").on(
+      table.tenantId,
+      table.publicationIntentId,
+    ),
+    unique("social_publication_reviews_request_uq").on(
+      table.tenantId,
+      table.requestKey,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.publicationIntentId],
+      foreignColumns: [
+        socialPublicationIntentsTable.tenantId,
+        socialPublicationIntentsTable.id,
+      ],
+      name: "social_publication_reviews_intent_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_publication_reviews_organization_fk",
+    }).onDelete("restrict"),
+    check("social_publication_reviews_id_v7_chk", uuidV7(table.id)),
+  ],
+);
+
+export const socialPublicationAttemptsTable = pgTable(
+  "social_publication_attempts",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    publicationIntentId: uuid("publication_intent_id").notNull(),
+    attemptNumber: integer("attempt_number").notNull(),
+    workerId: text("worker_id").notNull(),
+    runtimeReleaseId: text("runtime_release_id").notNull(),
+    outcome: text("outcome").notNull(),
+    providerRequestHash: text("provider_request_hash").notNull(),
+    providerReceiptHash: text("provider_receipt_hash"),
+    providerPostRefHash: text("provider_post_ref_hash"),
+    errorCode: text("error_code"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenantId, table.id],
+      name: "social_publication_attempts_pk",
+    }),
+    unique("social_publication_attempts_once_uq").on(
+      table.tenantId,
+      table.publicationIntentId,
+      table.attemptNumber,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.publicationIntentId],
+      foreignColumns: [
+        socialPublicationIntentsTable.tenantId,
+        socialPublicationIntentsTable.id,
+      ],
+      name: "social_publication_attempts_intent_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_publication_attempts_organization_fk",
+    }).onDelete("restrict"),
+    check("social_publication_attempts_id_v7_chk", uuidV7(table.id)),
+  ],
+);
+
+export const socialOperationReceiptsTable = pgTable(
+  "social_operation_receipts",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    actorLegacyUserId: integer("actor_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    operation: text("operation").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    requestKey: text("request_key").notNull(),
+    payloadSha256: text("payload_sha256").notNull(),
+    result: jsonb("result").$type<Record<string, unknown>>().notNull(),
+    resultSha256: text("result_sha256").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenantId, table.id],
+      name: "social_operation_receipts_pk",
+    }),
+    unique("social_operation_receipts_request_uq").on(
+      table.tenantId,
+      table.requestKey,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_operation_receipts_organization_fk",
+    }).onDelete("restrict"),
+    index("social_operation_receipts_entity_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.entityType,
+      table.entityId,
+      table.createdAt,
+    ),
+    check("social_operation_receipts_id_v7_chk", uuidV7(table.id)),
+  ],
+);
+
 export const socialPerformanceSnapshotsTable = pgTable(
   "social_performance_snapshots",
   {
@@ -286,3 +437,5 @@ export const socialPerformanceSnapshotsTable = pgTable(
 
 export type SocialContentBrief = typeof socialContentBriefsTable.$inferSelect;
 export type SocialAccount = typeof socialAccountsTable.$inferSelect;
+export type SocialPublicationIntent =
+  typeof socialPublicationIntentsTable.$inferSelect;

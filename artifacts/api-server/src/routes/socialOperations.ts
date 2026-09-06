@@ -2,11 +2,14 @@ import { Router, type IRouter, type Response } from "express";
 import { z } from "zod";
 import { requireAuth, requirePermission, logAudit } from "../lib/auth";
 import {
+  appendSocialOperationReceipt,
+  findSocialOperationReplay,
   nextSocialId,
   socialHash,
   socialOperationsConfiguration,
   withSocialOperationsContext,
 } from "../lib/socialOperationsStore";
+import { resolveSocialPublicationGate } from "../lib/socialOperationsContract";
 
 const router: IRouter = Router();
 const uuidSchema = z.string().uuid();
@@ -34,6 +37,7 @@ const contentKindSchema = z.enum([
 ]);
 const briefBodySchema = z
   .object({
+    requestKey: requestKeySchema,
     title: z.string().trim().min(1).max(240),
     objective: z.string().trim().min(1).max(2000),
     audience: z.string().trim().min(1).max(1000),
@@ -77,6 +81,7 @@ const reviewBodySchema = z
   .strict();
 const accountBodySchema = z
   .object({
+    requestKey: requestKeySchema,
     provider: z
       .string()
       .trim()
@@ -99,6 +104,35 @@ const accountBodySchema = z
     externalAccountRef: z.string().trim().min(1).max(512).optional(),
   })
   .strict();
+const submitBodySchema = z.object({ requestKey: requestKeySchema }).strict();
+const publicationBodySchema = z
+  .object({
+    briefId: uuidSchema,
+    accountId: uuidSchema,
+    scheduledFor: z.string().datetime({ offset: true }),
+    maxAttempts: z.number().int().min(1).max(12).default(5),
+    requestKey: requestKeySchema,
+  })
+  .strict();
+
+function publicationGate() {
+  return resolveSocialPublicationGate({
+    workerEnabled: process.env.SOCIAL_PUBLICATION_WORKER_ENABLED,
+    providerPublishingEnabled: process.env.SOCIAL_PROVIDER_PUBLISHING_ENABLED,
+    allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
+    providerAllowlist: process.env.SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST,
+  });
+}
+
+async function bestEffortAudit(
+  ...args: Parameters<typeof logAudit>
+): Promise<void> {
+  try {
+    await logAudit(...args);
+  } catch (error) {
+    console.error("[social-operations-audit-projection]", error);
+  }
+}
 
 function failureStatus(error: unknown): number {
   const code =
@@ -111,7 +145,13 @@ function failureStatus(error: unknown): number {
     return 503;
   if (code.includes("READ_ONLY")) return 403;
   if (code.includes("NOT_FOUND")) return 404;
-  if (code.includes("CONFLICT") || code.includes("MAKER_CHECKER")) return 409;
+  if (
+    code.includes("CONFLICT") ||
+    code.includes("MAKER_CHECKER") ||
+    code.includes("NOT_APPROVED") ||
+    code.includes("NOT_VERIFIED")
+  )
+    return 409;
   return 500;
 }
 
@@ -131,7 +171,11 @@ router.get(
     res.setHeader("Cache-Control", "private, no-store");
     const config = socialOperationsConfiguration();
     if (!config.enabled) {
-      res.json({ ...config, publishingEnabled: false });
+      res.json({
+        ...config,
+        publishingEnabled: false,
+        publicationGate: publicationGate(),
+      });
       return;
     }
     try {
@@ -145,7 +189,8 @@ router.get(
         mode: context.mode,
         tenantId: context.tenantId,
         organizationId: context.organizationId,
-        publishingEnabled: false,
+        publishingEnabled: publicationGate().enabled,
+        publicationGate: publicationGate(),
       });
     } catch (error) {
       sendFailure(res, error);
@@ -186,7 +231,8 @@ router.get(
             accountCounts: accounts.rows,
             publicationCounts: intents.rows,
             briefs: recent.rows,
-            publishingEnabled: false,
+            publishingEnabled: publicationGate().enabled,
+            publicationGate: publicationGate(),
           };
         },
       );
@@ -240,12 +286,19 @@ router.post(
       return;
     }
     try {
-      const id = nextSocialId();
       const row = await withSocialOperationsContext(
         req.user!.id,
         "manage",
-        async (client, context) =>
-          (
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            parsed.data.requestKey,
+            parsed.data,
+          );
+          if (replay) return replay;
+          const id = nextSocialId();
+          const created = (
             await client.query(
               `
       INSERT INTO social_accounts (id,tenant_id,organization_id,provider,account_key,display_name,integration_key,external_account_ref_hash,status,created_by_legacy_user_id)
@@ -266,14 +319,24 @@ router.post(
                 context.legacyUserId,
               ],
             )
-          ).rows[0],
+          ).rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "CREATE_SOCIAL_ACCOUNT",
+            entityType: "social_account",
+            entityId: id,
+            requestKey: parsed.data.requestKey,
+            payload: parsed.data,
+            result: created,
+          });
+          return created;
+        },
       );
-      await logAudit(
+      await bestEffortAudit(
         req.user!.id,
         "create_social_account_registry",
         "social_account",
         undefined,
-        { socialAccountId: id, provider: parsed.data.provider },
+        { socialAccountId: row.id, provider: parsed.data.provider },
         req.ip,
       );
       res.status(201).json(row);
@@ -301,12 +364,19 @@ router.post(
       return;
     }
     try {
-      const id = nextSocialId();
       const row = await withSocialOperationsContext(
         req.user!.id,
         "manage",
-        async (client, context) =>
-          (
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            parsed.data.requestKey,
+            parsed.data,
+          );
+          if (replay) return replay;
+          const id = nextSocialId();
+          const created = (
             await client.query(
               `
       INSERT INTO social_content_briefs (id,tenant_id,organization_id,title,objective,audience,content_kind,locales,channels,campaign_key,caption,utm,scheduled_for,created_by_legacy_user_id)
@@ -332,14 +402,24 @@ router.post(
                 context.legacyUserId,
               ],
             )
-          ).rows[0],
+          ).rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "CREATE_SOCIAL_BRIEF",
+            entityType: "social_content_brief",
+            entityId: id,
+            requestKey: parsed.data.requestKey,
+            payload: parsed.data,
+            result: created,
+          });
+          return created;
+        },
       );
-      await logAudit(
+      await bestEffortAudit(
         req.user!.id,
         "create_social_content_brief",
         "social_content_brief",
         undefined,
-        { socialBriefId: id, channels: parsed.data.channels },
+        { socialBriefId: row.id, channels: parsed.data.channels },
         req.ip,
       );
       res.status(201).json(row);
@@ -355,8 +435,9 @@ router.post(
   requirePermission("social.manage"),
   async (req, res) => {
     const id = uuidSchema.safeParse(req.params.id);
-    if (!id.success) {
-      res.status(400).json({ error: "SOCIAL_BRIEF_ID_INVALID" });
+    const body = submitBodySchema.safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.status(400).json({ error: "SOCIAL_BRIEF_SUBMIT_INVALID" });
       return;
     }
     try {
@@ -364,16 +445,33 @@ router.post(
         req.user!.id,
         "manage",
         async (client, context) => {
+          const payload = { briefId: id.data };
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            payload,
+          );
+          if (replay) return replay;
           const result = await client.query(
             `UPDATE social_content_briefs SET status='IN_REVIEW',updated_at=now() WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 AND status='DRAFT' RETURNING *`,
             [context.tenantId, context.organizationId, id.data],
           );
           if (result.rowCount !== 1)
             throw new Error("SOCIAL_BRIEF_NOT_FOUND_OR_CONFLICT");
-          return result.rows[0];
+          const row = result.rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "SUBMIT_SOCIAL_BRIEF",
+            entityType: "social_content_brief",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload,
+            result: row,
+          });
+          return row;
         },
       );
-      await logAudit(
+      await bestEffortAudit(
         req.user!.id,
         "submit_social_content_brief",
         "social_content_brief",
@@ -461,10 +559,19 @@ router.post(
               context.legacyUserId,
             ],
           );
-          return { replay: false, decision: body.data.decision };
+          const result = { replay: false, decision: body.data.decision };
+          await appendSocialOperationReceipt(client, context, {
+            operation: "REVIEW_SOCIAL_BRIEF",
+            entityType: "social_content_brief",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload: { briefId: id.data, ...body.data },
+            result,
+          });
+          return result;
         },
       );
-      await logAudit(
+      await bestEffortAudit(
         req.user!.id,
         "review_social_content_brief",
         "social_content_brief",
@@ -478,6 +585,445 @@ router.post(
         res.status(409).json({ error: "SOCIAL_REVIEW_CONFLICT" });
         return;
       }
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/publications",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        status: z
+          .enum([
+            "DRAFT",
+            "PENDING_APPROVAL",
+            "APPROVED",
+            "REJECTED",
+            "QUEUED",
+            "RUNNING",
+            "PUBLISHED",
+            "FAILED",
+            "DEAD_LETTER",
+            "CANCELED",
+          ])
+          .optional(),
+      })
+      .safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "SOCIAL_PUBLICATION_QUERY_INVALID" });
+      return;
+    }
+    try {
+      const rows = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client, context) =>
+          (
+            await client.query(
+              `SELECT intent.id,intent.brief_id,intent.account_id,intent.scheduled_for,
+                      intent.status,intent.attempt_count,intent.max_attempts,intent.next_attempt_at,
+                      intent.last_error_code,intent.published_at,intent.created_by_legacy_user_id,
+                      intent.approved_by_legacy_user_id,intent.created_at,intent.updated_at,
+                      brief.title,brief.content_kind,account.provider,account.display_name AS account_name
+               FROM social_publication_intents intent
+               JOIN social_content_briefs brief ON brief.tenant_id=intent.tenant_id AND brief.id=intent.brief_id
+               JOIN social_accounts account ON account.tenant_id=intent.tenant_id AND account.id=intent.account_id
+               WHERE intent.tenant_id=$1 AND intent.organization_id=$2
+                 AND ($3::text IS NULL OR intent.status=$3)
+               ORDER BY intent.created_at DESC,intent.id DESC LIMIT $4`,
+              [
+                context.tenantId,
+                context.organizationId,
+                query.data.status ?? null,
+                query.data.limit,
+              ],
+            )
+          ).rows,
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ data: rows, limit: query.data.limit });
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/publications",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const body = publicationBodySchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({
+        error: "SOCIAL_PUBLICATION_INVALID",
+        issues: body.error.flatten(),
+      });
+      return;
+    }
+    try {
+      const row = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            body.data,
+          );
+          if (replay) return replay;
+          const source = await client.query<{
+            brief_status: string;
+            account_status: string;
+          }>(
+            `SELECT brief.status AS brief_status,account.status AS account_status
+             FROM social_content_briefs brief
+             JOIN social_accounts account ON account.tenant_id=brief.tenant_id
+               AND account.organization_id=brief.organization_id AND account.id=$4
+             WHERE brief.tenant_id=$1 AND brief.organization_id=$2 AND brief.id=$3
+             FOR UPDATE OF brief,account`,
+            [
+              context.tenantId,
+              context.organizationId,
+              body.data.briefId,
+              body.data.accountId,
+            ],
+          );
+          if (source.rowCount !== 1)
+            throw new Error("SOCIAL_PUBLICATION_SOURCE_NOT_FOUND");
+          if (source.rows[0].brief_status !== "APPROVED")
+            throw new Error("SOCIAL_PUBLICATION_BRIEF_NOT_APPROVED");
+          if (source.rows[0].account_status !== "VERIFIED")
+            throw new Error("SOCIAL_PUBLICATION_ACCOUNT_NOT_VERIFIED");
+          const id = nextSocialId();
+          const created = (
+            await client.query(
+              `INSERT INTO social_publication_intents
+                 (id,tenant_id,organization_id,brief_id,account_id,scheduled_for,status,idempotency_key,max_attempts,created_by_legacy_user_id)
+               VALUES ($1,$2,$3,$4,$5,$6,'DRAFT',$7,$8,$9)
+               RETURNING *`,
+              [
+                id,
+                context.tenantId,
+                context.organizationId,
+                body.data.briefId,
+                body.data.accountId,
+                new Date(body.data.scheduledFor),
+                body.data.requestKey,
+                body.data.maxAttempts,
+                context.legacyUserId,
+              ],
+            )
+          ).rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "CREATE_SOCIAL_PUBLICATION",
+            entityType: "social_publication_intent",
+            entityId: id,
+            requestKey: body.data.requestKey,
+            payload: body.data,
+            result: created,
+          });
+          return created;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "create_social_publication_intent",
+        "social_publication_intent",
+        undefined,
+        { socialPublicationIntentId: row.id },
+        req.ip,
+      );
+      res.status(201).json(row);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        res.status(409).json({ error: "SOCIAL_PUBLICATION_CONFLICT" });
+        return;
+      }
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/publications/:id/submit",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    const body = submitBodySchema.safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.status(400).json({ error: "SOCIAL_PUBLICATION_SUBMIT_INVALID" });
+      return;
+    }
+    try {
+      const row = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const payload = { publicationId: id.data };
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            payload,
+          );
+          if (replay) return replay;
+          const changed = await client.query(
+            `UPDATE social_publication_intents SET status='PENDING_APPROVAL',updated_at=now()
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 AND status='DRAFT'
+             RETURNING *`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (changed.rowCount !== 1)
+            throw new Error("SOCIAL_PUBLICATION_NOT_FOUND_OR_CONFLICT");
+          const result = changed.rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "SUBMIT_SOCIAL_PUBLICATION",
+            entityType: "social_publication_intent",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload,
+            result,
+          });
+          return result;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "submit_social_publication_intent",
+        "social_publication_intent",
+        undefined,
+        { socialPublicationIntentId: id.data },
+        req.ip,
+      );
+      res.json(row);
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/publications/:id/review",
+  requireAuth,
+  requirePermission("social.approve"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    const body = reviewBodySchema.safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.status(400).json({ error: "SOCIAL_PUBLICATION_REVIEW_INVALID" });
+      return;
+    }
+    try {
+      const result = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const intent = await client.query<{
+            status: string;
+            created_by_legacy_user_id: number;
+            scheduled_for: string;
+          }>(
+            `SELECT status,created_by_legacy_user_id,scheduled_for
+             FROM social_publication_intents
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 FOR UPDATE`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (intent.rowCount !== 1)
+            throw new Error("SOCIAL_PUBLICATION_NOT_FOUND");
+          const current = intent.rows[0];
+          const evidence = socialHash({
+            publicationId: id.data,
+            reviewerId: context.legacyUserId,
+            ...body.data,
+          });
+          const replay = await client.query<{
+            evidence_sha256: string;
+            decision: string;
+          }>(
+            `SELECT evidence_sha256,decision FROM social_publication_reviews
+             WHERE tenant_id=$1 AND request_key=$2`,
+            [context.tenantId, body.data.requestKey],
+          );
+          if (replay.rowCount === 1) {
+            if (replay.rows[0].evidence_sha256 !== evidence)
+              throw new Error("SOCIAL_PUBLICATION_REVIEW_IDEMPOTENCY_CONFLICT");
+            return { replay: true, decision: replay.rows[0].decision };
+          }
+          if (current.status !== "PENDING_APPROVAL")
+            throw new Error("SOCIAL_PUBLICATION_REVIEW_STATE_CONFLICT");
+          if (current.created_by_legacy_user_id === context.legacyUserId)
+            throw new Error("SOCIAL_PUBLICATION_MAKER_CHECKER_REQUIRED");
+          await client.query(
+            `INSERT INTO social_publication_reviews
+               (id,tenant_id,organization_id,publication_intent_id,reviewer_legacy_user_id,decision,reason,request_key,evidence_sha256)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [
+              nextSocialId(),
+              context.tenantId,
+              context.organizationId,
+              id.data,
+              context.legacyUserId,
+              body.data.decision,
+              body.data.reason ?? null,
+              body.data.requestKey,
+              evidence,
+            ],
+          );
+          if (body.data.decision === "APPROVE") {
+            await client.query(
+              `UPDATE social_publication_intents
+               SET status='APPROVED',approved_by_legacy_user_id=$4,
+                   next_attempt_at=GREATEST(scheduled_for,now()),updated_at=now()
+               WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+              [
+                context.tenantId,
+                context.organizationId,
+                id.data,
+                context.legacyUserId,
+              ],
+            );
+          } else {
+            await client.query(
+              `UPDATE social_publication_intents
+               SET status='REJECTED',approved_by_legacy_user_id=$4,updated_at=now()
+               WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+              [
+                context.tenantId,
+                context.organizationId,
+                id.data,
+                context.legacyUserId,
+              ],
+            );
+          }
+          const answer = { replay: false, decision: body.data.decision };
+          await appendSocialOperationReceipt(client, context, {
+            operation: "REVIEW_SOCIAL_PUBLICATION",
+            entityType: "social_publication_intent",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload: { publicationId: id.data, ...body.data },
+            result: answer,
+          });
+          return answer;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "review_social_publication_intent",
+        "social_publication_intent",
+        undefined,
+        { socialPublicationIntentId: id.data, ...result },
+        req.ip,
+      );
+      res.json(result);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        res.status(409).json({ error: "SOCIAL_PUBLICATION_REVIEW_CONFLICT" });
+        return;
+      }
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/publications/:id/attempts",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    if (!id.success) {
+      res.status(400).json({ error: "SOCIAL_PUBLICATION_ID_INVALID" });
+      return;
+    }
+    try {
+      const rows = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client, context) =>
+          (
+            await client.query(
+              `SELECT attempt_number,worker_id,runtime_release_id,outcome,error_code,
+                      started_at,completed_at,created_at
+               FROM social_publication_attempts
+               WHERE tenant_id=$1 AND organization_id=$2 AND publication_intent_id=$3
+               ORDER BY attempt_number DESC LIMIT 12`,
+              [context.tenantId, context.organizationId, id.data],
+            )
+          ).rows,
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ data: rows });
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/publications/:id/cancel",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    const body = submitBodySchema.safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.status(400).json({ error: "SOCIAL_PUBLICATION_CANCEL_INVALID" });
+      return;
+    }
+    try {
+      const row = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const payload = { publicationId: id.data, action: "CANCEL" };
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            payload,
+          );
+          if (replay) return replay;
+          const changed = await client.query(
+            `UPDATE social_publication_intents
+             SET status='CANCELED',next_attempt_at=NULL,updated_at=now()
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3
+               AND status IN ('DRAFT','PENDING_APPROVAL','APPROVED','QUEUED','FAILED')
+             RETURNING *`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (changed.rowCount !== 1)
+            throw new Error("SOCIAL_PUBLICATION_NOT_FOUND_OR_CONFLICT");
+          const result = changed.rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "CANCEL_SOCIAL_PUBLICATION",
+            entityType: "social_publication_intent",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload,
+            result,
+          });
+          return result;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "cancel_social_publication_intent",
+        "social_publication_intent",
+        undefined,
+        { socialPublicationIntentId: id.data },
+        req.ip,
+      );
+      res.json(row);
+    } catch (error) {
       sendFailure(res, error);
     }
   },

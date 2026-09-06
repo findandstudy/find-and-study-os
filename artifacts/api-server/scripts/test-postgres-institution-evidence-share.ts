@@ -82,7 +82,7 @@ const admin = new pg.Client({ connectionString: adminUrl });
 await admin.connect();
 assert.equal((await admin.query(
   "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
-)).rows[0]?.count, 99);
+)).rows[0]?.count, 100);
 const databaseName = new URL(adminUrl).pathname.slice(1);
 
 await admin.query(`DO $$ BEGIN

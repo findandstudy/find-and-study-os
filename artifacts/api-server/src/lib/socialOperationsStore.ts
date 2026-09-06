@@ -6,6 +6,7 @@ import {
 } from "./socialOperationsContract";
 
 export { nextSocialId, socialHash } from "./socialOperationsContract";
+import { nextSocialId, socialHash } from "./socialOperationsContract";
 
 const ROLE_RE = /^[a-z_][a-z0-9_]{0,62}$/;
 
@@ -15,6 +16,63 @@ export type SocialOperationsContext = {
   legacyUserId: number;
   mode: Exclude<SocialOperationsMode, "off">;
 };
+
+export type SocialReceiptResult = Record<string, unknown>;
+
+export async function findSocialOperationReplay(
+  client: PoolClient,
+  context: SocialOperationsContext,
+  requestKey: string,
+  payload: unknown,
+): Promise<SocialReceiptResult | null> {
+  const receipt = await client.query<{
+    payload_sha256: string;
+    result: SocialReceiptResult;
+  }>(
+    `SELECT payload_sha256,result FROM social_operation_receipts
+     WHERE tenant_id=$1 AND organization_id=$2 AND request_key=$3`,
+    [context.tenantId, context.organizationId, requestKey],
+  );
+  if (receipt.rowCount !== 1) return null;
+  if (receipt.rows[0].payload_sha256 !== socialHash(payload))
+    throw new Error("SOCIAL_IDEMPOTENCY_CONFLICT");
+  return { ...receipt.rows[0].result, replay: true };
+}
+
+export async function appendSocialOperationReceipt(
+  client: PoolClient,
+  context: SocialOperationsContext,
+  input: {
+    operation: string;
+    entityType: string;
+    entityId: string;
+    requestKey: string;
+    payload: unknown;
+    result: SocialReceiptResult;
+  },
+): Promise<void> {
+  const serializedResult = JSON.stringify(input.result);
+  if (Buffer.byteLength(serializedResult, "utf8") > 30_000)
+    throw new Error("SOCIAL_RECEIPT_RESULT_TOO_LARGE");
+  await client.query(
+    `INSERT INTO social_operation_receipts
+       (id,tenant_id,organization_id,actor_legacy_user_id,operation,entity_type,entity_id,request_key,payload_sha256,result,result_sha256)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)`,
+    [
+      nextSocialId(),
+      context.tenantId,
+      context.organizationId,
+      context.legacyUserId,
+      input.operation,
+      input.entityType,
+      input.entityId,
+      input.requestKey,
+      socialHash(input.payload),
+      serializedResult,
+      socialHash(input.result),
+    ],
+  );
+}
 
 export function socialOperationsConfiguration(): {
   enabled: boolean;

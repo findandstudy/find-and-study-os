@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertSocialProviderAllowed,
   nextSocialId,
+  normalizeSocialErrorCode,
   resolveSocialOperationsConfiguration,
+  resolveSocialPublicationGate,
   socialHash,
+  socialRetryDelayMs,
+  socialRetryDisposition,
 } from "../src/lib/socialOperationsContract";
 import { DEFAULT_ROLE_PERMISSIONS } from "../../../lib/db/src/schema/roles";
 
@@ -63,4 +68,61 @@ test("legacy transition permissions separate management from approval", () => {
     DEFAULT_ROLE_PERMISSIONS.manager.includes("social.approve"),
     false,
   );
+});
+
+test("publication execution needs all explicit kill switches and an allowlist", () => {
+  const disabled = resolveSocialPublicationGate({
+    workerEnabled: "true",
+    providerPublishingEnabled: "true",
+    allowLiveIntegrations: "false",
+    providerAllowlist: "meta",
+  });
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.reason, "LIVE_INTEGRATIONS_DISABLED");
+  const enabled = resolveSocialPublicationGate({
+    workerEnabled: "true",
+    providerPublishingEnabled: "true",
+    allowLiveIntegrations: "true",
+    providerAllowlist: "meta,linkedin,meta",
+  });
+  assert.deepEqual(enabled.allowedProviders, ["meta", "linkedin"]);
+  assert.doesNotThrow(() => assertSocialProviderAllowed(enabled, "META"));
+  assert.throws(
+    () => assertSocialProviderAllowed(enabled, "tiktok"),
+    /SOCIAL_PROVIDER_NOT_ALLOWED/,
+  );
+});
+
+test("retry policy is bounded and dead-letters exhausted or permanent failures", () => {
+  assert.equal(socialRetryDelayMs(1), 30_000);
+  assert.equal(socialRetryDelayMs(12), 6 * 60 * 60 * 1000);
+  assert.equal(
+    socialRetryDisposition({
+      attemptNumber: 2,
+      maxAttempts: 5,
+      retryable: true,
+    }),
+    "RETRY",
+  );
+  assert.equal(
+    socialRetryDisposition({
+      attemptNumber: 5,
+      maxAttempts: 5,
+      retryable: true,
+    }),
+    "DEAD_LETTER",
+  );
+  assert.equal(
+    socialRetryDisposition({
+      attemptNumber: 1,
+      maxAttempts: 5,
+      retryable: false,
+    }),
+    "DEAD_LETTER",
+  );
+  assert.equal(
+    normalizeSocialErrorCode("provider_http_429"),
+    "PROVIDER_HTTP_429",
+  );
+  assert.throws(() => normalizeSocialErrorCode("contains secret=value"));
 });
