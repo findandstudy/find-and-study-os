@@ -37,11 +37,16 @@ import {
   portalAutomationSettingsTable,
   portalUniversitiesTable,
   portalSubmissionsTable,
+  portalWorkerHeartbeatsTable,
   pipelineStagesTable,
   universitiesTable,
   portalAccountUniversitiesTable,
   usersTable,
 } from "@workspace/db";
+import {
+  currentPortalRuntimeReleaseId,
+  recordPortalWorkerHeartbeat,
+} from "@workspace/portal-runner";
 import {
   maybeEnqueuePortalSubmission,
   resolvePortalRouting,
@@ -66,6 +71,7 @@ const ADAPTER_KEY  = `test_${RUN}`;
 const UNI_KEY      = `uni_${RUN}`;
 const UNI_NAME     = `TAT Test University ${RUN}`;
 const TRIGGER_STAGE = `tat_stage_${RUN}`;
+const WORKER_ID = `tat-worker-${RUN}`;
 
 // Aggregator fixture identifiers (for TAT8-TAT11)
 const AGG_ADAPTER_KEY  = `agg_adp_${RUN}`;
@@ -110,6 +116,14 @@ let aggCatalogUniId: number | null = null;
 // before — create shared fixtures
 // ---------------------------------------------------------------------------
 before(async () => {
+  const releaseId = currentPortalRuntimeReleaseId();
+  assert.ok(releaseId, "portal auto-trigger fixture requires a release identity");
+  await recordPortalWorkerHeartbeat({
+    workerId: WORKER_ID,
+    releaseId,
+    executionModes: new Set(["dry"]),
+  });
+
   const [authUser] = await db.insert(usersTable).values({
     email: `${RUN}.admin@example.com`,
     firstName: "Portal",
@@ -216,6 +230,10 @@ before(async () => {
 // after — restore settings and clean test data
 // ---------------------------------------------------------------------------
 after(async () => {
+  await db.delete(portalWorkerHeartbeatsTable)
+    .where(eq(portalWorkerHeartbeatsTable.workerId, WORKER_ID))
+    .catch(() => {});
+
   // Restore settings
   if (savedSettings && settingsRowId) {
     const {
