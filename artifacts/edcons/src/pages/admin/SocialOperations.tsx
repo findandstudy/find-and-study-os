@@ -38,9 +38,11 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Target,
   Trash2,
   Upload,
   Users,
+  WandSparkles,
 } from "lucide-react";
 
 type SocialContext = {
@@ -52,6 +54,13 @@ type SocialContext = {
   performanceGate?: {
     enabled: boolean;
     workerEnabled: boolean;
+    reason: string | null;
+    allowedProviders: string[];
+  };
+  creativeGate?: {
+    enabled: boolean;
+    workerEnabled: boolean;
+    generationEnabled: boolean;
     reason: string | null;
     allowedProviders: string[];
   };
@@ -71,6 +80,7 @@ type SocialBrief = {
   channels: string[];
   locales: string[];
   media_refs: Array<{ kind: "image" | "video"; ref: string }>;
+  tracking_key: string;
   status: "DRAFT" | "IN_REVIEW" | "APPROVED" | "REJECTED" | "ARCHIVED";
   scheduled_for: string | null;
   created_by_legacy_user_id: number;
@@ -86,7 +96,7 @@ type SocialOverview = {
   briefs: SocialBrief[];
   publishingEnabled: boolean;
   workerHealth: Array<{
-    kind: "publication" | "performance";
+    kind: "publication" | "performance" | "creative";
     expected: boolean;
     status: "DISABLED" | "READY" | "RELEASE_MISMATCH" | "STALE";
     activeWorkers: number;
@@ -101,6 +111,8 @@ type SocialAccount = {
   provider: string;
   account_key: string;
   display_name: string;
+  account_kind: "PROFILE" | "PAGE" | "CHANNEL" | "AD_ACCOUNT";
+  currency_code: string | null;
   integration_key: string | null;
   status: string;
   verified_at: string | null;
@@ -163,6 +175,72 @@ type SocialPerformanceResponse = {
   };
 };
 
+type SocialAttributionResponse = {
+  period: { from: string; to: string };
+  summary: {
+    tracked_leads: number;
+    converted_students: number;
+    applications: number;
+  };
+  providerMetrics: {
+    provider_clicks: string;
+    provider_leads: string;
+    provider_conversions: string;
+  };
+  applicationStages: Array<{ application_stage: string; count: number }>;
+  spendByCurrency: Array<{ currency_code: string; spend_minor: string }>;
+  briefs: Array<{
+    brief_id: string;
+    title: string;
+    campaign_key: string | null;
+    tracking_key: string;
+    tracked_leads: number;
+    converted_students: number;
+    applications: number;
+  }>;
+};
+
+type SocialCreativeRequest = {
+  id: string;
+  brief_id: string;
+  brief_title: string;
+  output_kind: "CAPTION" | "IMAGE" | "VIDEO";
+  provider: string;
+  integration_key: string;
+  model: string | null;
+  locale: string;
+  prompt: string;
+  negative_prompt: string | null;
+  aspect_ratio: string | null;
+  duration_seconds: number | null;
+  max_cost_minor: number;
+  currency_code: string;
+  status: string;
+  attempt_count: number;
+  failure_count: number;
+  max_attempts: number;
+  next_attempt_at: string | null;
+  result_caption: string | null;
+  generated_asset_id: string | null;
+  generated_asset_path: string | null;
+  generated_asset_kind: "image" | "video" | null;
+  resolved_model: string | null;
+  usage: Record<string, number | string> | null;
+  applied_at: string | null;
+  last_error_code: string | null;
+  created_by_legacy_user_id: number;
+  approved_by_legacy_user_id: number | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type SocialCreativeResponse = {
+  data: SocialCreativeRequest[];
+  creativeGate: NonNullable<SocialContext["creativeGate"]>;
+};
+
 type SocialPublication = {
   id: string;
   brief_id: string;
@@ -183,11 +261,9 @@ type SocialPublication = {
 };
 
 type Integration = {
-  id: number;
   key: string;
   name: string;
   category: string;
-  isEnabled: boolean;
 };
 
 const CHANNELS = [
@@ -217,11 +293,17 @@ function numericCounts(
 }
 
 function statusTone(status: string): string {
-  if (status === "APPROVED" || status === "VERIFIED" || status === "PUBLISHED")
+  if (
+    status === "APPROVED" ||
+    status === "VERIFIED" ||
+    status === "PUBLISHED" ||
+    status === "GENERATED"
+  )
     return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300";
   if (
     status === "REJECTED" ||
     status === "FAILED" ||
+    status === "DEAD_LETTER" ||
     status === "REAUTH_REQUIRED"
   )
     return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
@@ -255,6 +337,7 @@ export default function SocialOperations() {
   const [briefOpen, setBriefOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [publicationOpen, setPublicationOpen] = useState(false);
+  const [creativeOpen, setCreativeOpen] = useState(false);
   const [briefMediaAssets, setBriefMediaAssets] = useState<SocialMediaAsset[]>(
     [],
   );
@@ -270,12 +353,17 @@ export default function SocialOperations() {
     caption: "",
     scheduledFor: "",
     utmCampaign: "",
-    utmContent: "",
   });
   const [accountForm, setAccountForm] = useState({
     provider: "meta",
     accountKey: "",
     displayName: "",
+    accountKind: "PROFILE" as
+      | "PROFILE"
+      | "PAGE"
+      | "CHANNEL"
+      | "AD_ACCOUNT",
+    currencyCode: "",
     integrationKey: "",
     externalAccountRef: "",
   });
@@ -284,6 +372,21 @@ export default function SocialOperations() {
     accountId: "",
     scheduledFor: "",
     maxAttempts: 5,
+  });
+  const [creativeForm, setCreativeForm] = useState({
+    briefId: "",
+    outputKind: "CAPTION" as "CAPTION" | "IMAGE" | "VIDEO",
+    provider: "anthropic",
+    integrationKey: "",
+    model: "",
+    locale: "tr",
+    prompt: "",
+    negativePrompt: "",
+    aspectRatio: "1:1" as "1:1" | "4:5" | "9:16" | "16:9",
+    durationSeconds: 10,
+    maxCostMinor: 100,
+    currencyCode: "USD",
+    maxAttempts: 3,
   });
 
   const context = useQuery<SocialContext>({
@@ -316,9 +419,28 @@ export default function SocialOperations() {
     enabled,
     retry: false,
   });
-  const integrations = useQuery<{ data: Integration[] }>({
-    queryKey: ["social-operations", "integrations"],
-    queryFn: () => customFetch("/api/integrations"),
+  const attribution = useQuery<SocialAttributionResponse>({
+    queryKey: ["social-operations", "attribution"],
+    queryFn: () => customFetch("/api/social/attribution?limit=100"),
+    enabled,
+    retry: false,
+  });
+  const creatives = useQuery<SocialCreativeResponse>({
+    queryKey: ["social-operations", "creative-requests"],
+    queryFn: () => customFetch("/api/social/creative-requests?limit=100"),
+    enabled,
+    retry: false,
+  });
+  const creativeIntegrations = useQuery<{ data: Integration[] }>({
+    queryKey: ["social-operations", "creative-integrations"],
+    queryFn: () => customFetch("/api/social/creative-integrations"),
+    enabled,
+    retry: false,
+  });
+  const accountIntegrations = useQuery<{ data: Integration[] }>({
+    queryKey: ["social-operations", "account-integrations"],
+    queryFn: () => customFetch("/api/social/account-integrations"),
+    enabled,
     retry: false,
   });
 
@@ -335,6 +457,12 @@ export default function SocialOperations() {
       }),
       queryClient.invalidateQueries({
         queryKey: ["social-operations", "performance"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["social-operations", "attribution"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["social-operations", "creative-requests"],
       }),
     ]);
   };
@@ -364,7 +492,6 @@ export default function SocialOperations() {
             source: briefForm.channels[0] || "social",
             medium: "social",
             campaign: briefForm.utmCampaign.trim() || undefined,
-            content: briefForm.utmContent.trim() || undefined,
           },
         }),
       }),
@@ -380,7 +507,6 @@ export default function SocialOperations() {
         campaignKey: "",
         scheduledFor: "",
         utmCampaign: "",
-        utmContent: "",
       }));
       await invalidate();
       toast({
@@ -439,6 +565,11 @@ export default function SocialOperations() {
           provider: accountForm.provider,
           accountKey: accountForm.accountKey,
           displayName: accountForm.displayName,
+          accountKind: accountForm.accountKind,
+          currencyCode:
+            accountForm.accountKind === "AD_ACCOUNT"
+              ? accountForm.currencyCode.toUpperCase()
+              : undefined,
           integrationKey: accountForm.integrationKey || undefined,
           externalAccountRef: accountForm.externalAccountRef || undefined,
         }),
@@ -449,6 +580,8 @@ export default function SocialOperations() {
         provider: "meta",
         accountKey: "",
         displayName: "",
+        accountKind: "PROFILE",
+        currencyCode: "",
         integrationKey: "",
         externalAccountRef: "",
       });
@@ -654,6 +787,90 @@ export default function SocialOperations() {
     onError: (error) =>
       toast({
         title: tr ? "İnceleme kaydedilemedi" : "Review could not be saved",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const createCreative = useMutation({
+    mutationFn: () =>
+      customFetch("/api/social/creative-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          requestKey: requestKey("social-creative-create"),
+          briefId: creativeForm.briefId,
+          outputKind: creativeForm.outputKind,
+          provider: creativeForm.provider,
+          integrationKey: creativeForm.integrationKey,
+          model: creativeForm.model.trim() || undefined,
+          locale: creativeForm.locale,
+          prompt: creativeForm.prompt,
+          negativePrompt:
+            creativeForm.outputKind === "CAPTION"
+              ? undefined
+              : creativeForm.negativePrompt.trim() || undefined,
+          aspectRatio:
+            creativeForm.outputKind === "CAPTION"
+              ? undefined
+              : creativeForm.aspectRatio,
+          durationSeconds:
+            creativeForm.outputKind === "VIDEO"
+              ? creativeForm.durationSeconds
+              : undefined,
+          maxCostMinor: creativeForm.maxCostMinor,
+          currencyCode: creativeForm.currencyCode.toUpperCase(),
+          maxAttempts: creativeForm.maxAttempts,
+        }),
+      }),
+    onSuccess: async () => {
+      setCreativeOpen(false);
+      setCreativeForm((current) => ({
+        ...current,
+        briefId: "",
+        prompt: "",
+        negativePrompt: "",
+      }));
+      await invalidate();
+      toast({
+        title: tr
+          ? "AI üretim isteği onaya gönderildi"
+          : "AI generation request sent for approval",
+      });
+    },
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "AI üretim isteği oluşturulamadı"
+          : "AI generation request could not be created",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const reviewCreative = useMutation({
+    mutationFn: ({
+      id,
+      decision,
+      reason,
+    }: {
+      id: string;
+      decision: "APPROVE" | "REJECT";
+      reason?: string;
+    }) =>
+      customFetch(`/api/social/creative-requests/${id}/review`, {
+        method: "POST",
+        body: JSON.stringify({
+          decision,
+          reason,
+          requestKey: requestKey("social-creative-review"),
+        }),
+      }),
+    onSuccess: invalidate,
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "AI üretim kararı kaydedilemedi"
+          : "AI generation decision could not be saved",
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       }),
@@ -866,9 +1083,13 @@ export default function SocialOperations() {
                           ? tr
                             ? "Yayın worker'ı"
                             : "Publication worker"
-                          : tr
-                            ? "Performans worker'ı"
-                            : "Performance worker"}
+                          : worker.kind === "performance"
+                            ? tr
+                              ? "Performans worker'ı"
+                              : "Performance worker"
+                            : tr
+                              ? "AI üretim worker'ı"
+                              : "AI creative worker"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {disabled
@@ -920,6 +1141,10 @@ export default function SocialOperations() {
             <FileText className="mr-2 size-4" />
             {tr ? "İçerikler" : "Content"}
           </TabsTrigger>
+          <TabsTrigger value="creative">
+            <WandSparkles className="mr-2 size-4" />
+            {tr ? "AI stüdyo" : "AI studio"}
+          </TabsTrigger>
           <TabsTrigger value="accounts">
             <Link2 className="mr-2 size-4" />
             {tr ? "Hesaplar" : "Accounts"}
@@ -931,6 +1156,10 @@ export default function SocialOperations() {
           <TabsTrigger value="performance">
             <BarChart3 className="mr-2 size-4" />
             {tr ? "Performans" : "Performance"}
+          </TabsTrigger>
+          <TabsTrigger value="attribution">
+            <Target className="mr-2 size-4" />
+            {tr ? "CRM katkısı" : "CRM attribution"}
           </TabsTrigger>
         </TabsList>
 
@@ -1091,6 +1320,159 @@ export default function SocialOperations() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="creative">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">
+                    {tr ? "AI içerik ve video stüdyosu" : "AI content and video studio"}
+                  </CardTitle>
+                  <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                    {tr
+                      ? "Caption, görsel ve video üretimi ayrı maliyet onayından geçer. Üretilen çıktı yalnız taslak brief'e eklenir; içerik ve yayın maker-checker onaylarını atlayamaz."
+                      : "Caption, image and video generation has a separate spend approval. Output is attached only to a draft brief and cannot bypass content or publication maker-checker review."}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setCreativeOpen(true)}
+                  disabled={
+                    !canManage ||
+                    briefs.every((brief) => brief.status !== "DRAFT")
+                  }
+                >
+                  <WandSparkles className="mr-2 size-4" />
+                  {tr ? "Üretim isteği" : "Generation request"}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {creatives.data?.creativeGate.enabled !== true && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                  {tr
+                    ? `Harici AI üretimi güvenlik kapısında kapalıdır (${creatives.data?.creativeGate.reason ?? context.data?.creativeGate?.reason ?? "SOCIAL_CREATIVE_WORKER_DISABLED"}). İstek ve onay kuyruğu kullanılabilir; dış maliyet oluşmaz.`
+                    : `External AI generation is safety-gated (${creatives.data?.creativeGate.reason ?? context.data?.creativeGate?.reason ?? "SOCIAL_CREATIVE_WORKER_DISABLED"}). Requests and approvals remain available without external spend.`}
+                </div>
+              )}
+              {(creatives.data?.data ?? []).length === 0 ? (
+                <div className="py-12 text-center">
+                  <WandSparkles className="mx-auto size-8 text-muted-foreground" />
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    {tr
+                      ? "Henüz AI üretim isteği yok. Önce bir taslak brief oluşturun."
+                      : "No AI generation requests yet. Create a draft brief first."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {creatives.data!.data.map((creative) => (
+                    <div key={creative.id} className="rounded-xl border p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium">{creative.brief_title}</p>
+                            <Badge className={`border-0 ${statusTone(creative.status)}`}>
+                              {creative.status}
+                            </Badge>
+                            <Badge variant="outline">{creative.output_kind}</Badge>
+                            <Badge variant="outline">{creative.provider}</Badge>
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                            {creative.prompt}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {creative.locale} · {creative.integration_key}
+                            {creative.resolved_model
+                              ? ` · ${creative.resolved_model}`
+                              : creative.model
+                                ? ` · ${creative.model}`
+                                : ""}
+                            {` · ${tr ? "çağrı" : "calls"} ${creative.attempt_count}/120`}
+                            {` · ${tr ? "hata" : "failures"} ${creative.failure_count}/${creative.max_attempts}`}
+                            {` · ${tr ? "tavan" : "cap"} ${creative.max_cost_minor} ${creative.currency_code}`}
+                          </p>
+                          {creative.usage?.estimatedCostMinor !== undefined && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {tr ? "Kaydedilen maliyet" : "Recorded cost"}: {creative.usage.estimatedCostMinor}{" "}
+                              {String(creative.usage.currencyCode ?? creative.currency_code)}
+                            </p>
+                          )}
+                          {creative.result_caption && (
+                            <div className="mt-3 rounded-lg bg-muted/60 p-3 text-sm whitespace-pre-wrap">
+                              {creative.result_caption}
+                            </div>
+                          )}
+                          {creative.generated_asset_id && (
+                            <Button variant="link" asChild className="mt-2 h-auto px-0">
+                              <a
+                                href={`/api/social/media/${creative.generated_asset_id}/content`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {tr ? "Üretilen medyayı aç" : "Open generated media"}
+                                <ExternalLink className="ml-2 size-3" />
+                              </a>
+                            </Button>
+                          )}
+                          {creative.status === "GENERATED" && !creative.applied_at && (
+                            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                              {tr
+                                ? "Çıktı üretildi fakat brief üretim sırasında taslak olmadığı veya medya kuralıyla çakıştığı için otomatik eklenmedi."
+                                : "Output was generated but not auto-applied because the brief was no longer a draft or its media contract had changed."}
+                            </p>
+                          )}
+                          {creative.last_error_code && (
+                            <p className="mt-2 text-xs text-red-600">
+                              {creative.last_error_code}
+                            </p>
+                          )}
+                        </div>
+                        {creative.status === "PENDING_APPROVAL" &&
+                          canApprove &&
+                          creative.created_by_legacy_user_id !== user?.id && (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={reviewCreative.isPending}
+                                onClick={() => {
+                                  const reason = window.prompt(
+                                    tr ? "Ret nedeni" : "Rejection reason",
+                                  );
+                                  if (reason?.trim())
+                                    reviewCreative.mutate({
+                                      id: creative.id,
+                                      decision: "REJECT",
+                                      reason: reason.trim(),
+                                    });
+                                }}
+                              >
+                                {tr ? "Reddet" : "Reject"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                disabled={reviewCreative.isPending}
+                                onClick={() =>
+                                  reviewCreative.mutate({
+                                    id: creative.id,
+                                    decision: "APPROVE",
+                                  })
+                                }
+                              >
+                                {tr ? "Maliyeti onayla" : "Approve spend"}
+                              </Button>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="accounts">
           <Card>
             <CardHeader>
@@ -1131,6 +1513,12 @@ export default function SocialOperations() {
                           <p className="font-medium">{account.display_name}</p>
                           <p className="text-xs text-muted-foreground">
                             {account.provider} · {account.account_key}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {account.account_kind}
+                            {account.currency_code
+                              ? ` · ${account.currency_code}`
+                              : ""}
                           </p>
                         </div>
                         <Badge
@@ -1483,7 +1871,492 @@ export default function SocialOperations() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="attribution">
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-base">
+                      {tr
+                        ? "Sosyal medya → CRM sonuçları"
+                        : "Social media → CRM outcomes"}
+                    </CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {tr
+                        ? "Provider metriklerini, sistem tarafından üretilen değişmez takip anahtarıyla CRM lead ve başvurularından ayrı gösterir."
+                        : "Shows provider metrics separately from CRM leads and applications matched through an immutable system tracking key."}
+                    </p>
+                  </div>
+                  <Badge variant="outline">
+                    {attribution.data
+                      ? `${attribution.data.period.from} → ${attribution.data.period.to}`
+                      : tr
+                        ? "Son 30 gün"
+                        : "Last 30 days"}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {attribution.isLoading ? (
+                  <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    {tr ? "Katkı modeli hesaplanıyor" : "Calculating attribution"}
+                  </div>
+                ) : attribution.isError ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                    {tr
+                      ? "CRM katkı görünümü yüklenemedi."
+                      : "CRM attribution view could not be loaded."}
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                      {[
+                        [
+                          tr ? "Takipli lead" : "Tracked leads",
+                          attribution.data?.summary.tracked_leads ?? 0,
+                        ],
+                        [
+                          tr ? "Öğrenciye dönüşen" : "Converted students",
+                          attribution.data?.summary.converted_students ?? 0,
+                        ],
+                        [
+                          tr ? "CRM başvurusu" : "CRM applications",
+                          attribution.data?.summary.applications ?? 0,
+                        ],
+                        [
+                          tr ? "Lead dönüşümü" : "Lead conversion",
+                          `${
+                            attribution.data?.summary.tracked_leads
+                              ? Math.round(
+                                  ((attribution.data?.summary.converted_students ?? 0) /
+                                    attribution.data.summary.tracked_leads) *
+                                    1000,
+                                ) / 10
+                              : 0
+                          }%`,
+                        ],
+                        [
+                          tr ? "Provider tıklaması" : "Provider clicks",
+                          metric(
+                            Number(
+                              attribution.data?.providerMetrics.provider_clicks ?? 0,
+                            ),
+                          ),
+                        ],
+                        [
+                          tr ? "Provider lead" : "Provider leads",
+                          metric(
+                            Number(
+                              attribution.data?.providerMetrics.provider_leads ?? 0,
+                            ),
+                          ),
+                        ],
+                      ].map(([label, value]) => (
+                        <div key={String(label)} className="rounded-xl border p-4">
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className="mt-1 text-xl font-semibold">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {(attribution.data?.spendByCurrency.length ?? 0) > 0 && (
+                      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border p-3">
+                        <span className="text-sm font-medium">
+                          {tr ? "Doğrulanmış reklam harcaması" : "Verified ad spend"}
+                        </span>
+                        {attribution.data!.spendByCurrency.map((item) => (
+                          <Badge key={item.currency_code} variant="outline">
+                            {item.currency_code}{" "}
+                            {metric(Number(item.spend_minor) / 100)}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    {tr ? "İçerik bazında gerçek sonuç" : "Actual outcome by content"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {(attribution.data?.briefs ?? []).length === 0 ? (
+                    <p className="py-10 text-center text-sm text-muted-foreground">
+                      {tr
+                        ? "Bu dönemde takip anahtarıyla eşleşen CRM sonucu yok."
+                        : "No CRM outcome matched a tracking key in this period."}
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {attribution.data!.briefs.map((brief) => (
+                        <div key={brief.brief_id} className="rounded-xl border p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="font-medium">{brief.title}</p>
+                              <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                                {brief.tracking_key}
+                              </p>
+                            </div>
+                            {brief.campaign_key && (
+                              <Badge variant="outline">{brief.campaign_key}</Badge>
+                            )}
+                          </div>
+                          <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
+                            <div className="rounded-lg bg-muted/60 p-2">
+                              <p className="font-semibold">{brief.tracked_leads}</p>
+                              <p className="text-[11px] text-muted-foreground">Lead</p>
+                            </div>
+                            <div className="rounded-lg bg-muted/60 p-2">
+                              <p className="font-semibold">
+                                {brief.converted_students}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {tr ? "Öğrenci" : "Student"}
+                              </p>
+                            </div>
+                            <div className="rounded-lg bg-muted/60 p-2">
+                              <p className="font-semibold">{brief.applications}</p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {tr ? "Başvuru" : "Application"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">
+                    {tr ? "Başvuru aşamaları" : "Application stages"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {(attribution.data?.applicationStages ?? []).length === 0 ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">—</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {attribution.data!.applicationStages.map((stage) => (
+                        <div
+                          key={stage.application_stage}
+                          className="flex items-center justify-between rounded-lg border px-3 py-2"
+                        >
+                          <span className="text-sm">{stage.application_stage}</span>
+                          <Badge variant="outline">{stage.count}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+              <span>
+                {tr
+                  ? "CRM sayıları first-touch takip anahtarından üretilir; provider'ın bildirdiği lead/conversion değerleriyle birleştirilmez ve farklar gizlenmez."
+                  : "CRM counts use first-touch tracking keys; they are not merged with provider-reported lead/conversion values, so discrepancies stay visible."}
+              </span>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={creativeOpen} onOpenChange={setCreativeOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {tr ? "AI üretim isteği" : "AI generation request"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Label>{tr ? "Taslak brief" : "Draft brief"}</Label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={creativeForm.briefId}
+                onChange={(event) => {
+                  const selected = briefs.find(
+                    (brief) => brief.id === event.target.value,
+                  );
+                  setCreativeForm({
+                    ...creativeForm,
+                    briefId: event.target.value,
+                    locale: selected?.locales[0] ?? creativeForm.locale,
+                  });
+                }}
+              >
+                <option value="">—</option>
+                {briefs
+                  .filter(
+                    (brief) =>
+                      brief.status === "DRAFT" &&
+                      (creativeForm.outputKind === "CAPTION" ||
+                        (creativeForm.outputKind === "IMAGE" &&
+                          !["REEL", "VIDEO"].includes(brief.content_kind)) ||
+                        (creativeForm.outputKind === "VIDEO" &&
+                          brief.content_kind !== "ARTICLE")),
+                  )
+                  .map((brief) => (
+                    <option key={brief.id} value={brief.id}>
+                      {brief.title} · {brief.content_kind}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <Label>{tr ? "Çıktı türü" : "Output kind"}</Label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={creativeForm.outputKind}
+                onChange={(event) =>
+                  setCreativeForm({
+                    ...creativeForm,
+                    briefId: "",
+                    outputKind: event.target
+                      .value as typeof creativeForm.outputKind,
+                  })
+                }
+              >
+                <option value="CAPTION">Caption / copy</option>
+                <option value="IMAGE">Image</option>
+                <option value="VIDEO">Video</option>
+              </select>
+            </div>
+            <div>
+              <Label>{tr ? "Dil" : "Locale"}</Label>
+              <Input
+                className="mt-1"
+                value={creativeForm.locale}
+                onChange={(event) =>
+                  setCreativeForm({
+                    ...creativeForm,
+                    locale: event.target.value,
+                  })
+                }
+              />
+            </div>
+            <div>
+              <Label>Provider</Label>
+              <Input
+                className="mt-1"
+                placeholder="anthropic / openai / runway"
+                value={creativeForm.provider}
+                onChange={(event) =>
+                  setCreativeForm({
+                    ...creativeForm,
+                    provider: event.target.value.toLowerCase(),
+                  })
+                }
+              />
+            </div>
+            <div>
+              <Label>{tr ? "Entegrasyon kasa anahtarı" : "Integration vault key"}</Label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={creativeForm.integrationKey}
+                onChange={(event) =>
+                  setCreativeForm({
+                    ...creativeForm,
+                    integrationKey: event.target.value,
+                  })
+                }
+              >
+                <option value="">—</option>
+                {(creativeIntegrations.data?.data ?? [])
+                  .filter(
+                    (item) =>
+                      item.category.toLowerCase() === "ai" ||
+                      ["openai", "claude", "anthropic", "runway"].includes(
+                        item.key,
+                      ) ||
+                      item.key.startsWith("claude:") ||
+                      item.key.startsWith("anthropic:"),
+                  )
+                  .map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.name} ({item.key})
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <Label>{tr ? "Model (isteğe bağlı)" : "Model (optional)"}</Label>
+              <Input
+                className="mt-1"
+                value={creativeForm.model}
+                onChange={(event) =>
+                  setCreativeForm({ ...creativeForm, model: event.target.value })
+                }
+              />
+            </div>
+            {creativeForm.outputKind !== "CAPTION" && (
+              <div>
+                <Label>{tr ? "En-boy oranı" : "Aspect ratio"}</Label>
+                <select
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  value={creativeForm.aspectRatio}
+                  onChange={(event) =>
+                    setCreativeForm({
+                      ...creativeForm,
+                      aspectRatio: event.target
+                        .value as typeof creativeForm.aspectRatio,
+                    })
+                  }
+                >
+                  {(["1:1", "4:5", "9:16", "16:9"] as const).map(
+                    (ratio) => (
+                      <option key={ratio}>{ratio}</option>
+                    ),
+                  )}
+                </select>
+              </div>
+            )}
+            {creativeForm.outputKind === "VIDEO" && (
+              <div>
+                <Label>{tr ? "Süre (saniye)" : "Duration (seconds)"}</Label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={creativeForm.durationSeconds}
+                  onChange={(event) =>
+                    setCreativeForm({
+                      ...creativeForm,
+                      durationSeconds: Math.max(
+                        1,
+                        Math.min(60, Number(event.target.value) || 1),
+                      ),
+                    })
+                  }
+                />
+              </div>
+            )}
+            <div className="sm:col-span-2">
+              <Label>Prompt</Label>
+              <Textarea
+                className="mt-1 min-h-32"
+                maxLength={12_000}
+                value={creativeForm.prompt}
+                onChange={(event) =>
+                  setCreativeForm({ ...creativeForm, prompt: event.target.value })
+                }
+              />
+            </div>
+            {creativeForm.outputKind !== "CAPTION" && (
+              <div className="sm:col-span-2">
+                <Label>{tr ? "Negatif prompt" : "Negative prompt"}</Label>
+                <Textarea
+                  className="mt-1"
+                  maxLength={4_000}
+                  value={creativeForm.negativePrompt}
+                  onChange={(event) =>
+                    setCreativeForm({
+                      ...creativeForm,
+                      negativePrompt: event.target.value,
+                    })
+                  }
+                />
+              </div>
+            )}
+            <div>
+              <Label>{tr ? "Azami hata denemesi" : "Maximum failure attempts"}</Label>
+              <Input
+                className="mt-1"
+                type="number"
+                min={1}
+                max={5}
+                value={creativeForm.maxAttempts}
+                onChange={(event) =>
+                  setCreativeForm({
+                    ...creativeForm,
+                    maxAttempts: Math.max(
+                      1,
+                      Math.min(5, Number(event.target.value) || 1),
+                    ),
+                  })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-[1fr_96px] gap-2">
+              <div>
+                <Label>
+                  {tr ? "Maliyet tavanı (minor birim)" : "Cost cap (minor unit)"}
+                </Label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  min={1}
+                  max={100_000_000}
+                  value={creativeForm.maxCostMinor}
+                  onChange={(event) =>
+                    setCreativeForm({
+                      ...creativeForm,
+                      maxCostMinor: Math.max(
+                        1,
+                        Math.min(100_000_000, Number(event.target.value) || 1),
+                      ),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>{tr ? "Para" : "Currency"}</Label>
+                <Input
+                  className="mt-1 uppercase"
+                  maxLength={3}
+                  value={creativeForm.currencyCode}
+                  onChange={(event) =>
+                    setCreativeForm({
+                      ...creativeForm,
+                      currencyCode: event.target.value.toUpperCase(),
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+              {tr
+                ? "Bu onay yalnız AI maliyetini açar. Çıktı taslakta kalır ve ayrıca içerik/yayın onayı ister."
+                : "This approval authorizes only AI spend. Output remains a draft and still needs content and publication approval."}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreativeOpen(false)}>
+              {tr ? "İptal" : "Cancel"}
+            </Button>
+            <Button
+              disabled={
+                createCreative.isPending ||
+                !creativeForm.briefId ||
+                !creativeForm.provider ||
+                !creativeForm.integrationKey ||
+                !creativeForm.prompt.trim() ||
+                creativeForm.currencyCode.length !== 3
+              }
+              onClick={() => createCreative.mutate()}
+            >
+              {createCreative.isPending && (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              )}
+              {tr ? "Onaya gönder" : "Submit for approval"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={publicationOpen} onOpenChange={setPublicationOpen}>
         <DialogContent>
@@ -1791,15 +2664,10 @@ export default function SocialOperations() {
                 }
               />
             </div>
-            <div>
-              <Label>utm_content</Label>
-              <Input
-                className="mt-1"
-                value={briefForm.utmContent}
-                onChange={(event) =>
-                  setBriefForm({ ...briefForm, utmContent: event.target.value })
-                }
-              />
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+              {tr
+                ? "utm_content sistem tarafından değişmez bir takip anahtarı olarak üretilecek. Böylece provider lead sayısı ile gerçek CRM sonucu ayrı ayrı doğrulanabilir."
+                : "utm_content is generated as an immutable system tracking key so provider leads and actual CRM outcomes can be verified separately."}
             </div>
             <div className="sm:col-span-2">
               <Label>Caption / copy</Label>
@@ -1886,6 +2754,47 @@ export default function SocialOperations() {
               />
             </div>
             <div>
+              <Label>{tr ? "Hesap türü" : "Account type"}</Label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                value={accountForm.accountKind}
+                onChange={(event) =>
+                  setAccountForm({
+                    ...accountForm,
+                    accountKind: event.target.value as typeof accountForm.accountKind,
+                    currencyCode:
+                      event.target.value === "AD_ACCOUNT"
+                        ? accountForm.currencyCode
+                        : "",
+                  })
+                }
+              >
+                <option value="PROFILE">Profile</option>
+                <option value="PAGE">Page</option>
+                <option value="CHANNEL">Channel</option>
+                <option value="AD_ACCOUNT">Ad account</option>
+              </select>
+            </div>
+            {accountForm.accountKind === "AD_ACCOUNT" && (
+              <div>
+                <Label>{tr ? "Hesap para birimi" : "Account currency"}</Label>
+                <Input
+                  className="mt-1 uppercase"
+                  maxLength={3}
+                  placeholder="USD"
+                  value={accountForm.currencyCode}
+                  onChange={(event) =>
+                    setAccountForm({
+                      ...accountForm,
+                      currencyCode: event.target.value
+                        .toUpperCase()
+                        .replace(/[^A-Z]/g, ""),
+                    })
+                  }
+                />
+              </div>
+            )}
+            <div>
               <Label>
                 {tr ? "Entegrasyon kasa anahtarı" : "Integration vault key"}
               </Label>
@@ -1900,10 +2809,12 @@ export default function SocialOperations() {
                 }
               >
                 <option value="">—</option>
-                {(integrations.data?.data ?? [])
+                {(accountIntegrations.data?.data ?? [])
                   .filter(
                     (item) =>
-                      item.category === "social" ||
+                      ["social", "social_media"].includes(
+                        item.category.toLowerCase(),
+                      ) ||
                       ["instagram", "facebook_messenger"].includes(item.key),
                   )
                   .map((item) => (
@@ -1943,7 +2854,9 @@ export default function SocialOperations() {
                 createAccount.isPending ||
                 !accountForm.provider ||
                 !accountForm.accountKey ||
-                !accountForm.displayName
+                !accountForm.displayName ||
+                (accountForm.accountKind === "AD_ACCOUNT" &&
+                  accountForm.currencyCode.length !== 3)
               }
               onClick={() => createAccount.mutate()}
             >

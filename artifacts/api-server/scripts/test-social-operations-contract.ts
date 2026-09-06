@@ -4,14 +4,18 @@ import { Readable } from "node:stream";
 import test from "node:test";
 
 import {
+  assertSocialCreativeOutputCompatible,
   assertSocialProviderAllowed,
   nextSocialId,
   normalizeSocialErrorCode,
   resolveSocialOperationsConfiguration,
+  resolveSocialAttributionWindow,
+  resolveSocialCreativeGate,
   resolveSocialPerformanceGate,
   resolveSocialProviderConnectionGate,
   resolveSocialPublicationGate,
   socialHash,
+  socialTrackingKey,
   socialPerformanceCadenceMs,
   socialPerformanceIntervalMs,
   socialPerformanceMaxAgeDays,
@@ -67,13 +71,44 @@ test("manage mode requires exact UUIDv7 tenant and organization scope", () => {
 });
 
 test("generated ids are UUIDv7 and hashes use canonical key ordering", () => {
+  const id = nextSocialId(1_789_545_600_000);
   assert.match(
-    nextSocialId(1_789_545_600_000),
+    id,
     /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
   );
+  assert.equal(socialTrackingKey(id), `fas_${id.replaceAll("-", "")}`);
+  assert.throws(() => socialTrackingKey("not-a-brief"));
   assert.equal(
     socialHash({ b: 2, nested: { z: 1, a: 3 }, a: 1 }),
     socialHash({ a: 1, nested: { a: 3, z: 1 }, b: 2 }),
+  );
+});
+
+test("attribution windows are UTC-bound and capped at 366 days", () => {
+  assert.deepEqual(
+    resolveSocialAttributionWindow({
+      from: "2026-08-01",
+      to: "2026-08-31",
+    }),
+    {
+      from: new Date("2026-08-01T00:00:00.000Z"),
+      toExclusive: new Date("2026-09-01T00:00:00.000Z"),
+    },
+  );
+  assert.deepEqual(
+    resolveSocialAttributionWindow({
+      now: new Date("2026-09-06T18:45:00.000Z"),
+    }),
+    {
+      from: new Date("2026-08-08T00:00:00.000Z"),
+      toExclusive: new Date("2026-09-07T00:00:00.000Z"),
+    },
+  );
+  assert.throws(() =>
+    resolveSocialAttributionWindow({ from: "2025-01-01", to: "2026-09-06" }),
+  );
+  assert.throws(() =>
+    resolveSocialAttributionWindow({ from: "2026-02-30", to: "2026-03-01" }),
   );
 });
 
@@ -108,6 +143,46 @@ test("publication execution needs all explicit kill switches and an allowlist", 
   assert.throws(
     () => assertSocialProviderAllowed(enabled, "tiktok"),
     /SOCIAL_PROVIDER_NOT_ALLOWED/,
+  );
+});
+
+test("creative generation is separately gated and content-kind compatible", () => {
+  assert.equal(
+    resolveSocialCreativeGate({
+      workerEnabled: "true",
+      generationEnabled: "true",
+      allowLiveIntegrations: "false",
+      providerAllowlist: "openai",
+    }).reason,
+    "LIVE_INTEGRATIONS_DISABLED",
+  );
+  assert.equal(
+    resolveSocialCreativeGate({
+      workerEnabled: "true",
+      generationEnabled: "true",
+      allowLiveIntegrations: "true",
+      providerAllowlist: "openai,INVALID PROVIDER",
+    }).reason,
+    "SOCIAL_CREATIVE_PROVIDER_ALLOWLIST_INVALID",
+  );
+  const enabled = resolveSocialCreativeGate({
+    workerEnabled: "true",
+    generationEnabled: "true",
+    allowLiveIntegrations: "true",
+    providerAllowlist: "openai,runway,openai",
+  });
+  assert.deepEqual(enabled.allowedProviders, ["openai", "runway"]);
+  assert.doesNotThrow(() => assertSocialProviderAllowed(enabled, "OPENAI"));
+  assert.doesNotThrow(() =>
+    assertSocialCreativeOutputCompatible("REEL", "VIDEO"),
+  );
+  assert.throws(
+    () => assertSocialCreativeOutputCompatible("REEL", "IMAGE"),
+    /SOCIAL_CREATIVE_OUTPUT_INCOMPATIBLE/,
+  );
+  assert.throws(
+    () => assertSocialCreativeOutputCompatible("ARTICLE", "VIDEO"),
+    /SOCIAL_CREATIVE_OUTPUT_INCOMPATIBLE/,
   );
 });
 

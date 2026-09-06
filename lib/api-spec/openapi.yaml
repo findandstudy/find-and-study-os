@@ -3934,6 +3934,151 @@ paths:
         "503":
           { description: Social operations scope is unavailable or disabled }
 
+  /social/attribution:
+    get:
+      operationId: getSocialAttribution
+      tags: [social]
+      summary: Compare immutable first-touch CRM outcomes with provider performance
+      parameters:
+        - $ref: "#/components/parameters/ReportingFrom"
+        - $ref: "#/components/parameters/ReportingTo"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Tenant-scoped attribution window and independently reported provider metrics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialAttributionResponse" }
+        "400": { description: Invalid date window or result limit }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
+
+  /social/creative-requests:
+    get:
+      operationId: listSocialCreativeRequests
+      tags: [social]
+      summary: List scoped AI creative requests and their execution gate
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Approval and generation queue without provider credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialCreativeListResponse" }
+        "400": { description: Invalid result limit }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+    post:
+      operationId: createSocialCreativeRequest
+      tags: [social]
+      summary: Create an approval-pending AI generation request for a draft brief
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSocialCreativeRequestBody" }
+      responses:
+        "201":
+          description: Creative request created without executing an external provider
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialCreativeRequest" }
+        "400": { description: Invalid or incompatible generation request }
+        "401": { description: Authentication required }
+        "403": { description: social.manage permission required }
+        "409": { description: "Brief state, integration or idempotency conflict" }
+
+  /social/creative-requests/{id}/review:
+    post:
+      operationId: reviewSocialCreativeRequest
+      tags: [social]
+      summary: Approve AI spend or reject a request using maker-checker
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewSocialContentBriefBody" }
+      responses:
+        "200":
+          description: Review decision recorded; approval makes the request worker-eligible
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialCreativeReviewResult" }
+        "400": { description: Invalid review or missing rejection reason }
+        "401": { description: Authentication required }
+        "403": { description: social.approve permission required }
+        "409": { description: "Maker-checker, state or idempotency conflict" }
+
+  /social/creative-integrations:
+    get:
+      operationId: listSocialCreativeIntegrations
+      tags: [social]
+      summary: List enabled AI integration references without configuration or secrets
+      responses:
+        "200":
+          description: Tenant-authorized, non-secret AI integration references
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [key, name, category]
+                      properties:
+                        key: { type: string }
+                        name: { type: string }
+                        category: { type: string }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+        "503": { description: Social operations scope is unavailable or disabled }
+
+  /social/account-integrations:
+    get:
+      operationId: listSocialAccountIntegrations
+      tags: [social]
+      summary: List enabled social account integration references without configuration or secrets
+      responses:
+        "200":
+          description: Tenant-authorized, non-secret social account integration references
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [key, name, category]
+                      properties:
+                        key: { type: string }
+                        name: { type: string }
+                        category: { type: string }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+        "503": { description: Social operations scope is unavailable or disabled }
+
   /social/accounts:
     get:
       operationId: listSocialAccounts
@@ -3966,7 +4111,7 @@ paths:
             schema: { $ref: "#/components/schemas/CreateSocialAccountBody" }
       responses:
         "201":
-          description: Account reference registered as unverified
+          description: Account reference registered as disconnected or unverified
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SocialAccount" }
@@ -8881,6 +9026,7 @@ components:
           publishingEnabled,
           publicationGate,
           performanceGate,
+          creativeGate,
           providerConnectionGate,
         ]
       properties:
@@ -8893,6 +9039,7 @@ components:
           type: boolean
         publicationGate: { $ref: "#/components/schemas/SocialPublicationGate" }
         performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
+        creativeGate: { $ref: "#/components/schemas/SocialCreativeGate" }
         providerConnectionGate:
           { $ref: "#/components/schemas/SocialProviderConnectionGate" }
 
@@ -8924,6 +9071,19 @@ components:
           properties:
             workerEnabled: { type: boolean }
 
+    SocialCreativeGate:
+      type: object
+      required:
+        [enabled, workerEnabled, generationEnabled, allowedProviders, reason]
+      properties:
+        enabled: { type: boolean }
+        workerEnabled: { type: boolean }
+        generationEnabled: { type: boolean }
+        allowedProviders:
+          type: array
+          items: { type: string }
+        reason: { type: [string, "null"] }
+
     SocialWorkerHealth:
       type: object
       required:
@@ -8937,7 +9097,7 @@ components:
           reason,
         ]
       properties:
-        kind: { type: string, enum: [publication, performance] }
+        kind: { type: string, enum: [publication, performance, creative] }
         expected: { type: boolean }
         status:
           { type: string, enum: [DISABLED, READY, RELEASE_MISMATCH, STALE] }
@@ -8948,12 +9108,17 @@ components:
 
     SocialAccount:
       type: object
-      required: [id, provider, account_key, display_name, status]
+      required:
+        [id, provider, account_key, display_name, account_kind, status]
       properties:
         id: { type: string, format: uuid }
         provider: { type: string }
         account_key: { type: string }
         display_name: { type: string }
+        account_kind:
+          { type: string, enum: [PROFILE, PAGE, CHANNEL, AD_ACCOUNT] }
+        currency_code:
+          { type: [string, "null"], pattern: "^[A-Z]{3}$" }
         integration_key: { type: string, nullable: true }
         status:
           type: string
@@ -8980,6 +9145,7 @@ components:
           locales,
           channels,
           media_refs,
+          tracking_key,
           status,
         ]
       properties:
@@ -9007,6 +9173,8 @@ components:
           maxItems: 10
           items: { $ref: "#/components/schemas/SocialMediaRef" }
         utm: { type: object, additionalProperties: { type: string } }
+        tracking_key:
+          { type: string, pattern: "^fas_[0-9a-f]{32}$", readOnly: true }
         scheduled_for: { type: string, format: date-time, nullable: true }
         status:
           type: string
@@ -9028,6 +9196,7 @@ components:
           publishingEnabled,
           publicationGate,
           performanceGate,
+          creativeGate,
           providerConnectionGate,
           workerHealth,
         ]
@@ -9063,12 +9232,13 @@ components:
           type: boolean
         publicationGate: { $ref: "#/components/schemas/SocialPublicationGate" }
         performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
+        creativeGate: { $ref: "#/components/schemas/SocialCreativeGate" }
         providerConnectionGate:
           { $ref: "#/components/schemas/SocialProviderConnectionGate" }
         workerHealth:
           type: array
-          minItems: 2
-          maxItems: 2
+          minItems: 3
+          maxItems: 3
           items: { $ref: "#/components/schemas/SocialWorkerHealth" }
 
     CreateSocialAccountBody:
@@ -9086,6 +9256,13 @@ components:
         provider: { type: string, minLength: 2, maxLength: 64 }
         accountKey: { type: string, minLength: 2, maxLength: 96 }
         displayName: { type: string, minLength: 1, maxLength: 160 }
+        accountKind:
+          {
+            type: string,
+            enum: [PROFILE, PAGE, CHANNEL, AD_ACCOUNT],
+            default: PROFILE,
+          }
+        currencyCode: { type: string, pattern: "^[A-Z]{3}$" }
         integrationKey: { type: string, maxLength: 96 }
         externalAccountRef: { type: string, minLength: 1, maxLength: 512 }
 
@@ -9138,7 +9315,6 @@ components:
             medium: { type: string, maxLength: 128 }
             campaign: { type: string, maxLength: 128 }
             term: { type: string, maxLength: 128 }
-            content: { type: string, maxLength: 128 }
 
     SocialMediaRef:
       type: object
@@ -9366,6 +9542,161 @@ components:
           { $ref: "#/components/schemas/SocialProviderConnectionGate" }
         performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
         performanceWorkerEnabled: { type: boolean }
+
+    SocialAttributionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        [period, summary, providerMetrics, applicationStages, spendByCurrency, briefs]
+      properties:
+        period:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        summary:
+          type: object
+          additionalProperties: false
+          required: [tracked_leads, converted_students, applications]
+          properties:
+            tracked_leads: { type: integer, minimum: 0 }
+            converted_students: { type: integer, minimum: 0 }
+            applications: { type: integer, minimum: 0 }
+        providerMetrics:
+          type: object
+          additionalProperties: false
+          required: [provider_clicks, provider_leads, provider_conversions]
+          properties:
+            provider_clicks: { type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$" }
+            provider_leads: { type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$" }
+            provider_conversions: { type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$" }
+        applicationStages:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [application_stage, count]
+            properties:
+              application_stage: { type: string }
+              count: { type: integer, minimum: 0 }
+        spendByCurrency:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [currency_code, spend_minor]
+            properties:
+              currency_code: { type: string, pattern: "^[A-Z]{3}$" }
+              spend_minor: { type: string, pattern: "^[0-9]+(?:\\.[0-9]+)?$" }
+        briefs:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              [brief_id, title, tracking_key, tracked_leads, converted_students, applications]
+            properties:
+              brief_id: { type: string, format: uuid }
+              title: { type: string }
+              campaign_key: { type: [string, "null"] }
+              tracking_key: { type: string, pattern: "^fas_[0-9a-f]{32}$" }
+              tracked_leads: { type: integer, minimum: 0 }
+              converted_students: { type: integer, minimum: 0 }
+              applications: { type: integer, minimum: 0 }
+
+    CreateSocialCreativeRequestBody:
+      type: object
+      additionalProperties: false
+      required:
+        [requestKey, briefId, outputKind, provider, integrationKey, locale, prompt, maxCostMinor, currencyCode]
+      properties:
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
+        briefId: { type: string, format: uuid }
+        outputKind: { type: string, enum: [CAPTION, IMAGE, VIDEO] }
+        provider:
+          { type: string, minLength: 2, maxLength: 64, pattern: "^[a-z][a-z0-9._-]+$" }
+        integrationKey:
+          { type: string, minLength: 2, maxLength: 96, pattern: "^[a-z][a-z0-9._:-]+$" }
+        model:
+          { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._:/-]+$" }
+        locale: { type: string, pattern: "^[a-z]{2}(?:-[A-Z]{2})?$" }
+        prompt: { type: string, minLength: 1, maxLength: 12000 }
+        negativePrompt: { type: string, maxLength: 4000 }
+        aspectRatio: { type: string, enum: ["1:1", "4:5", "9:16", "16:9"] }
+        durationSeconds: { type: integer, minimum: 1, maximum: 60 }
+        maxCostMinor:
+          { type: integer, minimum: 1, maximum: 100000000 }
+        currencyCode: { type: string, pattern: "^[A-Z]{3}$" }
+        maxAttempts: { type: integer, minimum: 1, maximum: 5, default: 3 }
+
+    SocialCreativeRequest:
+      type: object
+      required:
+        [id, brief_id, output_kind, provider, integration_key, locale, prompt, max_cost_minor, currency_code, status, attempt_count, failure_count, max_attempts, created_by_legacy_user_id, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        brief_id: { type: string, format: uuid }
+        brief_title: { type: string }
+        output_kind: { type: string, enum: [CAPTION, IMAGE, VIDEO] }
+        provider: { type: string }
+        integration_key: { type: string }
+        model: { type: [string, "null"] }
+        locale: { type: string }
+        prompt: { type: string }
+        negative_prompt: { type: [string, "null"] }
+        aspect_ratio: { type: [string, "null"] }
+        duration_seconds: { type: [integer, "null"] }
+        max_cost_minor: { type: integer, minimum: 1, maximum: 100000000 }
+        currency_code: { type: string, pattern: "^[A-Z]{3}$" }
+        status:
+          type: string
+          enum:
+            [PENDING_APPROVAL, APPROVED, REJECTED, QUEUED, RUNNING, GENERATED, DEAD_LETTER, CANCELED]
+        attempt_count: { type: integer, minimum: 0, maximum: 120 }
+        failure_count: { type: integer, minimum: 0, maximum: 5 }
+        max_attempts: { type: integer, minimum: 1, maximum: 5 }
+        next_attempt_at: { type: [string, "null"], format: date-time }
+        result_caption: { type: [string, "null"] }
+        generated_asset_id: { type: [string, "null"], format: uuid }
+        generated_asset_path: { type: [string, "null"] }
+        generated_asset_kind: { type: [string, "null"], enum: [image, video, null] }
+        resolved_model: { type: [string, "null"] }
+        usage:
+          type: [object, "null"]
+          additionalProperties: { oneOf: [{ type: number }, { type: string }] }
+        applied_at: { type: [string, "null"], format: date-time }
+        last_error_code: { type: [string, "null"] }
+        created_by_legacy_user_id: { type: integer }
+        approved_by_legacy_user_id: { type: [integer, "null"] }
+        approved_at: { type: [string, "null"], format: date-time }
+        rejection_reason: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    SocialCreativeListResponse:
+      type: object
+      required: [data, creativeGate]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SocialCreativeRequest" }
+        creativeGate: { $ref: "#/components/schemas/SocialCreativeGate" }
+
+    SocialCreativeReviewResult:
+      type: object
+      required: [id, status, replay]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [APPROVED, REJECTED] }
+        replay: { type: boolean }
 
     SocialPerformanceSyncResult:
       type: object

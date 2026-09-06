@@ -722,6 +722,20 @@
       "when": 1789977600000,
       "tag": "0102_social_media_assets",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1790064000000,
+      "tag": "0103_social_attribution_read_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1790150400000,
+      "tag": "0104_social_creative_orchestration",
+      "breakpoints": true
     }
   ]
 }

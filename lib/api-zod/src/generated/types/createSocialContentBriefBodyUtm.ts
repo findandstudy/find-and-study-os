@@ -15,6 +15,4 @@ export type CreateSocialContentBriefBodyUtm = {
   campaign?: string;
   /** @maxLength 128 */
   term?: string;
-  /** @maxLength 128 */
-  content?: string;
 };

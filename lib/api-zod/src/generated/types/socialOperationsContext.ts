@@ -5,6 +5,7 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
+import type { SocialCreativeGate } from './socialCreativeGate';
 import type { SocialOperationsContextMode } from './socialOperationsContextMode';
 import type { SocialPerformanceGate } from './socialPerformanceGate';
 import type { SocialProviderConnectionGate } from './socialProviderConnectionGate';
@@ -19,5 +20,6 @@ export interface SocialOperationsContext {
   publishingEnabled: boolean;
   publicationGate: SocialPublicationGate;
   performanceGate: SocialPerformanceGate;
+  creativeGate: SocialCreativeGate;
   providerConnectionGate: SocialProviderConnectionGate;
 }

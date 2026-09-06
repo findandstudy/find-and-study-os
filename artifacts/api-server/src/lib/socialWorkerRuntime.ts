@@ -5,7 +5,7 @@ import {
 } from "./socialOperationsContract";
 import type { SocialOperationsContext } from "./socialOperationsStore";
 
-export type SocialWorkerKind = "publication" | "performance";
+export type SocialWorkerKind = "publication" | "performance" | "creative";
 
 export type SocialWorkerHeartbeatState = {
   workerKind: SocialWorkerKind;

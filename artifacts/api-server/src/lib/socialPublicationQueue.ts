@@ -159,6 +159,7 @@ export async function claimSocialPublication(
     channels: string[];
     media_refs: SocialPublicationJob["mediaRefs"];
     utm: Record<string, string>;
+    tracking_key: string;
     scheduled_for: string;
     attempt_count: number;
     max_attempts: number;
@@ -175,6 +176,7 @@ export async function claimSocialPublication(
      SELECT changed.id,changed.tenant_id,changed.organization_id,account.provider,
             account.account_key,account.integration_key,brief.title,brief.caption,
             brief.content_kind,brief.locales,brief.channels,brief.media_refs,brief.utm,
+            brief.tracking_key,
             changed.scheduled_for,changed.attempt_count,changed.max_attempts
      FROM changed
      JOIN social_accounts account ON account.tenant_id=changed.tenant_id AND account.id=changed.account_id
@@ -205,7 +207,7 @@ export async function claimSocialPublication(
     locales: row.locales,
     channels: row.channels,
     mediaRefs: row.media_refs,
-    utm: row.utm,
+    utm: { ...row.utm, content: row.tracking_key },
     scheduledFor: row.scheduled_for,
     leaseToken,
     claimedAt: new Date(),

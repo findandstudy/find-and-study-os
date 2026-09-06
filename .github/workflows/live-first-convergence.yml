@@ -80,6 +80,8 @@ jobs:
           pnpm --filter @workspace/api-server run test:institution-case-intake
           pnpm --filter @workspace/api-server run test:social-operations-contract
           pnpm --filter @workspace/api-server run test:social-publisher-adapter
+          pnpm --filter @workspace/api-server run test:social-creative-adapter
+          pnpm --filter @workspace/api-server run test:background-jobs
 
       - name: Verify frozen convergence review manifest
         if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'codex/live-control-plane-convergence-20260831'
@@ -161,6 +163,8 @@ jobs:
           pnpm --filter @workspace/api-server run test:institution-case-intake
           pnpm --filter @workspace/api-server run test:social-operations-contract
           pnpm --filter @workspace/api-server run test:social-publisher-adapter
+          pnpm --filter @workspace/api-server run test:social-creative-adapter
+          pnpm --filter @workspace/api-server run test:background-jobs
           pnpm run typecheck
 
   object-authz-postgres:
@@ -221,7 +225,7 @@ jobs:
           PG_GATE_MIGRATOR_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
         run: pnpm --filter @workspace/api-server run test:postgres-control-plane-gate -- setup
 
-      - name: Apply all 103 migrations to the dynamic disposable database
+      - name: Apply all 105 migrations to the dynamic disposable database
         env:
           ALLOW_REVIEWED_MIGRATIONS: "true"
           DATABASE_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
@@ -298,7 +302,7 @@ jobs:
           PG_DISPOSABLE_ADMIN_URL: postgresql://postgres@127.0.0.1:5433/postgres
         run: node lib/db/prepare-disposable-migration-database.mjs
 
-      - name: Apply all 103 migrations to a fresh database
+      - name: Apply all 105 migrations to a fresh database
         env:
           ALLOW_REVIEWED_MIGRATIONS: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
@@ -336,7 +340,7 @@ jobs:
           PG_GATE_MIGRATOR_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
         run: pnpm --filter @workspace/api-server run test:postgres-control-plane-gate -- setup
 
-      - name: Prove production 66/66 to canonical 103/103 adoption
+      - name: Prove production 66/66 to canonical 105/105 adoption
         env:
           ALLOW_DISPOSABLE_PREFIX_ADOPTION: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local

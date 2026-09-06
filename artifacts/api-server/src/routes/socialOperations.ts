@@ -17,9 +17,13 @@ import {
   withSocialOperationsContext,
 } from "../lib/socialOperationsStore";
 import {
+  assertSocialCreativeOutputCompatible,
+  resolveSocialAttributionWindow,
+  resolveSocialCreativeGate,
   resolveSocialPerformanceGate,
   resolveSocialProviderConnectionGate,
   resolveSocialPublicationGate,
+  socialTrackingKey,
 } from "../lib/socialOperationsContract";
 import { verifySocialAccount } from "../lib/socialPublisherAdapter";
 import {
@@ -86,7 +90,6 @@ const briefBodySchema = z
         medium: z.string().trim().max(128).optional(),
         campaign: z.string().trim().max(128).optional(),
         term: z.string().trim().max(128).optional(),
-        content: z.string().trim().max(128).optional(),
       })
       .strict()
       .optional(),
@@ -161,6 +164,15 @@ const accountBodySchema = z
       .max(96)
       .regex(/^[a-z][a-z0-9._:-]+$/),
     displayName: z.string().trim().min(1).max(160),
+    accountKind: z
+      .enum(["PROFILE", "PAGE", "CHANNEL", "AD_ACCOUNT"])
+      .default("PROFILE"),
+    currencyCode: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/)
+      .optional(),
     integrationKey: z
       .string()
       .trim()
@@ -169,6 +181,80 @@ const accountBodySchema = z
       .optional(),
     externalAccountRef: z.string().trim().min(1).max(512).optional(),
   })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.accountKind === "AD_ACCOUNT" && !value.currencyCode)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["currencyCode"],
+        message: "Currency is required for ad accounts",
+      });
+    if (value.accountKind !== "AD_ACCOUNT" && value.currencyCode)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["currencyCode"],
+        message: "Currency is only allowed for ad accounts",
+      });
+  });
+const attributionQuerySchema = z
+  .object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
+const creativeRequestBodySchema = z
+  .object({
+    requestKey: requestKeySchema,
+    briefId: uuidSchema,
+    outputKind: z.enum(["CAPTION", "IMAGE", "VIDEO"]),
+    provider: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z][a-z0-9._-]{1,63}$/),
+    integrationKey: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .regex(/^[a-z][a-z0-9._:-]{1,95}$/),
+    model: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._:/-]{1,128}$/)
+      .optional(),
+    locale: z.string().trim().regex(/^[a-z]{2}(?:-[A-Z]{2})?$/),
+    prompt: z.string().trim().min(1).max(12_000),
+    negativePrompt: z.string().trim().max(4_000).optional(),
+    aspectRatio: z.enum(["1:1", "4:5", "9:16", "16:9"]).optional(),
+    durationSeconds: z.number().int().min(1).max(60).optional(),
+    maxCostMinor: z.number().int().min(1).max(100_000_000),
+    currencyCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/),
+    maxAttempts: z.number().int().min(1).max(5).default(3),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.outputKind === "CAPTION" && (value.aspectRatio || value.durationSeconds))
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["outputKind"],
+        message: "Caption generation cannot use media formatting",
+      });
+    if (value.outputKind === "IMAGE" && (!value.aspectRatio || value.durationSeconds))
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["aspectRatio"],
+        message: "Image generation requires only an aspect ratio",
+      });
+    if (value.outputKind === "VIDEO" && (!value.aspectRatio || !value.durationSeconds))
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["durationSeconds"],
+        message: "Video generation requires aspect ratio and duration",
+      });
+  });
+const creativeListQuerySchema = z
+  .object({ limit: z.coerce.number().int().min(1).max(100).default(50) })
   .strict();
 const submitBodySchema = z.object({ requestKey: requestKeySchema }).strict();
 const publicationBodySchema = z
@@ -208,6 +294,15 @@ function performanceGate() {
   });
 }
 
+function creativeGate() {
+  return resolveSocialCreativeGate({
+    workerEnabled: process.env.SOCIAL_CREATIVE_WORKER_ENABLED,
+    generationEnabled: process.env.SOCIAL_CREATIVE_GENERATION_ENABLED,
+    allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
+    providerAllowlist: process.env.SOCIAL_CREATIVE_PROVIDER_ALLOWLIST,
+  });
+}
+
 async function bestEffortAudit(
   ...args: Parameters<typeof logAudit>
 ): Promise<void> {
@@ -238,11 +333,13 @@ function failureStatus(error: unknown): number {
       code.includes("LIMIT_EXCEEDED"))
   )
     return 400;
+  if (code.includes("CREATIVE_OUTPUT_INCOMPATIBLE")) return 400;
   if (
     code.includes("CONFLICT") ||
     code.includes("MAKER_CHECKER") ||
     code.includes("NOT_APPROVED") ||
     code.includes("NOT_VERIFIED") ||
+    code.includes("NOT_ENABLED") ||
     code.includes("INTEGRATION_MISSING") ||
     code.includes("ALREADY_RUNNING")
   )
@@ -271,6 +368,7 @@ router.get(
         publishingEnabled: false,
         publicationGate: publicationGate(),
         performanceGate: performanceGate(),
+        creativeGate: creativeGate(),
         providerConnectionGate: providerConnectionGate(),
       });
       return;
@@ -289,6 +387,7 @@ router.get(
         publishingEnabled: publicationGate().enabled,
         publicationGate: publicationGate(),
         performanceGate: performanceGate(),
+        creativeGate: creativeGate(),
         providerConnectionGate: providerConnectionGate(),
       });
     } catch (error) {
@@ -322,11 +421,11 @@ router.get(
                 [context.tenantId, context.organizationId],
               ),
               client.query(
-                `SELECT id,title,content_kind,channels,locales,media_refs,status,scheduled_for,created_by_legacy_user_id,reviewed_by_legacy_user_id,created_at,updated_at FROM social_content_briefs WHERE tenant_id=$1 AND organization_id=$2 ORDER BY scheduled_for ASC NULLS LAST, created_at DESC LIMIT 100`,
+                `SELECT id,title,content_kind,channels,locales,media_refs,tracking_key,status,scheduled_for,created_by_legacy_user_id,reviewed_by_legacy_user_id,created_at,updated_at FROM social_content_briefs WHERE tenant_id=$1 AND organization_id=$2 ORDER BY scheduled_for ASC NULLS LAST, created_at DESC LIMIT 100`,
                 [context.tenantId, context.organizationId],
               ),
               client.query<{
-                worker_kind: "publication" | "performance";
+                worker_kind: "publication" | "performance" | "creative";
                 active_workers: number;
                 current_release_workers: number;
                 last_seen_at: Date | null;
@@ -359,6 +458,7 @@ router.get(
             [
               ["publication", publicationGate()],
               ["performance", performanceGate()],
+              ["creative", creativeGate()],
             ] as const
           ).map(([kind, gate]) => {
             const heartbeat = heartbeatByKind.get(kind);
@@ -389,8 +489,517 @@ router.get(
             publishingEnabled: publicationGate().enabled,
             publicationGate: publicationGate(),
             performanceGate: performanceGate(),
+            creativeGate: creativeGate(),
             providerConnectionGate: providerConnectionGate(),
             workerHealth,
+          };
+        },
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json(result);
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/creative-integrations",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    try {
+      const data = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client) =>
+          (
+            await client.query<{ key: string; name: string; category: string }>(
+              `SELECT key,name,category FROM integrations
+               WHERE is_enabled=true AND (
+                 lower(category)='ai'
+                 OR key IN ('openai','claude','anthropic','runway')
+                 OR key LIKE 'claude:%' OR key LIKE 'anthropic:%'
+               )
+               ORDER BY name,key`,
+            )
+          ).rows,
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ data });
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/account-integrations",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    try {
+      const data = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client) =>
+          (
+            await client.query<{ key: string; name: string; category: string }>(
+              `SELECT key,name,category FROM integrations
+               WHERE is_enabled=true AND (
+                 lower(category) IN ('social','social_media')
+                 OR key IN ('facebook_messenger','instagram')
+               )
+               ORDER BY name,key`,
+            )
+          ).rows,
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ data });
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/creative-requests",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    const query = creativeListQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "SOCIAL_CREATIVE_QUERY_INVALID" });
+      return;
+    }
+    try {
+      const data = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client, context) =>
+          (
+            await client.query(
+              `SELECT request.id,request.brief_id,brief.title AS brief_title,
+                      request.output_kind,request.provider,request.integration_key,
+                      request.model,request.locale,request.prompt,request.negative_prompt,
+                      request.aspect_ratio,request.duration_seconds,request.status,
+                      request.max_cost_minor,request.currency_code,
+                      request.attempt_count,request.failure_count,request.max_attempts,
+                      request.next_attempt_at,request.result_caption,
+                      request.generated_asset_id,asset.object_path AS generated_asset_path,
+                      asset.media_kind AS generated_asset_kind,request.resolved_model,
+                      request.usage,request.applied_at,request.last_error_code,
+                      request.created_by_legacy_user_id,request.approved_by_legacy_user_id,
+                      request.approved_at,request.rejection_reason,
+                      request.created_at,request.updated_at
+               FROM social_creative_requests request
+               JOIN social_content_briefs brief
+                 ON brief.tenant_id=request.tenant_id AND brief.id=request.brief_id
+               LEFT JOIN social_media_assets asset
+                 ON asset.tenant_id=request.tenant_id AND asset.id=request.generated_asset_id
+               WHERE request.tenant_id=$1 AND request.organization_id=$2
+               ORDER BY request.created_at DESC,request.id DESC LIMIT $3`,
+              [context.tenantId, context.organizationId, query.data.limit],
+            )
+          ).rows,
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({ data, creativeGate: creativeGate() });
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/creative-requests",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const body = creativeRequestBodySchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({
+        error: "SOCIAL_CREATIVE_REQUEST_INVALID",
+        issues: body.error.flatten(),
+      });
+      return;
+    }
+    try {
+      const result = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            body.data,
+          );
+          if (replay) return replay;
+          const brief = await client.query<{
+            content_kind: string;
+            status: string;
+            locales: string[];
+          }>(
+            `SELECT content_kind,status,locales FROM social_content_briefs
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 FOR UPDATE`,
+            [context.tenantId, context.organizationId, body.data.briefId],
+          );
+          if (brief.rowCount !== 1)
+            throw new Error("SOCIAL_CREATIVE_BRIEF_NOT_FOUND");
+          if (brief.rows[0].status !== "DRAFT")
+            throw new Error("SOCIAL_CREATIVE_BRIEF_STATE_CONFLICT");
+          if (!brief.rows[0].locales.includes(body.data.locale))
+            throw new Error("SOCIAL_CREATIVE_LOCALE_CONFLICT");
+          const integration = await client.query(
+            `SELECT 1 FROM integrations
+             WHERE key=$1 AND is_enabled=true AND (
+               lower(category)='ai'
+               OR key IN ('openai','claude','anthropic','runway')
+               OR key LIKE 'claude:%' OR key LIKE 'anthropic:%'
+             )`,
+            [body.data.integrationKey],
+          );
+          if (integration.rowCount !== 1)
+            throw new Error("SOCIAL_CREATIVE_INTEGRATION_NOT_ENABLED");
+          assertSocialCreativeOutputCompatible(
+            brief.rows[0].content_kind,
+            body.data.outputKind,
+          );
+          const id = nextSocialId();
+          const created = (
+            await client.query(
+              `INSERT INTO social_creative_requests
+                 (id,tenant_id,organization_id,brief_id,output_kind,provider,
+                  integration_key,model,locale,prompt,negative_prompt,aspect_ratio,
+                  duration_seconds,max_cost_minor,currency_code,status,request_key,max_attempts,
+                  created_by_legacy_user_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+                       'PENDING_APPROVAL',$16,$17,$18)
+               RETURNING id,brief_id,output_kind,provider,integration_key,model,
+                         locale,prompt,negative_prompt,aspect_ratio,duration_seconds,
+                         max_cost_minor,currency_code,
+                         status,attempt_count,failure_count,max_attempts,
+                         created_by_legacy_user_id,created_at,updated_at`,
+              [
+                id,
+                context.tenantId,
+                context.organizationId,
+                body.data.briefId,
+                body.data.outputKind,
+                body.data.provider,
+                body.data.integrationKey,
+                body.data.model ?? null,
+                body.data.locale,
+                body.data.prompt,
+                body.data.negativePrompt ?? null,
+                body.data.aspectRatio ?? null,
+                body.data.durationSeconds ?? null,
+                body.data.maxCostMinor,
+                body.data.currencyCode,
+                body.data.requestKey,
+                body.data.maxAttempts,
+                context.legacyUserId,
+              ],
+            )
+          ).rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "CREATE_SOCIAL_CREATIVE_REQUEST",
+            entityType: "social_creative_request",
+            entityId: id,
+            requestKey: body.data.requestKey,
+            payload: body.data,
+            result: created,
+          });
+          return created;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "create_social_creative_request",
+        "social_creative_request",
+        undefined,
+        { socialCreativeRequestId: result.id, outputKind: body.data.outputKind },
+        req.ip,
+      );
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        res.status(409).json({ error: "SOCIAL_CREATIVE_REQUEST_CONFLICT" });
+        return;
+      }
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/creative-requests/:id/review",
+  requireAuth,
+  requirePermission("social.approve"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    const body = reviewBodySchema.safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.status(400).json({ error: "SOCIAL_CREATIVE_REVIEW_INVALID" });
+      return;
+    }
+    try {
+      const result = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const payload = { creativeRequestId: id.data, ...body.data };
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            payload,
+          );
+          if (replay) return replay;
+          const current = await client.query<{
+            status: string;
+            created_by_legacy_user_id: number;
+          }>(
+            `SELECT status,created_by_legacy_user_id
+             FROM social_creative_requests
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 FOR UPDATE`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (current.rowCount !== 1)
+            throw new Error("SOCIAL_CREATIVE_REQUEST_NOT_FOUND");
+          if (current.rows[0].status !== "PENDING_APPROVAL")
+            throw new Error("SOCIAL_CREATIVE_REVIEW_STATE_CONFLICT");
+          if (current.rows[0].created_by_legacy_user_id === context.legacyUserId)
+            throw new Error("SOCIAL_CREATIVE_MAKER_CHECKER_REQUIRED");
+          if (body.data.decision === "REJECT" && !body.data.reason)
+            throw new Error("SOCIAL_CREATIVE_REJECTION_REASON_REQUIRED");
+          const status = body.data.decision === "APPROVE" ? "APPROVED" : "REJECTED";
+          await client.query(
+            `UPDATE social_creative_requests
+             SET status=$4,approved_by_legacy_user_id=$5,approved_at=now(),
+                 rejection_reason=$6,next_attempt_at=$7,updated_at=now()
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+            [
+              context.tenantId,
+              context.organizationId,
+              id.data,
+              status,
+              context.legacyUserId,
+              body.data.decision === "REJECT" ? body.data.reason : null,
+              body.data.decision === "APPROVE" ? new Date() : null,
+            ],
+          );
+          const answer = { id: id.data, status, replay: false };
+          await appendSocialOperationReceipt(client, context, {
+            operation: "REVIEW_SOCIAL_CREATIVE_REQUEST",
+            entityType: "social_creative_request",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload,
+            result: answer,
+          });
+          return answer;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "review_social_creative_request",
+        "social_creative_request",
+        undefined,
+        { socialCreativeRequestId: id.data, status: result.status },
+        req.ip,
+      );
+      res.json(result);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        res.status(409).json({ error: "SOCIAL_CREATIVE_REVIEW_CONFLICT" });
+        return;
+      }
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/attribution",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    const parsed = attributionQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: "SOCIAL_ATTRIBUTION_QUERY_INVALID" });
+      return;
+    }
+    let window: ReturnType<typeof resolveSocialAttributionWindow>;
+    try {
+      window = resolveSocialAttributionWindow(parsed.data);
+    } catch {
+      res.status(400).json({ error: "SOCIAL_ATTRIBUTION_QUERY_INVALID" });
+      return;
+    }
+    try {
+      const result = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client, context) => {
+          const parameters = [
+            context.tenantId,
+            context.organizationId,
+            window.from,
+            window.toExclusive,
+          ];
+          const [summary, stages, briefs, providerMetrics, spend] =
+            await Promise.all([
+              client.query<{
+                tracked_leads: number;
+                converted_students: number;
+                applications: number;
+              }>(
+                `WITH cohort AS (
+                   SELECT lead_id,converted_student_id
+                   FROM social_attributed_leads
+                   WHERE tenant_id=$1 AND organization_id=$2
+                     AND first_touch_at >= $3 AND first_touch_at < $4
+                     AND lead_deleted_at IS NULL
+                 )
+                 SELECT count(*)::int AS tracked_leads,
+                        count(converted_student_id)::int AS converted_students,
+                        (SELECT count(*)::int
+                         FROM social_attributed_applications app
+                         JOIN cohort ON cohort.lead_id=app.lead_id
+                         WHERE app.tenant_id=$1 AND app.organization_id=$2
+                           AND app.application_deleted_at IS NULL) AS applications
+                 FROM cohort`,
+                parameters,
+              ),
+              client.query<{ application_stage: string; count: number }>(
+                `WITH cohort AS (
+                   SELECT lead_id FROM social_attributed_leads
+                   WHERE tenant_id=$1 AND organization_id=$2
+                     AND first_touch_at >= $3 AND first_touch_at < $4
+                     AND lead_deleted_at IS NULL
+                 )
+                 SELECT app.application_stage,count(*)::int AS count
+                 FROM social_attributed_applications app
+                 JOIN cohort ON cohort.lead_id=app.lead_id
+                 WHERE app.tenant_id=$1 AND app.organization_id=$2
+                   AND app.application_deleted_at IS NULL
+                 GROUP BY app.application_stage
+                 ORDER BY count(*) DESC,app.application_stage`,
+                parameters,
+              ),
+              client.query<{
+                brief_id: string;
+                title: string;
+                campaign_key: string | null;
+                tracking_key: string;
+                tracked_leads: number;
+                converted_students: number;
+                applications: number;
+              }>(
+                `WITH cohort AS (
+                   SELECT brief_id,lead_id,converted_student_id
+                   FROM social_attributed_leads
+                   WHERE tenant_id=$1 AND organization_id=$2
+                     AND first_touch_at >= $3 AND first_touch_at < $4
+                     AND lead_deleted_at IS NULL
+                 )
+                 SELECT brief.id AS brief_id,brief.title,brief.campaign_key,
+                        brief.tracking_key,
+                        count(DISTINCT cohort.lead_id)::int AS tracked_leads,
+                        count(DISTINCT cohort.converted_student_id)::int AS converted_students,
+                        count(DISTINCT app.application_id)::int AS applications
+                 FROM social_content_briefs brief
+                 LEFT JOIN cohort ON cohort.brief_id=brief.id
+                 LEFT JOIN social_attributed_applications app
+                   ON app.tenant_id=brief.tenant_id
+                  AND app.organization_id=brief.organization_id
+                  AND app.brief_id=brief.id
+                  AND app.lead_id=cohort.lead_id
+                  AND app.application_deleted_at IS NULL
+                 WHERE brief.tenant_id=$1 AND brief.organization_id=$2
+                   AND (
+                     cohort.lead_id IS NOT NULL
+                     OR (COALESCE(brief.scheduled_for,brief.created_at) >= $3
+                         AND COALESCE(brief.scheduled_for,brief.created_at) < $4)
+                   )
+                 GROUP BY brief.id,brief.title,brief.campaign_key,brief.tracking_key
+                 ORDER BY count(DISTINCT cohort.lead_id) DESC,
+                          count(DISTINCT app.application_id) DESC,brief.id DESC
+                 LIMIT $5`,
+                [...parameters, parsed.data.limit],
+              ),
+              client.query<{
+                provider_clicks: string;
+                provider_leads: string;
+                provider_conversions: string;
+              }>(
+                `WITH latest AS (
+                   SELECT DISTINCT ON (snapshot.publication_intent_id)
+                          snapshot.publication_intent_id,snapshot.metrics
+                   FROM social_performance_snapshots snapshot
+                   WHERE snapshot.tenant_id=$1 AND snapshot.organization_id=$2
+                     AND snapshot.observed_at < $4
+                   ORDER BY snapshot.publication_intent_id,snapshot.observed_at DESC,snapshot.id DESC
+                 )
+                 SELECT COALESCE(sum(COALESCE((latest.metrics->>'linkClicks')::numeric,
+                                             (latest.metrics->>'clicks')::numeric,0)),0)::text AS provider_clicks,
+                        COALESCE(sum(COALESCE((latest.metrics->>'leads')::numeric,0)),0)::text AS provider_leads,
+                        COALESCE(sum(COALESCE((latest.metrics->>'conversions')::numeric,0)),0)::text AS provider_conversions
+                 FROM latest
+                 JOIN social_publication_intents intent
+                   ON intent.tenant_id=$1 AND intent.id=latest.publication_intent_id
+                 WHERE intent.organization_id=$2
+                   AND intent.published_at >= $3 AND intent.published_at < $4`,
+                parameters,
+              ),
+              client.query<{ currency_code: string; spend_minor: string }>(
+                `WITH latest AS (
+                   SELECT DISTINCT ON (snapshot.publication_intent_id)
+                          snapshot.publication_intent_id,snapshot.metrics
+                   FROM social_performance_snapshots snapshot
+                   WHERE snapshot.tenant_id=$1 AND snapshot.organization_id=$2
+                     AND snapshot.observed_at < $4
+                   ORDER BY snapshot.publication_intent_id,snapshot.observed_at DESC,snapshot.id DESC
+                 )
+                 SELECT account.currency_code,
+                        sum((latest.metrics->>'spendMinor')::numeric)::text AS spend_minor
+                 FROM latest
+                 JOIN social_publication_intents intent
+                   ON intent.tenant_id=$1 AND intent.id=latest.publication_intent_id
+                 JOIN social_accounts account
+                   ON account.tenant_id=intent.tenant_id AND account.id=intent.account_id
+                 WHERE intent.organization_id=$2
+                   AND intent.published_at >= $3 AND intent.published_at < $4
+                   AND account.account_kind='AD_ACCOUNT'
+                   AND account.currency_code IS NOT NULL
+                   AND latest.metrics ? 'spendMinor'
+                 GROUP BY account.currency_code
+                 ORDER BY account.currency_code`,
+                parameters,
+              ),
+            ]);
+          return {
+            period: {
+              from: window.from.toISOString().slice(0, 10),
+              to: new Date(window.toExclusive.getTime() - 86_400_000)
+                .toISOString()
+                .slice(0, 10),
+            },
+            summary: summary.rows[0] ?? {
+              tracked_leads: 0,
+              converted_students: 0,
+              applications: 0,
+            },
+            providerMetrics: providerMetrics.rows[0] ?? {
+              provider_clicks: "0",
+              provider_leads: "0",
+              provider_conversions: "0",
+            },
+            applicationStages: stages.rows,
+            spendByCurrency: spend.rows,
+            briefs: briefs.rows,
           };
         },
       );
@@ -415,7 +1024,7 @@ router.get(
           (
             await client.query(
               `
-      SELECT id,provider,account_key,display_name,integration_key,status,
+      SELECT id,provider,account_key,display_name,account_kind,currency_code,integration_key,status,
              verified_at,last_verification_at,last_verification_error_code,
              created_at,updated_at
       FROM social_accounts WHERE tenant_id=$1 AND organization_id=$2 ORDER BY provider,display_name
@@ -666,13 +1275,25 @@ router.post(
             parsed.data,
           );
           if (replay) return replay;
+          if (parsed.data.integrationKey) {
+            const integration = await client.query(
+              `SELECT 1 FROM integrations
+               WHERE key=$1 AND is_enabled=true AND (
+                 lower(category) IN ('social','social_media')
+                 OR key IN ('facebook_messenger','instagram')
+               )`,
+              [parsed.data.integrationKey],
+            );
+            if (integration.rowCount !== 1)
+              throw new Error("SOCIAL_ACCOUNT_INTEGRATION_NOT_ENABLED");
+          }
           const id = nextSocialId();
           const created = (
             await client.query(
               `
-      INSERT INTO social_accounts (id,tenant_id,organization_id,provider,account_key,display_name,integration_key,external_account_ref_hash,status,created_by_legacy_user_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'CONNECTED_UNVERIFIED',$9)
-      RETURNING id,provider,account_key,display_name,integration_key,status,created_at,updated_at
+      INSERT INTO social_accounts (id,tenant_id,organization_id,provider,account_key,display_name,account_kind,currency_code,integration_key,external_account_ref_hash,status,created_by_legacy_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING id,provider,account_key,display_name,account_kind,currency_code,integration_key,status,created_at,updated_at
     `,
               [
                 id,
@@ -681,10 +1302,15 @@ router.post(
                 parsed.data.provider,
                 parsed.data.accountKey,
                 parsed.data.displayName,
+                parsed.data.accountKind,
+                parsed.data.currencyCode ?? null,
                 parsed.data.integrationKey ?? null,
                 parsed.data.externalAccountRef
                   ? socialHash(parsed.data.externalAccountRef)
                   : null,
+                parsed.data.integrationKey
+                  ? "CONNECTED_UNVERIFIED"
+                  : "DISCONNECTED",
                 context.legacyUserId,
               ],
             )
@@ -1013,11 +1639,12 @@ router.post(
           });
           assertSocialContentMedia(parsed.data.contentKind, mediaRefs);
           const id = nextSocialId();
+          const trackingKey = socialTrackingKey(id);
           const created = (
             await client.query(
               `
-      INSERT INTO social_content_briefs (id,tenant_id,organization_id,title,objective,audience,content_kind,locales,channels,campaign_key,caption,media_refs,utm,scheduled_for,created_by_legacy_user_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15)
+      INSERT INTO social_content_briefs (id,tenant_id,organization_id,title,objective,audience,content_kind,locales,channels,campaign_key,caption,media_refs,utm,tracking_key,scheduled_for,created_by_legacy_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16)
       RETURNING *
     `,
               [
@@ -1034,6 +1661,7 @@ router.post(
                 parsed.data.caption ?? null,
                 JSON.stringify(mediaRefs),
                 JSON.stringify(parsed.data.utm ?? {}),
+                trackingKey,
                 parsed.data.scheduledFor
                   ? new Date(parsed.data.scheduledFor)
                   : null,

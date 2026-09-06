@@ -15,7 +15,6 @@ export const HealthCheckResponse = zod.object({
   "status": zod.string()
 })
 
-
 /**
  * @summary Get current user
  */
@@ -5102,6 +5101,13 @@ export const GetSocialOperationsContextResponse = zod.object({
 }).and(zod.object({
   "workerEnabled": zod.boolean()
 })),
+  "creativeGate": zod.object({
+  "enabled": zod.boolean(),
+  "workerEnabled": zod.boolean(),
+  "generationEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}),
   "providerConnectionGate": zod.object({
   "enabled": zod.boolean(),
   "connectivityEnabled": zod.boolean(),
@@ -5117,13 +5123,14 @@ export const GetSocialOperationsContextResponse = zod.object({
 export const getSocialOperationsOverviewResponseBriefsItemMediaRefsItemRefRegExp = new RegExp('^/objects/social-media/assets');
 export const getSocialOperationsOverviewResponseBriefsItemMediaRefsMax = 10;
 
+export const getSocialOperationsOverviewResponseBriefsItemTrackingKeyRegExp = new RegExp('^fas_[0-9a-f]{32}$');
 
 export const getSocialOperationsOverviewResponseWorkerHealthItemActiveWorkersMin = 0;
 
 export const getSocialOperationsOverviewResponseWorkerHealthItemCurrentReleaseWorkersMin = 0;
 
-export const getSocialOperationsOverviewResponseWorkerHealthMin = 2;
-export const getSocialOperationsOverviewResponseWorkerHealthMax = 2;
+export const getSocialOperationsOverviewResponseWorkerHealthMin = 3;
+export const getSocialOperationsOverviewResponseWorkerHealthMax = 3;
 
 
 
@@ -5155,6 +5162,7 @@ export const GetSocialOperationsOverviewResponse = zod.object({
   "ref": zod.string().regex(getSocialOperationsOverviewResponseBriefsItemMediaRefsItemRefRegExp)
 })).max(getSocialOperationsOverviewResponseBriefsItemMediaRefsMax),
   "utm": zod.record(zod.string(), zod.string()).optional(),
+  "tracking_key": zod.string().regex(getSocialOperationsOverviewResponseBriefsItemTrackingKeyRegExp),
   "scheduled_for": zod.date().nullish(),
   "status": zod.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED']),
   "version": zod.number().int().min(1).optional(),
@@ -5181,6 +5189,13 @@ export const GetSocialOperationsOverviewResponse = zod.object({
 }).and(zod.object({
   "workerEnabled": zod.boolean()
 })),
+  "creativeGate": zod.object({
+  "enabled": zod.boolean(),
+  "workerEnabled": zod.boolean(),
+  "generationEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}),
   "providerConnectionGate": zod.object({
   "enabled": zod.boolean(),
   "connectivityEnabled": zod.boolean(),
@@ -5188,7 +5203,7 @@ export const GetSocialOperationsOverviewResponse = zod.object({
   "reason": zod.string().nullable()
 }),
   "workerHealth": zod.array(zod.object({
-  "kind": zod.enum(['publication', 'performance']),
+  "kind": zod.enum(['publication', 'performance', 'creative']),
   "expected": zod.boolean(),
   "status": zod.enum(['DISABLED', 'READY', 'RELEASE_MISMATCH', 'STALE']),
   "activeWorkers": zod.number().int().min(getSocialOperationsOverviewResponseWorkerHealthItemActiveWorkersMin),
@@ -5200,14 +5215,316 @@ export const GetSocialOperationsOverviewResponse = zod.object({
 
 
 /**
+ * @summary Compare immutable first-touch CRM outcomes with provider performance
+ */
+export const getSocialAttributionQueryLimitDefault = 50;
+export const getSocialAttributionQueryLimitMax = 100;
+
+
+
+export const GetSocialAttributionQueryParams = zod.object({
+  "from": zod.date().optional().describe('Inclusive UTC calendar date; defaults to 29 days before today.'),
+  "to": zod.date().optional().describe('Inclusive UTC calendar date; the server converts it to an exclusive next-day boundary.'),
+  "limit": zod.coerce.number().int().min(1).max(getSocialAttributionQueryLimitMax).default(getSocialAttributionQueryLimitDefault)
+})
+
+export const getSocialAttributionResponseSummaryTrackedLeadsMin = 0;
+
+export const getSocialAttributionResponseSummaryConvertedStudentsMin = 0;
+
+export const getSocialAttributionResponseSummaryApplicationsMin = 0;
+
+export const getSocialAttributionResponseProviderMetricsProviderClicksRegExp = new RegExp('^[0-9]+(?:\\.[0-9]+)?$');
+export const getSocialAttributionResponseProviderMetricsProviderLeadsRegExp = new RegExp('^[0-9]+(?:\\.[0-9]+)?$');
+export const getSocialAttributionResponseProviderMetricsProviderConversionsRegExp = new RegExp('^[0-9]+(?:\\.[0-9]+)?$');
+export const getSocialAttributionResponseApplicationStagesItemCountMin = 0;
+
+export const getSocialAttributionResponseSpendByCurrencyItemCurrencyCodeRegExp = new RegExp('^[A-Z]{3}$');
+export const getSocialAttributionResponseSpendByCurrencyItemSpendMinorRegExp = new RegExp('^[0-9]+(?:\\.[0-9]+)?$');
+export const getSocialAttributionResponseBriefsItemTrackingKeyRegExp = new RegExp('^fas_[0-9a-f]{32}$');
+export const getSocialAttributionResponseBriefsItemTrackedLeadsMin = 0;
+
+export const getSocialAttributionResponseBriefsItemConvertedStudentsMin = 0;
+
+export const getSocialAttributionResponseBriefsItemApplicationsMin = 0;
+
+
+
+export const GetSocialAttributionResponse = zod.object({
+  "period": zod.object({
+  "from": zod.date(),
+  "to": zod.date()
+}),
+  "summary": zod.object({
+  "tracked_leads": zod.number().int().min(getSocialAttributionResponseSummaryTrackedLeadsMin),
+  "converted_students": zod.number().int().min(getSocialAttributionResponseSummaryConvertedStudentsMin),
+  "applications": zod.number().int().min(getSocialAttributionResponseSummaryApplicationsMin)
+}),
+  "providerMetrics": zod.object({
+  "provider_clicks": zod.string().regex(getSocialAttributionResponseProviderMetricsProviderClicksRegExp),
+  "provider_leads": zod.string().regex(getSocialAttributionResponseProviderMetricsProviderLeadsRegExp),
+  "provider_conversions": zod.string().regex(getSocialAttributionResponseProviderMetricsProviderConversionsRegExp)
+}),
+  "applicationStages": zod.array(zod.object({
+  "application_stage": zod.string(),
+  "count": zod.number().int().min(getSocialAttributionResponseApplicationStagesItemCountMin)
+})),
+  "spendByCurrency": zod.array(zod.object({
+  "currency_code": zod.string().regex(getSocialAttributionResponseSpendByCurrencyItemCurrencyCodeRegExp),
+  "spend_minor": zod.string().regex(getSocialAttributionResponseSpendByCurrencyItemSpendMinorRegExp)
+})),
+  "briefs": zod.array(zod.object({
+  "brief_id": zod.string().uuid(),
+  "title": zod.string(),
+  "campaign_key": zod.string().nullish(),
+  "tracking_key": zod.string().regex(getSocialAttributionResponseBriefsItemTrackingKeyRegExp),
+  "tracked_leads": zod.number().int().min(getSocialAttributionResponseBriefsItemTrackedLeadsMin),
+  "converted_students": zod.number().int().min(getSocialAttributionResponseBriefsItemConvertedStudentsMin),
+  "applications": zod.number().int().min(getSocialAttributionResponseBriefsItemApplicationsMin)
+}))
+})
+
+
+/**
+ * @summary List scoped AI creative requests and their execution gate
+ */
+export const listSocialCreativeRequestsQueryLimitDefault = 50;
+export const listSocialCreativeRequestsQueryLimitMax = 100;
+
+
+
+export const ListSocialCreativeRequestsQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(listSocialCreativeRequestsQueryLimitMax).default(listSocialCreativeRequestsQueryLimitDefault)
+})
+
+export const listSocialCreativeRequestsResponseDataItemMaxCostMinorMax = 100000000;
+
+export const listSocialCreativeRequestsResponseDataItemCurrencyCodeRegExp = new RegExp('^[A-Z]{3}$');
+export const listSocialCreativeRequestsResponseDataItemAttemptCountMin = 0;
+export const listSocialCreativeRequestsResponseDataItemAttemptCountMax = 120;
+
+export const listSocialCreativeRequestsResponseDataItemFailureCountMin = 0;
+export const listSocialCreativeRequestsResponseDataItemFailureCountMax = 5;
+
+export const listSocialCreativeRequestsResponseDataItemMaxAttemptsMax = 5;
+
+
+
+export const ListSocialCreativeRequestsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "brief_id": zod.string().uuid(),
+  "brief_title": zod.string().optional(),
+  "output_kind": zod.enum(['CAPTION', 'IMAGE', 'VIDEO']),
+  "provider": zod.string(),
+  "integration_key": zod.string(),
+  "model": zod.string().nullish(),
+  "locale": zod.string(),
+  "prompt": zod.string(),
+  "negative_prompt": zod.string().nullish(),
+  "aspect_ratio": zod.string().nullish(),
+  "duration_seconds": zod.number().int().nullish(),
+  "max_cost_minor": zod.number().int().min(1).max(listSocialCreativeRequestsResponseDataItemMaxCostMinorMax),
+  "currency_code": zod.string().regex(listSocialCreativeRequestsResponseDataItemCurrencyCodeRegExp),
+  "status": zod.enum(['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'QUEUED', 'RUNNING', 'GENERATED', 'DEAD_LETTER', 'CANCELED']),
+  "attempt_count": zod.number().int().min(listSocialCreativeRequestsResponseDataItemAttemptCountMin).max(listSocialCreativeRequestsResponseDataItemAttemptCountMax),
+  "failure_count": zod.number().int().min(listSocialCreativeRequestsResponseDataItemFailureCountMin).max(listSocialCreativeRequestsResponseDataItemFailureCountMax),
+  "max_attempts": zod.number().int().min(1).max(listSocialCreativeRequestsResponseDataItemMaxAttemptsMax),
+  "next_attempt_at": zod.date().nullish(),
+  "result_caption": zod.string().nullish(),
+  "generated_asset_id": zod.string().uuid().nullish(),
+  "generated_asset_path": zod.string().nullish(),
+  "generated_asset_kind": zod.union([zod.literal('image'),zod.literal('video'),zod.literal(null)]).nullish(),
+  "resolved_model": zod.string().nullish(),
+  "usage": zod.record(zod.string(), zod.union([zod.number(),zod.string()])).nullish(),
+  "applied_at": zod.date().nullish(),
+  "last_error_code": zod.string().nullish(),
+  "created_by_legacy_user_id": zod.number().int(),
+  "approved_by_legacy_user_id": zod.number().int().nullish(),
+  "approved_at": zod.date().nullish(),
+  "rejection_reason": zod.string().nullish(),
+  "created_at": zod.date(),
+  "updated_at": zod.date()
+})),
+  "creativeGate": zod.object({
+  "enabled": zod.boolean(),
+  "workerEnabled": zod.boolean(),
+  "generationEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+})
+})
+
+
+/**
+ * @summary Create an approval-pending AI generation request for a draft brief
+ */
+export const createSocialCreativeRequestBodyRequestKeyMin = 8;
+export const createSocialCreativeRequestBodyRequestKeyMax = 160;
+
+
+export const createSocialCreativeRequestBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+export const createSocialCreativeRequestBodyProviderMin = 2;
+export const createSocialCreativeRequestBodyProviderMax = 64;
+
+
+export const createSocialCreativeRequestBodyProviderRegExp = new RegExp('^[a-z][a-z0-9._-]+$');
+export const createSocialCreativeRequestBodyIntegrationKeyMin = 2;
+export const createSocialCreativeRequestBodyIntegrationKeyMax = 96;
+
+
+export const createSocialCreativeRequestBodyIntegrationKeyRegExp = new RegExp('^[a-z][a-z0-9._:-]+$');
+export const createSocialCreativeRequestBodyModelMax = 128;
+
+
+export const createSocialCreativeRequestBodyModelRegExp = new RegExp('^[A-Za-z0-9._:/-]+$');
+export const createSocialCreativeRequestBodyLocaleRegExp = new RegExp('^[a-z]{2}(?:-[A-Z]{2})?$');
+export const createSocialCreativeRequestBodyPromptMax = 12000;
+
+export const createSocialCreativeRequestBodyNegativePromptMax = 4000;
+
+export const createSocialCreativeRequestBodyDurationSecondsMax = 60;
+
+export const createSocialCreativeRequestBodyMaxCostMinorMax = 100000000;
+
+export const createSocialCreativeRequestBodyCurrencyCodeRegExp = new RegExp('^[A-Z]{3}$');
+export const createSocialCreativeRequestBodyMaxAttemptsDefault = 3;
+export const createSocialCreativeRequestBodyMaxAttemptsMax = 5;
+
+
+
+export const CreateSocialCreativeRequestBody = zod.object({
+  "requestKey": zod.string().min(createSocialCreativeRequestBodyRequestKeyMin).max(createSocialCreativeRequestBodyRequestKeyMax).regex(createSocialCreativeRequestBodyRequestKeyRegExp),
+  "briefId": zod.string().uuid(),
+  "outputKind": zod.enum(['CAPTION', 'IMAGE', 'VIDEO']),
+  "provider": zod.string().min(createSocialCreativeRequestBodyProviderMin).max(createSocialCreativeRequestBodyProviderMax).regex(createSocialCreativeRequestBodyProviderRegExp),
+  "integrationKey": zod.string().min(createSocialCreativeRequestBodyIntegrationKeyMin).max(createSocialCreativeRequestBodyIntegrationKeyMax).regex(createSocialCreativeRequestBodyIntegrationKeyRegExp),
+  "model": zod.string().min(1).max(createSocialCreativeRequestBodyModelMax).regex(createSocialCreativeRequestBodyModelRegExp).optional(),
+  "locale": zod.string().regex(createSocialCreativeRequestBodyLocaleRegExp),
+  "prompt": zod.string().min(1).max(createSocialCreativeRequestBodyPromptMax),
+  "negativePrompt": zod.string().max(createSocialCreativeRequestBodyNegativePromptMax).optional(),
+  "aspectRatio": zod.enum(['1:1', '4:5', '9:16', '16:9']).optional(),
+  "durationSeconds": zod.number().int().min(1).max(createSocialCreativeRequestBodyDurationSecondsMax).optional(),
+  "maxCostMinor": zod.number().int().min(1).max(createSocialCreativeRequestBodyMaxCostMinorMax),
+  "currencyCode": zod.string().regex(createSocialCreativeRequestBodyCurrencyCodeRegExp),
+  "maxAttempts": zod.number().int().min(1).max(createSocialCreativeRequestBodyMaxAttemptsMax).default(createSocialCreativeRequestBodyMaxAttemptsDefault)
+})
+
+export const createSocialCreativeRequestResponseMaxCostMinorMax = 100000000;
+
+export const createSocialCreativeRequestResponseCurrencyCodeRegExp = new RegExp('^[A-Z]{3}$');
+export const createSocialCreativeRequestResponseAttemptCountMin = 0;
+export const createSocialCreativeRequestResponseAttemptCountMax = 120;
+
+export const createSocialCreativeRequestResponseFailureCountMin = 0;
+export const createSocialCreativeRequestResponseFailureCountMax = 5;
+
+export const createSocialCreativeRequestResponseMaxAttemptsMax = 5;
+
+
+
+export const CreateSocialCreativeRequestResponse = zod.object({
+  "id": zod.string().uuid(),
+  "brief_id": zod.string().uuid(),
+  "brief_title": zod.string().optional(),
+  "output_kind": zod.enum(['CAPTION', 'IMAGE', 'VIDEO']),
+  "provider": zod.string(),
+  "integration_key": zod.string(),
+  "model": zod.string().nullish(),
+  "locale": zod.string(),
+  "prompt": zod.string(),
+  "negative_prompt": zod.string().nullish(),
+  "aspect_ratio": zod.string().nullish(),
+  "duration_seconds": zod.number().int().nullish(),
+  "max_cost_minor": zod.number().int().min(1).max(createSocialCreativeRequestResponseMaxCostMinorMax),
+  "currency_code": zod.string().regex(createSocialCreativeRequestResponseCurrencyCodeRegExp),
+  "status": zod.enum(['PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'QUEUED', 'RUNNING', 'GENERATED', 'DEAD_LETTER', 'CANCELED']),
+  "attempt_count": zod.number().int().min(createSocialCreativeRequestResponseAttemptCountMin).max(createSocialCreativeRequestResponseAttemptCountMax),
+  "failure_count": zod.number().int().min(createSocialCreativeRequestResponseFailureCountMin).max(createSocialCreativeRequestResponseFailureCountMax),
+  "max_attempts": zod.number().int().min(1).max(createSocialCreativeRequestResponseMaxAttemptsMax),
+  "next_attempt_at": zod.date().nullish(),
+  "result_caption": zod.string().nullish(),
+  "generated_asset_id": zod.string().uuid().nullish(),
+  "generated_asset_path": zod.string().nullish(),
+  "generated_asset_kind": zod.union([zod.literal('image'),zod.literal('video'),zod.literal(null)]).nullish(),
+  "resolved_model": zod.string().nullish(),
+  "usage": zod.record(zod.string(), zod.union([zod.number(),zod.string()])).nullish(),
+  "applied_at": zod.date().nullish(),
+  "last_error_code": zod.string().nullish(),
+  "created_by_legacy_user_id": zod.number().int(),
+  "approved_by_legacy_user_id": zod.number().int().nullish(),
+  "approved_at": zod.date().nullish(),
+  "rejection_reason": zod.string().nullish(),
+  "created_at": zod.date(),
+  "updated_at": zod.date()
+})
+
+
+/**
+ * @summary Approve AI spend or reject a request using maker-checker
+ */
+export const ReviewSocialCreativeRequestParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const reviewSocialCreativeRequestBodyReasonMax = 2000;
+
+export const reviewSocialCreativeRequestBodyRequestKeyMin = 8;
+export const reviewSocialCreativeRequestBodyRequestKeyMax = 160;
+
+
+
+export const ReviewSocialCreativeRequestBody = zod.object({
+  "decision": zod.enum(['APPROVE', 'REJECT']),
+  "reason": zod.string().max(reviewSocialCreativeRequestBodyReasonMax).optional(),
+  "requestKey": zod.string().min(reviewSocialCreativeRequestBodyRequestKeyMin).max(reviewSocialCreativeRequestBodyRequestKeyMax)
+})
+
+export const ReviewSocialCreativeRequestResponse = zod.object({
+  "id": zod.string().uuid(),
+  "status": zod.enum(['APPROVED', 'REJECTED']),
+  "replay": zod.boolean()
+})
+
+
+/**
+ * @summary List enabled AI integration references without configuration or secrets
+ */
+export const ListSocialCreativeIntegrationsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "key": zod.string(),
+  "name": zod.string(),
+  "category": zod.string()
+}))
+})
+
+
+/**
+ * @summary List enabled social account integration references without configuration or secrets
+ */
+export const ListSocialAccountIntegrationsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "key": zod.string(),
+  "name": zod.string(),
+  "category": zod.string()
+}))
+})
+
+
+/**
  * @summary List registered social accounts without secret material
  */
+export const listSocialAccountsResponseDataItemCurrencyCodeRegExp = new RegExp('^[A-Z]{3}$');
+
+
 export const ListSocialAccountsResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.string().uuid(),
   "provider": zod.string(),
   "account_key": zod.string(),
   "display_name": zod.string(),
+  "account_kind": zod.enum(['PROFILE', 'PAGE', 'CHANNEL', 'AD_ACCOUNT']),
+  "currency_code": zod.string().regex(listSocialAccountsResponseDataItemCurrencyCodeRegExp).nullish(),
   "integration_key": zod.string().nullish(),
   "status": zod.enum(['DISCONNECTED', 'CONNECTED_UNVERIFIED', 'VERIFIED', 'REAUTH_REQUIRED', 'DISABLED']),
   "created_at": zod.date().optional(),
@@ -5232,6 +5549,8 @@ export const createSocialAccountBodyAccountKeyMax = 96;
 
 export const createSocialAccountBodyDisplayNameMax = 160;
 
+export const createSocialAccountBodyAccountKindDefault = `PROFILE`;
+export const createSocialAccountBodyCurrencyCodeRegExp = new RegExp('^[A-Z]{3}$');
 export const createSocialAccountBodyIntegrationKeyMax = 96;
 
 export const createSocialAccountBodyExternalAccountRefMax = 512;
@@ -5243,15 +5562,22 @@ export const CreateSocialAccountBody = zod.object({
   "provider": zod.string().min(createSocialAccountBodyProviderMin).max(createSocialAccountBodyProviderMax),
   "accountKey": zod.string().min(createSocialAccountBodyAccountKeyMin).max(createSocialAccountBodyAccountKeyMax),
   "displayName": zod.string().min(1).max(createSocialAccountBodyDisplayNameMax),
+  "accountKind": zod.enum(['PROFILE', 'PAGE', 'CHANNEL', 'AD_ACCOUNT']).default(createSocialAccountBodyAccountKindDefault),
+  "currencyCode": zod.string().regex(createSocialAccountBodyCurrencyCodeRegExp).optional(),
   "integrationKey": zod.string().max(createSocialAccountBodyIntegrationKeyMax).optional(),
   "externalAccountRef": zod.string().min(1).max(createSocialAccountBodyExternalAccountRefMax).optional()
 })
+
+export const createSocialAccountResponseCurrencyCodeRegExp = new RegExp('^[A-Z]{3}$');
+
 
 export const CreateSocialAccountResponse = zod.object({
   "id": zod.string().uuid(),
   "provider": zod.string(),
   "account_key": zod.string(),
   "display_name": zod.string(),
+  "account_kind": zod.enum(['PROFILE', 'PAGE', 'CHANNEL', 'AD_ACCOUNT']),
+  "currency_code": zod.string().regex(createSocialAccountResponseCurrencyCodeRegExp).nullish(),
   "integration_key": zod.string().nullish(),
   "status": zod.enum(['DISCONNECTED', 'CONNECTED_UNVERIFIED', 'VERIFIED', 'REAUTH_REQUIRED', 'DISABLED']),
   "created_at": zod.date().optional(),
@@ -5371,8 +5697,6 @@ export const createSocialContentBriefBodyUtmCampaignMax = 128;
 
 export const createSocialContentBriefBodyUtmTermMax = 128;
 
-export const createSocialContentBriefBodyUtmContentMax = 128;
-
 
 
 export const CreateSocialContentBriefBody = zod.object({
@@ -5391,14 +5715,14 @@ export const CreateSocialContentBriefBody = zod.object({
   "source": zod.string().max(createSocialContentBriefBodyUtmSourceMax).optional(),
   "medium": zod.string().max(createSocialContentBriefBodyUtmMediumMax).optional(),
   "campaign": zod.string().max(createSocialContentBriefBodyUtmCampaignMax).optional(),
-  "term": zod.string().max(createSocialContentBriefBodyUtmTermMax).optional(),
-  "content": zod.string().max(createSocialContentBriefBodyUtmContentMax).optional()
+  "term": zod.string().max(createSocialContentBriefBodyUtmTermMax).optional()
 }).optional()
 })
 
 export const createSocialContentBriefResponseMediaRefsItemRefRegExp = new RegExp('^/objects/social-media/assets');
 export const createSocialContentBriefResponseMediaRefsMax = 10;
 
+export const createSocialContentBriefResponseTrackingKeyRegExp = new RegExp('^fas_[0-9a-f]{32}$');
 
 
 
@@ -5417,6 +5741,7 @@ export const CreateSocialContentBriefResponse = zod.object({
   "ref": zod.string().regex(createSocialContentBriefResponseMediaRefsItemRefRegExp)
 })).max(createSocialContentBriefResponseMediaRefsMax),
   "utm": zod.record(zod.string(), zod.string()).optional(),
+  "tracking_key": zod.string().regex(createSocialContentBriefResponseTrackingKeyRegExp),
   "scheduled_for": zod.date().nullish(),
   "status": zod.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED']),
   "version": zod.number().int().min(1).optional(),
@@ -5448,6 +5773,7 @@ export const SubmitSocialContentBriefBody = zod.object({
 export const submitSocialContentBriefResponseMediaRefsItemRefRegExp = new RegExp('^/objects/social-media/assets');
 export const submitSocialContentBriefResponseMediaRefsMax = 10;
 
+export const submitSocialContentBriefResponseTrackingKeyRegExp = new RegExp('^fas_[0-9a-f]{32}$');
 
 
 
@@ -5466,6 +5792,7 @@ export const SubmitSocialContentBriefResponse = zod.object({
   "ref": zod.string().regex(submitSocialContentBriefResponseMediaRefsItemRefRegExp)
 })).max(submitSocialContentBriefResponseMediaRefsMax),
   "utm": zod.record(zod.string(), zod.string()).optional(),
+  "tracking_key": zod.string().regex(submitSocialContentBriefResponseTrackingKeyRegExp),
   "scheduled_for": zod.date().nullish(),
   "status": zod.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED']),
   "version": zod.number().int().min(1).optional(),

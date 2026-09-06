@@ -60,6 +60,7 @@ import type {
   CreateServiceFeeBody,
   CreateSocialAccountBody,
   CreateSocialContentBriefBody,
+  CreateSocialCreativeRequestBody,
   CreateSocialPublicationBody,
   CreateStudentBody,
   CreateUniversityBody,
@@ -90,6 +91,7 @@ import type {
   GetReportingDataQualityParams,
   GetReportingFinanceParams,
   GetReportingFunnelParams,
+  GetSocialAttributionParams,
   GetStudentPortalReadinessParams,
   GetUniversityContract200,
   HealthStatus,
@@ -117,7 +119,10 @@ import type {
   ListProgramsParams,
   ListServiceFees200,
   ListServiceFeesParams,
+  ListSocialAccountIntegrations200,
   ListSocialAccounts200,
+  ListSocialCreativeIntegrations200,
+  ListSocialCreativeRequestsParams,
   ListSocialPerformanceParams,
   ListSocialPublicationAttempts200,
   ListSocialPublicationsParams,
@@ -181,8 +186,12 @@ import type {
   Settings,
   SocialAccount,
   SocialAccountVerificationResult,
+  SocialAttributionResponse,
   SocialContentBrief,
   SocialContentReviewResult,
+  SocialCreativeListResponse,
+  SocialCreativeRequest,
+  SocialCreativeReviewResult,
   SocialMediaAsset,
   SocialMediaUploadRequest,
   SocialMediaUploadTarget,
@@ -286,7 +295,6 @@ export const getHealthCheckQueryKey = () => {
     `/api/healthz`
     ] as const;
     }
-
 
 export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
@@ -11798,6 +11806,471 @@ export function useGetSocialOperationsOverview<TData = Awaited<ReturnType<typeof
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSocialOperationsOverviewQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSocialAttributionUrl = (params?: GetSocialAttributionParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/attribution?${stringifiedParams}` : `/api/social/attribution`
+}
+
+/**
+ * @summary Compare immutable first-touch CRM outcomes with provider performance
+ */
+export const getSocialAttribution = async (params?: GetSocialAttributionParams, options?: Parameters<typeof customFetch>[1]): Promise<SocialAttributionResponse> => {
+
+  return customFetch<SocialAttributionResponse>(getGetSocialAttributionUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSocialAttributionQueryKey = (params?: GetSocialAttributionParams,) => {
+    return [
+    `/api/social/attribution`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSocialAttributionQueryOptions = <TData = Awaited<ReturnType<typeof getSocialAttribution>>, TError = ErrorType<void>>(params?: GetSocialAttributionParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialAttribution>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSocialAttributionQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSocialAttribution>>> = ({ signal }) => getSocialAttribution(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSocialAttribution>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSocialAttributionQueryResult = NonNullable<Awaited<ReturnType<typeof getSocialAttribution>>>
+export type GetSocialAttributionQueryError = ErrorType<void>
+
+
+/**
+ * @summary Compare immutable first-touch CRM outcomes with provider performance
+ */
+
+export function useGetSocialAttribution<TData = Awaited<ReturnType<typeof getSocialAttribution>>, TError = ErrorType<void>>(
+ params?: GetSocialAttributionParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialAttribution>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSocialAttributionQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListSocialCreativeRequestsUrl = (params?: ListSocialCreativeRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/creative-requests?${stringifiedParams}` : `/api/social/creative-requests`
+}
+
+/**
+ * @summary List scoped AI creative requests and their execution gate
+ */
+export const listSocialCreativeRequests = async (params?: ListSocialCreativeRequestsParams, options?: Parameters<typeof customFetch>[1]): Promise<SocialCreativeListResponse> => {
+
+  return customFetch<SocialCreativeListResponse>(getListSocialCreativeRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialCreativeRequestsQueryKey = (params?: ListSocialCreativeRequestsParams,) => {
+    return [
+    `/api/social/creative-requests`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSocialCreativeRequestsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialCreativeRequests>>, TError = ErrorType<void>>(params?: ListSocialCreativeRequestsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialCreativeRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialCreativeRequestsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialCreativeRequests>>> = ({ signal }) => listSocialCreativeRequests(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialCreativeRequests>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialCreativeRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialCreativeRequests>>>
+export type ListSocialCreativeRequestsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List scoped AI creative requests and their execution gate
+ */
+
+export function useListSocialCreativeRequests<TData = Awaited<ReturnType<typeof listSocialCreativeRequests>>, TError = ErrorType<void>>(
+ params?: ListSocialCreativeRequestsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialCreativeRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialCreativeRequestsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSocialCreativeRequestUrl = () => {
+
+
+
+
+  return `/api/social/creative-requests`
+}
+
+/**
+ * @summary Create an approval-pending AI generation request for a draft brief
+ */
+export const createSocialCreativeRequest = async (createSocialCreativeRequestBody: CreateSocialCreativeRequestBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialCreativeRequest> => {
+
+  return customFetch<SocialCreativeRequest>(getCreateSocialCreativeRequestUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSocialCreativeRequestBody)
+  }
+);}
+
+
+
+
+
+export const getCreateSocialCreativeRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialCreativeRequest>>, TError,{data: BodyType<CreateSocialCreativeRequestBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSocialCreativeRequest>>, TError,{data: BodyType<CreateSocialCreativeRequestBody>}, TContext> => {
+
+const mutationKey = ['createSocialCreativeRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSocialCreativeRequest>>, {data: BodyType<CreateSocialCreativeRequestBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSocialCreativeRequest(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSocialCreativeRequestMutationResult = NonNullable<Awaited<ReturnType<typeof createSocialCreativeRequest>>>
+    export type CreateSocialCreativeRequestMutationBody = BodyType<CreateSocialCreativeRequestBody>
+    export type CreateSocialCreativeRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Create an approval-pending AI generation request for a draft brief
+ */
+export const useCreateSocialCreativeRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialCreativeRequest>>, TError,{data: BodyType<CreateSocialCreativeRequestBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSocialCreativeRequest>>,
+        TError,
+        {data: BodyType<CreateSocialCreativeRequestBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSocialCreativeRequestMutationOptions(options));
+    }
+
+export const getReviewSocialCreativeRequestUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/creative-requests/${id}/review`
+}
+
+/**
+ * @summary Approve AI spend or reject a request using maker-checker
+ */
+export const reviewSocialCreativeRequest = async (id: string,
+    reviewSocialContentBriefBody: ReviewSocialContentBriefBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialCreativeReviewResult> => {
+
+  return customFetch<SocialCreativeReviewResult>(getReviewSocialCreativeRequestUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewSocialContentBriefBody)
+  }
+);}
+
+
+
+
+
+export const getReviewSocialCreativeRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewSocialCreativeRequest>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewSocialCreativeRequest>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext> => {
+
+const mutationKey = ['reviewSocialCreativeRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewSocialCreativeRequest>>, {id: string;data: BodyType<ReviewSocialContentBriefBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewSocialCreativeRequest(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewSocialCreativeRequestMutationResult = NonNullable<Awaited<ReturnType<typeof reviewSocialCreativeRequest>>>
+    export type ReviewSocialCreativeRequestMutationBody = BodyType<ReviewSocialContentBriefBody>
+    export type ReviewSocialCreativeRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Approve AI spend or reject a request using maker-checker
+ */
+export const useReviewSocialCreativeRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewSocialCreativeRequest>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewSocialCreativeRequest>>,
+        TError,
+        {id: string;data: BodyType<ReviewSocialContentBriefBody>},
+        TContext
+      > => {
+      return useMutation(getReviewSocialCreativeRequestMutationOptions(options));
+    }
+
+export const getListSocialCreativeIntegrationsUrl = () => {
+
+
+
+
+  return `/api/social/creative-integrations`
+}
+
+/**
+ * @summary List enabled AI integration references without configuration or secrets
+ */
+export const listSocialCreativeIntegrations = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListSocialCreativeIntegrations200> => {
+
+  return customFetch<ListSocialCreativeIntegrations200>(getListSocialCreativeIntegrationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialCreativeIntegrationsQueryKey = () => {
+    return [
+    `/api/social/creative-integrations`
+    ] as const;
+    }
+
+
+export const getListSocialCreativeIntegrationsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialCreativeIntegrations>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialCreativeIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialCreativeIntegrationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialCreativeIntegrations>>> = ({ signal }) => listSocialCreativeIntegrations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialCreativeIntegrations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialCreativeIntegrationsQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialCreativeIntegrations>>>
+export type ListSocialCreativeIntegrationsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List enabled AI integration references without configuration or secrets
+ */
+
+export function useListSocialCreativeIntegrations<TData = Awaited<ReturnType<typeof listSocialCreativeIntegrations>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialCreativeIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialCreativeIntegrationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListSocialAccountIntegrationsUrl = () => {
+
+
+
+
+  return `/api/social/account-integrations`
+}
+
+/**
+ * @summary List enabled social account integration references without configuration or secrets
+ */
+export const listSocialAccountIntegrations = async ( options?: Parameters<typeof customFetch>[1]): Promise<ListSocialAccountIntegrations200> => {
+
+  return customFetch<ListSocialAccountIntegrations200>(getListSocialAccountIntegrationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialAccountIntegrationsQueryKey = () => {
+    return [
+    `/api/social/account-integrations`
+    ] as const;
+    }
+
+
+export const getListSocialAccountIntegrationsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialAccountIntegrations>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialAccountIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialAccountIntegrationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialAccountIntegrations>>> = ({ signal }) => listSocialAccountIntegrations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialAccountIntegrations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialAccountIntegrationsQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialAccountIntegrations>>>
+export type ListSocialAccountIntegrationsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List enabled social account integration references without configuration or secrets
+ */
+
+export function useListSocialAccountIntegrations<TData = Awaited<ReturnType<typeof listSocialAccountIntegrations>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialAccountIntegrations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialAccountIntegrationsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

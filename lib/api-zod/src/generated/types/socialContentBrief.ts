@@ -24,6 +24,8 @@ export interface SocialContentBrief {
   /** @maxItems 10 */
   media_refs: SocialMediaRef[];
   utm?: SocialContentBriefUtm;
+  /** @pattern ^fas_[0-9a-f]{32}$ */
+  readonly tracking_key: string;
   scheduled_for?: Date | null;
   status: SocialContentBriefStatus;
   /** @minimum 1 */

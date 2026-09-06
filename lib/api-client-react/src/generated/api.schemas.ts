@@ -3377,6 +3377,15 @@ export type SocialPerformanceGate = SocialProviderConnectionGate & {
   workerEnabled: boolean;
 };
 
+export interface SocialCreativeGate {
+  enabled: boolean;
+  workerEnabled: boolean;
+  generationEnabled: boolean;
+  allowedProviders: string[];
+  /** @nullable */
+  reason: string | null;
+}
+
 export interface SocialOperationsContext {
   enabled: boolean;
   mode: SocialOperationsContextMode;
@@ -3386,6 +3395,7 @@ export interface SocialOperationsContext {
   publishingEnabled: boolean;
   publicationGate: SocialPublicationGate;
   performanceGate: SocialPerformanceGate;
+  creativeGate: SocialCreativeGate;
   providerConnectionGate: SocialProviderConnectionGate;
 }
 
@@ -3395,6 +3405,7 @@ export type SocialWorkerHealthKind = typeof SocialWorkerHealthKind[keyof typeof 
 export const SocialWorkerHealthKind = {
   publication: 'publication',
   performance: 'performance',
+  creative: 'creative',
 } as const;
 
 export type SocialWorkerHealthStatus = typeof SocialWorkerHealthStatus[keyof typeof SocialWorkerHealthStatus];
@@ -3421,6 +3432,16 @@ export interface SocialWorkerHealth {
   reason: string | null;
 }
 
+export type SocialAccountAccountKind = typeof SocialAccountAccountKind[keyof typeof SocialAccountAccountKind];
+
+
+export const SocialAccountAccountKind = {
+  PROFILE: 'PROFILE',
+  PAGE: 'PAGE',
+  CHANNEL: 'CHANNEL',
+  AD_ACCOUNT: 'AD_ACCOUNT',
+} as const;
+
 export type SocialAccountStatus = typeof SocialAccountStatus[keyof typeof SocialAccountStatus];
 
 
@@ -3437,6 +3458,12 @@ export interface SocialAccount {
   provider: string;
   account_key: string;
   display_name: string;
+  account_kind: SocialAccountAccountKind;
+  /**
+     * @nullable
+     * @pattern ^[A-Z]{3}$
+     */
+  currency_code?: string | null;
   integration_key?: string | null;
   status: SocialAccountStatus;
   created_at?: string;
@@ -3508,6 +3535,8 @@ export interface SocialContentBrief {
   /** @maxItems 10 */
   media_refs: SocialMediaRef[];
   utm?: SocialContentBriefUtm;
+  /** @pattern ^fas_[0-9a-f]{32}$ */
+  readonly tracking_key: string;
   scheduled_for?: string | null;
   status: SocialContentBriefStatus;
   /** @minimum 1 */
@@ -3541,13 +3570,24 @@ export interface SocialOperationsOverview {
   publishingEnabled: boolean;
   publicationGate: SocialPublicationGate;
   performanceGate: SocialPerformanceGate;
+  creativeGate: SocialCreativeGate;
   providerConnectionGate: SocialProviderConnectionGate;
   /**
-     * @minItems 2
-     * @maxItems 2
+     * @minItems 3
+     * @maxItems 3
      */
   workerHealth: SocialWorkerHealth[];
 }
+
+export type CreateSocialAccountBodyAccountKind = typeof CreateSocialAccountBodyAccountKind[keyof typeof CreateSocialAccountBodyAccountKind];
+
+
+export const CreateSocialAccountBodyAccountKind = {
+  PROFILE: 'PROFILE',
+  PAGE: 'PAGE',
+  CHANNEL: 'CHANNEL',
+  AD_ACCOUNT: 'AD_ACCOUNT',
+} as const;
 
 export interface CreateSocialAccountBody {
   /**
@@ -3571,6 +3611,9 @@ export interface CreateSocialAccountBody {
      * @maxLength 160
      */
   displayName: string;
+  accountKind?: CreateSocialAccountBodyAccountKind;
+  /** @pattern ^[A-Z]{3}$ */
+  currencyCode?: string;
   /** @maxLength 96 */
   integrationKey?: string;
   /**
@@ -3614,8 +3657,6 @@ export type CreateSocialContentBriefBodyUtm = {
   campaign?: string;
   /** @maxLength 128 */
   term?: string;
-  /** @maxLength 128 */
-  content?: string;
 };
 
 export interface CreateSocialContentBriefBody {
@@ -3948,6 +3989,268 @@ export interface SocialPerformanceResponse {
   performanceWorkerEnabled: boolean;
 }
 
+export type SocialAttributionResponsePeriod = {
+  from: string;
+  to: string;
+};
+
+export type SocialAttributionResponseSummary = {
+  /** @minimum 0 */
+  tracked_leads: number;
+  /** @minimum 0 */
+  converted_students: number;
+  /** @minimum 0 */
+  applications: number;
+};
+
+export type SocialAttributionResponseProviderMetrics = {
+  /** @pattern ^[0-9]+(?:\.[0-9]+)?$ */
+  provider_clicks: string;
+  /** @pattern ^[0-9]+(?:\.[0-9]+)?$ */
+  provider_leads: string;
+  /** @pattern ^[0-9]+(?:\.[0-9]+)?$ */
+  provider_conversions: string;
+};
+
+export type SocialAttributionResponseApplicationStagesItem = {
+  application_stage: string;
+  /** @minimum 0 */
+  count: number;
+};
+
+export type SocialAttributionResponseSpendByCurrencyItem = {
+  /** @pattern ^[A-Z]{3}$ */
+  currency_code: string;
+  /** @pattern ^[0-9]+(?:\.[0-9]+)?$ */
+  spend_minor: string;
+};
+
+export type SocialAttributionResponseBriefsItem = {
+  brief_id: string;
+  title: string;
+  /** @nullable */
+  campaign_key?: string | null;
+  /** @pattern ^fas_[0-9a-f]{32}$ */
+  tracking_key: string;
+  /** @minimum 0 */
+  tracked_leads: number;
+  /** @minimum 0 */
+  converted_students: number;
+  /** @minimum 0 */
+  applications: number;
+};
+
+export interface SocialAttributionResponse {
+  period: SocialAttributionResponsePeriod;
+  summary: SocialAttributionResponseSummary;
+  providerMetrics: SocialAttributionResponseProviderMetrics;
+  applicationStages: SocialAttributionResponseApplicationStagesItem[];
+  spendByCurrency: SocialAttributionResponseSpendByCurrencyItem[];
+  briefs: SocialAttributionResponseBriefsItem[];
+}
+
+export type CreateSocialCreativeRequestBodyOutputKind = typeof CreateSocialCreativeRequestBodyOutputKind[keyof typeof CreateSocialCreativeRequestBodyOutputKind];
+
+
+export const CreateSocialCreativeRequestBodyOutputKind = {
+  CAPTION: 'CAPTION',
+  IMAGE: 'IMAGE',
+  VIDEO: 'VIDEO',
+} as const;
+
+export type CreateSocialCreativeRequestBodyAspectRatio = typeof CreateSocialCreativeRequestBodyAspectRatio[keyof typeof CreateSocialCreativeRequestBodyAspectRatio];
+
+
+export const CreateSocialCreativeRequestBodyAspectRatio = {
+  '1:1': '1:1',
+  '4:5': '4:5',
+  '9:16': '9:16',
+  '16:9': '16:9',
+} as const;
+
+export interface CreateSocialCreativeRequestBody {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
+  requestKey: string;
+  briefId: string;
+  outputKind: CreateSocialCreativeRequestBodyOutputKind;
+  /**
+     * @minLength 2
+     * @maxLength 64
+     * @pattern ^[a-z][a-z0-9._-]+$
+     */
+  provider: string;
+  /**
+     * @minLength 2
+     * @maxLength 96
+     * @pattern ^[a-z][a-z0-9._:-]+$
+     */
+  integrationKey: string;
+  /**
+     * @minLength 1
+     * @maxLength 128
+     * @pattern ^[A-Za-z0-9._:/-]+$
+     */
+  model?: string;
+  /** @pattern ^[a-z]{2}(?:-[A-Z]{2})?$ */
+  locale: string;
+  /**
+     * @minLength 1
+     * @maxLength 12000
+     */
+  prompt: string;
+  /** @maxLength 4000 */
+  negativePrompt?: string;
+  aspectRatio?: CreateSocialCreativeRequestBodyAspectRatio;
+  /**
+     * @minimum 1
+     * @maximum 60
+     */
+  durationSeconds?: number;
+  /**
+     * @minimum 1
+     * @maximum 100000000
+     */
+  maxCostMinor: number;
+  /** @pattern ^[A-Z]{3}$ */
+  currencyCode: string;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  maxAttempts?: number;
+}
+
+export type SocialCreativeRequestOutputKind = typeof SocialCreativeRequestOutputKind[keyof typeof SocialCreativeRequestOutputKind];
+
+
+export const SocialCreativeRequestOutputKind = {
+  CAPTION: 'CAPTION',
+  IMAGE: 'IMAGE',
+  VIDEO: 'VIDEO',
+} as const;
+
+export type SocialCreativeRequestStatus = typeof SocialCreativeRequestStatus[keyof typeof SocialCreativeRequestStatus];
+
+
+export const SocialCreativeRequestStatus = {
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  QUEUED: 'QUEUED',
+  RUNNING: 'RUNNING',
+  GENERATED: 'GENERATED',
+  DEAD_LETTER: 'DEAD_LETTER',
+  CANCELED: 'CANCELED',
+} as const;
+
+/**
+ * @nullable
+ */
+export type SocialCreativeRequestGeneratedAssetKind = typeof SocialCreativeRequestGeneratedAssetKind[keyof typeof SocialCreativeRequestGeneratedAssetKind] | null;
+
+
+export const SocialCreativeRequestGeneratedAssetKind = {
+  image: 'image',
+  video: 'video',
+} as const;
+
+/**
+ * @nullable
+ */
+export type SocialCreativeRequestUsage = {[key: string]: number | string} | null;
+
+export interface SocialCreativeRequest {
+  id: string;
+  brief_id: string;
+  brief_title?: string;
+  output_kind: SocialCreativeRequestOutputKind;
+  provider: string;
+  integration_key: string;
+  /** @nullable */
+  model?: string | null;
+  locale: string;
+  prompt: string;
+  /** @nullable */
+  negative_prompt?: string | null;
+  /** @nullable */
+  aspect_ratio?: string | null;
+  /** @nullable */
+  duration_seconds?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 100000000
+     */
+  max_cost_minor: number;
+  /** @pattern ^[A-Z]{3}$ */
+  currency_code: string;
+  status: SocialCreativeRequestStatus;
+  /**
+     * @minimum 0
+     * @maximum 120
+     */
+  attempt_count: number;
+  /**
+     * @minimum 0
+     * @maximum 5
+     */
+  failure_count: number;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  max_attempts: number;
+  /** @nullable */
+  next_attempt_at?: string | null;
+  /** @nullable */
+  result_caption?: string | null;
+  /** @nullable */
+  generated_asset_id?: string | null;
+  /** @nullable */
+  generated_asset_path?: string | null;
+  /** @nullable */
+  generated_asset_kind?: SocialCreativeRequestGeneratedAssetKind;
+  /** @nullable */
+  resolved_model?: string | null;
+  /** @nullable */
+  usage?: SocialCreativeRequestUsage;
+  /** @nullable */
+  applied_at?: string | null;
+  /** @nullable */
+  last_error_code?: string | null;
+  created_by_legacy_user_id: number;
+  /** @nullable */
+  approved_by_legacy_user_id?: number | null;
+  /** @nullable */
+  approved_at?: string | null;
+  /** @nullable */
+  rejection_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialCreativeListResponse {
+  data: SocialCreativeRequest[];
+  creativeGate: SocialCreativeGate;
+}
+
+export type SocialCreativeReviewResultStatus = typeof SocialCreativeReviewResultStatus[keyof typeof SocialCreativeReviewResultStatus];
+
+
+export const SocialCreativeReviewResultStatus = {
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export interface SocialCreativeReviewResult {
+  id: string;
+  status: SocialCreativeReviewResultStatus;
+  replay: boolean;
+}
+
 export type SocialPerformanceSyncResultStatus = typeof SocialPerformanceSyncResultStatus[keyof typeof SocialPerformanceSyncResultStatus];
 
 
@@ -4054,7 +4357,6 @@ search?: string;
 page?: number;
 limit?: number;
 };
-
 export type ListLeadsParams = {
 season?: string;
 status?: string;
@@ -4553,6 +4855,50 @@ export const GetOperationsWorkItemsScope = {
   all: 'all',
   mine: 'mine',
 } as const;
+
+export type GetSocialAttributionParams = {
+/**
+ * Inclusive UTC calendar date; defaults to 29 days before today.
+ */
+from?: ReportingFromParameter;
+/**
+ * Inclusive UTC calendar date; the server converts it to an exclusive next-day boundary.
+ */
+to?: ReportingToParameter;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListSocialCreativeRequestsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListSocialCreativeIntegrations200DataItem = {
+  key: string;
+  name: string;
+  category: string;
+};
+
+export type ListSocialCreativeIntegrations200 = {
+  data: ListSocialCreativeIntegrations200DataItem[];
+};
+
+export type ListSocialAccountIntegrations200DataItem = {
+  key: string;
+  name: string;
+  category: string;
+};
+
+export type ListSocialAccountIntegrations200 = {
+  data: ListSocialAccountIntegrations200DataItem[];
+};
 
 export type ListSocialAccounts200 = {
   data: SocialAccount[];

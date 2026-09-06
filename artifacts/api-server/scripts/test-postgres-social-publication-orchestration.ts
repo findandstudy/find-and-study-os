@@ -32,7 +32,7 @@ assert.equal(
       "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
     )
   ).rows[0]?.count,
-  103,
+  105,
 );
 await admin.query(`DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='fas_social_executor') THEN
@@ -47,16 +47,20 @@ await admin.query(
 );
 await admin.query("GRANT USAGE ON SCHEMA public TO fas_social_executor");
 await admin.query(
-  `GRANT SELECT ON tenants,organizations,users TO fas_social_executor`,
+  `GRANT SELECT ON tenants,organizations,users,integrations TO fas_social_executor`,
 );
 await admin.query(`GRANT SELECT,INSERT,UPDATE ON
   social_accounts,social_content_briefs,social_publication_intents,
-  social_performance_sync_state,social_worker_heartbeats TO fas_social_executor`);
+  social_performance_sync_state,social_worker_heartbeats,
+  social_creative_requests TO fas_social_executor`);
 await admin.query(`GRANT SELECT,INSERT ON
   social_media_assets,
   social_content_reviews,social_publication_reviews,social_publication_attempts,
   social_operation_receipts,social_performance_snapshots,
-  social_account_verifications,social_performance_attempts TO fas_social_executor`);
+  social_account_verifications,social_performance_attempts,
+  social_creative_attempts TO fas_social_executor`);
+await admin.query(`GRANT SELECT ON
+  social_attributed_leads,social_attributed_applications TO fas_social_executor`);
 
 const tenantId = "0199a100-0000-7000-8000-000000000001";
 const organizationId = "0199a100-0000-7000-8000-000000000002";
@@ -67,10 +71,21 @@ const checkerUserId = 992102;
 const accountId = "0199a100-0000-7000-8000-000000000005";
 const accountBId = "0199a100-0000-7000-8000-000000000009";
 const briefId = "0199a100-0000-7000-8000-000000000006";
+const secondBriefId = "0199a100-0000-7000-8000-00000000000c";
 const intentA = "0199a100-0000-7000-8000-000000000007";
 const intentB = "0199a100-0000-7000-8000-000000000008";
 const expiredIntent = "0199a100-0000-7000-8000-00000000000a";
 const mediaAssetId = "0199a100-0000-7000-8000-00000000000b";
+const draftBriefId = "0199a100-0000-7000-8000-00000000000d";
+const creativeRequestA = "0199a100-0000-7000-8000-00000000000e";
+const creativeRequestB = "0199a100-0000-7000-8000-00000000000f";
+const creativeRequestC = "0199a100-0000-7000-8000-000000000010";
+const trackingKey = `fas_${briefId.replaceAll("-", "")}`;
+const secondTrackingKey = `fas_${secondBriefId.replaceAll("-", "")}`;
+const draftTrackingKey = `fas_${draftBriefId.replaceAll("-", "")}`;
+const attributedLeadId = 992103;
+const attributedStudentId = 992104;
+const attributedApplicationId = 992105;
 
 await admin.query(
   `INSERT INTO tenants(id,slug,legal_name,display_name,status,home_region) VALUES
@@ -101,10 +116,51 @@ await admin.query(
   [accountId, tenantId, organizationId, makerUserId, accountBId],
 );
 await admin.query(
+  `INSERT INTO integrations(key,name,category,is_enabled,config)
+   VALUES ('social_creative_test','Social Creative Test','AI',true,'{}'::jsonb)
+   ON CONFLICT (key) DO NOTHING`,
+);
+await admin.query(
   `INSERT INTO social_content_briefs
-     (id,tenant_id,organization_id,title,objective,audience,content_kind,locales,channels,caption,status,created_by_legacy_user_id,reviewed_by_legacy_user_id,reviewed_at)
-   VALUES ($1,$2,$3,'Approved test','Safety','Test','POST',ARRAY['tr'],ARRAY['instagram'],'Test copy','APPROVED',$4,$5,now())`,
-  [briefId, tenantId, organizationId, makerUserId, checkerUserId],
+     (id,tenant_id,organization_id,title,objective,audience,content_kind,locales,channels,caption,tracking_key,status,created_by_legacy_user_id,reviewed_by_legacy_user_id,reviewed_at)
+   VALUES
+     ($1,$2,$3,'Approved test','Safety','Test','POST',ARRAY['tr'],ARRAY['instagram'],'Test copy',$4,'APPROVED',$5,$6,now()),
+     ($7,$2,$3,'Second approved test','Safety','Test','POST',ARRAY['tr'],ARRAY['instagram'],'Second copy',$8,'APPROVED',$5,$6,now()),
+     ($9,$2,$3,'Creative draft','Safety','Test','POST',ARRAY['tr'],ARRAY['instagram'],'Draft copy',$10,'DRAFT',$5,NULL,NULL)`,
+  [
+    briefId,
+    tenantId,
+    organizationId,
+    trackingKey,
+    makerUserId,
+    checkerUserId,
+    secondBriefId,
+    secondTrackingKey,
+    draftBriefId,
+    draftTrackingKey,
+  ],
+);
+await admin.query(
+  `INSERT INTO social_creative_requests
+     (id,tenant_id,organization_id,brief_id,output_kind,provider,integration_key,
+      locale,prompt,max_cost_minor,currency_code,status,request_key,max_attempts,
+      created_by_legacy_user_id)
+   VALUES
+     ($1,$2,$3,$4,'CAPTION','openai','social_creative_test','tr','Caption A',100,'USD',
+      'PENDING_APPROVAL','social-creative-request-a',3,$5),
+     ($6,$2,$3,$4,'CAPTION','openai','social_creative_test','tr','Caption B',100,'USD',
+      'PENDING_APPROVAL','social-creative-request-b',3,$5),
+     ($7,$2,$3,$4,'CAPTION','runway','social_creative_test','tr','Caption C',100,'USD',
+      'PENDING_APPROVAL','social-creative-request-c',1,$5)`,
+  [
+    creativeRequestA,
+    tenantId,
+    organizationId,
+    draftBriefId,
+    makerUserId,
+    creativeRequestB,
+    creativeRequestC,
+  ],
 );
 await admin.query(
   `INSERT INTO social_publication_intents
@@ -158,6 +214,8 @@ const { claimSocialPublication, completeSocialPublication } =
   await import("../src/lib/socialPublicationQueue");
 const { claimSocialPerformance, completeSocialPerformance } =
   await import("../src/lib/socialPerformanceQueue");
+const { claimSocialCreative, completeSocialCreative } =
+  await import("../src/lib/socialCreativeQueue");
 const {
   createSocialWorkerHeartbeatState,
   isSocialWorkerHeartbeatDue,
@@ -167,6 +225,10 @@ const {
 
 after(async () => {
   const tables = [
+    "social_creative_attempts",
+    "social_creative_requests",
+    "social_attributed_applications",
+    "social_attributed_leads",
     "social_worker_heartbeats",
     "social_media_assets",
     "social_performance_attempts",
@@ -200,6 +262,12 @@ after(async () => {
   await admin.query("DELETE FROM users WHERE id=ANY($1::integer[])", [
     [makerUserId, checkerUserId],
   ]);
+  await admin.query("DELETE FROM applications WHERE id=$1", [
+    attributedApplicationId,
+  ]);
+  await admin.query("DELETE FROM leads WHERE id=$1", [attributedLeadId]);
+  await admin.query("DELETE FROM students WHERE id=$1", [attributedStudentId]);
+  await admin.query("DELETE FROM integrations WHERE key='social_creative_test'");
   const { pool } = await import("@workspace/db");
   await pool.end();
   await admin.end();
@@ -212,7 +280,7 @@ test("all social tables force RLS and evidence tables expose no delete policy", 
     LEFT JOIN pg_policies p ON p.schemaname=n.nspname AND p.tablename=c.relname
     WHERE n.nspname='public' AND c.relname LIKE 'social_%' AND c.relkind='r'
     GROUP BY c.relname,c.relforcerowsecurity ORDER BY c.relname`);
-  assert.equal(result.rowCount, 13);
+  assert.equal(result.rowCount, 17);
   assert.equal(
     result.rows.every(
       (row) => row.relforcerowsecurity === true && row.delete_policies === 0,
@@ -347,6 +415,99 @@ test("media assets are immutable, content-addressed and tenant-isolated", async 
   );
 });
 
+test("tracking-key triggers project CRM outcomes without exposing legacy tables", async () => {
+  await admin.query(
+    `INSERT INTO students(id,first_name,last_name,status,season)
+     VALUES ($1,'Attributed','Student','active','2026')`,
+    [attributedStudentId],
+  );
+  await admin.query(
+    `INSERT INTO leads
+       (id,first_name,last_name,status,season,utm_content,created_at,updated_at)
+     VALUES ($1,'Attributed','Lead','new','2026',$2,now(),now())`,
+    [attributedLeadId, trackingKey],
+  );
+  await admin.query(
+    `INSERT INTO applications(id,student_id,lead_id,stage,season,created_at,updated_at)
+     VALUES ($1,$2,$3,'inquiry','2026',now(),now())`,
+    [attributedApplicationId, attributedStudentId, attributedLeadId],
+  );
+  await admin.query(
+    "UPDATE leads SET status='qualified',converted_student_id=$2 WHERE id=$1",
+    [attributedLeadId, attributedStudentId],
+  );
+  await admin.query(
+    "UPDATE applications SET stage='submitted' WHERE id=$1",
+    [attributedApplicationId],
+  );
+  await admin.query(
+    "UPDATE leads SET utm_content=$2,status='won' WHERE id=$1",
+    [attributedLeadId, secondTrackingKey],
+  );
+
+  const projected = await admin.query(
+    `SELECT lead.brief_id,lead.lead_status,lead.converted_student_id,app.application_stage
+     FROM social_attributed_leads lead
+     JOIN social_attributed_applications app
+       ON app.tenant_id=lead.tenant_id AND app.lead_id=lead.lead_id
+     WHERE lead.tenant_id=$1 AND lead.lead_id=$2`,
+    [tenantId, attributedLeadId],
+  );
+  assert.equal(projected.rowCount, 1);
+  assert.deepEqual(projected.rows[0], {
+    brief_id: briefId,
+    lead_status: "won",
+    converted_student_id: attributedStudentId,
+    application_stage: "submitted",
+  });
+
+  const actor = new pg.Client({ connectionString: actorUrl });
+  await actor.connect();
+  try {
+    await actor.query("BEGIN");
+    await actor.query("SELECT set_config('app.tenant_id',$1,true)", [tenantId]);
+    await actor.query("SELECT set_config('app.organization_id',$1,true)", [
+      organizationId,
+    ]);
+    assert.equal(
+      (
+        await actor.query(
+          "SELECT count(*)::integer AS count FROM social_attributed_leads",
+        )
+      ).rows[0].count,
+      1,
+    );
+    await actor.query("ROLLBACK");
+    await actor.query("BEGIN");
+    await actor.query("SELECT set_config('app.tenant_id',$1,true)", [
+      otherTenantId,
+    ]);
+    await actor.query("SELECT set_config('app.organization_id',$1,true)", [
+      otherOrganizationId,
+    ]);
+    assert.equal(
+      (
+        await actor.query(
+          "SELECT count(*)::integer AS count FROM social_attributed_leads",
+        )
+      ).rows[0].count,
+      0,
+    );
+    await assert.rejects(
+      actor.query(
+        `INSERT INTO social_attributed_leads
+           (tenant_id,organization_id,brief_id,tracking_key,lead_id,lead_status,first_touch_at)
+         VALUES ($1,$2,$3,$4,$5,'forged',now())`,
+        [tenantId, organizationId, briefId, trackingKey, attributedLeadId + 1],
+      ),
+      /permission denied|row-level security/i,
+    );
+  } finally {
+    await actor.query("ROLLBACK").catch(() => undefined);
+    await actor.end();
+  }
+});
+
 test("least privilege executor is scoped to the selected tenant and organization", async () => {
   const actor = new pg.Client({ connectionString: actorUrl });
   await actor.connect();
@@ -428,6 +589,241 @@ test("operation receipts are transactional, replayable, conflict-safe and append
     ),
     /append-only/i,
   );
+});
+
+test("creative requests enforce maker-checker, isolate provider lanes and safely apply output", async () => {
+  await assert.rejects(
+    admin.query(
+      `UPDATE social_creative_requests
+       SET status='APPROVED'
+       WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, creativeRequestA],
+    ),
+    /social_creative_requests_approval_chk/i,
+  );
+  await admin.query(
+    `UPDATE social_creative_requests
+     SET status='APPROVED',approved_by_legacy_user_id=$2,approved_at=now(),
+         next_attempt_at=now()
+     WHERE tenant_id=$1 AND id=ANY($3::uuid[])`,
+    [
+      tenantId,
+      checkerUserId,
+      [creativeRequestA, creativeRequestB, creativeRequestC],
+    ],
+  );
+  await assert.rejects(
+    admin.query(
+      `UPDATE social_creative_requests SET max_cost_minor=101
+       WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, creativeRequestA],
+    ),
+    /social creative request definition is immutable/i,
+  );
+
+  const first = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      claimSocialCreative(client, context, "creative-worker-a"),
+  );
+  assert.equal(
+    first ? [creativeRequestA, creativeRequestB].includes(first.id) : false,
+    true,
+  );
+  const otherLane = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      claimSocialCreative(client, context, "creative-worker-b"),
+  );
+  assert.equal(otherLane?.id, creativeRequestC);
+  const saturated = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      claimSocialCreative(client, context, "creative-worker-c"),
+  );
+  assert.equal(saturated, null);
+  if (!first || !otherLane) throw new Error("creative claims missing");
+
+  const pending = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      completeSocialCreative(
+        client,
+        context,
+        first,
+        "creative-worker-a",
+        "test-release-creative",
+        {
+          ok: true,
+          state: "PENDING",
+          providerReceipt: "creative-pending-receipt-0001",
+          providerJobRef: "provider-job-creative-0001",
+          resolvedModel: "model-v1",
+          usage: { inputUnits: 10, outputUnits: 0 },
+        },
+      ),
+  );
+  assert.equal(pending, "QUEUED");
+  const deadLetter = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      completeSocialCreative(
+        client,
+        context,
+        otherLane,
+        "creative-worker-b",
+        "test-release-creative",
+        {
+          ok: false,
+          retryable: false,
+          errorCode: "PROVIDER_RESPONSE_SCHEMA_INVALID",
+        },
+      ),
+  );
+  assert.equal(deadLetter, "DEAD_LETTER");
+
+  await admin.query(
+    `UPDATE social_creative_requests SET next_attempt_at=now()
+     WHERE tenant_id=$1 AND id=$2 AND status='QUEUED'`,
+    [tenantId, first.id],
+  );
+  const poll = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      claimSocialCreative(client, context, "creative-worker-a"),
+  );
+  assert.equal(poll?.id, first.id);
+  assert.equal(poll?.providerJobRef, "provider-job-creative-0001");
+  if (!poll) throw new Error("creative poll claim missing");
+  await assert.rejects(
+    admin.query(
+      `UPDATE social_creative_requests
+       SET status='GENERATED',provider_receipt_hash=repeat('a',64),
+           result_caption='unmetered result',usage='{"inputUnits":1}'::jsonb,
+           lease_token_hash=NULL,leased_at=NULL,lease_expires_at=NULL,worker_id=NULL
+       WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, poll.id],
+    ),
+    /social_creative_requests_result_chk/i,
+  );
+  const generated = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      completeSocialCreative(
+        client,
+        context,
+        poll,
+        "creative-worker-a",
+        "test-release-creative",
+        {
+          ok: true,
+          state: "COMPLETED",
+          providerReceipt: "creative-completed-receipt-0001",
+          resolvedModel: "model-v1",
+          usage: {
+            inputUnits: 10,
+            outputUnits: 12,
+            estimatedCostMinor: 3,
+            currencyCode: "USD",
+          },
+          output: { kind: "CAPTION", text: "Generated safe caption" },
+        },
+      ),
+  );
+  assert.equal(generated, "GENERATED");
+
+  const state = await admin.query(
+    `SELECT request.status,request.attempt_count,request.failure_count,
+            request.result_caption,request.applied_at,request.provider_job_ref_hash,
+            brief.caption,brief.version
+     FROM social_creative_requests request
+     JOIN social_content_briefs brief
+       ON brief.tenant_id=request.tenant_id AND brief.id=request.brief_id
+     WHERE request.tenant_id=$1 AND request.id=$2`,
+    [tenantId, first.id],
+  );
+  assert.deepEqual(
+    {
+      status: state.rows[0].status,
+      attempts: state.rows[0].attempt_count,
+      failures: state.rows[0].failure_count,
+      result: state.rows[0].result_caption,
+      applied: Boolean(state.rows[0].applied_at),
+      jobRefHashed: Boolean(state.rows[0].provider_job_ref_hash),
+      caption: state.rows[0].caption,
+      briefVersion: Number(state.rows[0].version),
+    },
+    {
+      status: "GENERATED",
+      attempts: 2,
+      failures: 0,
+      result: "Generated safe caption",
+      applied: true,
+      jobRefHashed: true,
+      caption: "Generated safe caption",
+      briefVersion: 2,
+    },
+  );
+  assert.equal(
+    (
+      await admin.query(
+        `SELECT count(*)::integer AS count FROM social_creative_attempts
+         WHERE tenant_id=$1 AND creative_request_id=$2`,
+        [tenantId, first.id],
+      )
+    ).rows[0].count,
+    2,
+  );
+  await assert.rejects(
+    admin.query(
+      `UPDATE social_creative_attempts SET outcome='DEAD_LETTER'
+       WHERE tenant_id=$1 AND creative_request_id=$2`,
+      [tenantId, first.id],
+    ),
+    /append-only/i,
+  );
+  await admin.query(
+    "UPDATE integrations SET is_enabled=false WHERE key='social_creative_test'",
+  );
+  assert.equal(
+    await withSocialOperationsContext(
+      makerUserId,
+      "manage",
+      (client, context) =>
+        claimSocialCreative(client, context, "creative-worker-disabled"),
+    ),
+    null,
+  );
+
+  const actor = new pg.Client({ connectionString: actorUrl });
+  await actor.connect();
+  try {
+    await actor.query("BEGIN");
+    await actor.query("SELECT set_config('app.tenant_id',$1,true)", [
+      otherTenantId,
+    ]);
+    await actor.query("SELECT set_config('app.organization_id',$1,true)", [
+      otherOrganizationId,
+    ]);
+    assert.equal(
+      (
+        await actor.query(
+          "SELECT count(*)::integer AS count FROM social_creative_requests",
+        )
+      ).rows[0].count,
+      0,
+    );
+  } finally {
+    await actor.query("ROLLBACK").catch(() => undefined);
+    await actor.end();
+  }
 });
 
 test("concurrent workers claim different jobs and record receipt-bound outcomes", async () => {

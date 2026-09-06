@@ -227,6 +227,8 @@ test("production prefix and canonical additive migration tail are pinned", () =>
       "0100_social_provider_observability",
       "0101_social_worker_heartbeats",
       "0102_social_media_assets",
+      "0103_social_attribution_read_model",
+      "0104_social_creative_orchestration",
     ],
   );
 
@@ -294,6 +296,29 @@ test("production prefix and canonical additive migration tail are pinned", () =>
   assert.match(socialOperationsMigration, /social_performance_snapshots_append_only/);
   assert.match(socialOperationsMigration, /"provider_mode" text NOT NULL DEFAULT 'MANAGED_PROVIDER'/);
   assert.doesNotMatch(socialOperationsMigration, /https:\/\/graph\.facebook\.com|api\.linkedin\.com|open\.tiktokapis\.com/);
+
+  const socialAttributionMigration = readFileSync(
+    path.join(root, "lib/db/drizzle/0103_social_attribution_read_model.sql"),
+    "utf8",
+  );
+  assert.match(socialAttributionMigration, /ALTER TABLE "social_attributed_leads" FORCE ROW LEVEL SECURITY/);
+  assert.match(socialAttributionMigration, /sync_social_attribution_from_lead/);
+  assert.match(socialAttributionMigration, /sync_social_attribution_from_application/);
+  assert.match(socialAttributionMigration, /social_attributed_leads_one_touch_uq/);
+  assert.doesNotMatch(socialAttributionMigration, /\b(?:TRUNCATE|DELETE FROM)\b/i);
+
+  const socialCreativeMigration = readFileSync(
+    path.join(root, "lib/db/drizzle/0104_social_creative_orchestration.sql"),
+    "utf8",
+  );
+  assert.match(socialCreativeMigration, /social_creative_requests_checker_chk/);
+  assert.match(socialCreativeMigration, /social_creative_requests_approval_chk/);
+  assert.match(socialCreativeMigration, /social_creative_requests_definition_immutable/);
+  assert.match(socialCreativeMigration, /social_creative_requests_budget_chk/);
+  assert.match(socialCreativeMigration, /social_creative_attempts_append_only/);
+  assert.match(socialCreativeMigration, /ALTER TABLE public\.%I FORCE ROW LEVEL SECURITY/);
+  assert.match(socialCreativeMigration, /BEFORE UPDATE OR DELETE/);
+  assert.doesNotMatch(socialCreativeMigration, /\b(?:TRUNCATE|DELETE FROM)\b/i);
 });
 
 test("Student Journey G45 migration remains additive, tenant-forced and default-off", () => {
@@ -559,7 +584,7 @@ test("staging adoption runner is explicit, exact-source and loopback-only", () =
   assert.doesNotMatch(source, /drizzle-kit", "push/);
 });
 
-test("staging seed is synthetic, explicit and pinned to the fresh 83/83 database", () => {
+test("staging seed is synthetic, explicit and pinned to the fresh 105/105 database", () => {
   const seed = path.join(root, "deploy/staging/seed-staging.mjs");
   const unapproved = spawnSync(process.execPath, [seed], {
     cwd: root,
@@ -572,7 +597,7 @@ test("staging seed is synthetic, explicit and pinned to the fresh 83/83 database
   const source = readFileSync(seed, "utf8");
   assert.match(source, /target\.hostname !== "127\.0\.0\.1"/);
   assert.match(source, /target\.pathname !== "\/fasos_staging"/);
-  assert.match(source, /row\?\.migration_count !== 83/);
+  assert.match(source, /row\?\.migration_count !== 105/);
   assert.match(source, /row\?\.user_count !== 0/);
   assert.match(source, /staging-admin@findandstudy\.com/);
   assert.match(source, /await client\.query\("BEGIN"\)/);
@@ -619,7 +644,7 @@ test("staging RBAC UAT fixtures are explicit, synthetic and denominator-bound", 
   assert.match(source, /target\.pathname !== "\/fasos_staging"/);
   assert.match(source, /STAGING_TARGET_ENV !== "staging"/);
   assert.match(source, /ALLOW_LIVE_INTEGRATIONS !== "false"/);
-  assert.match(source, /identityRow\?\.migration_count !== 83/);
+  assert.match(source, /identityRow\?\.migration_count !== 105/);
   assert.match(source, /STAGING_UAT_EXPECTED_PRE_USER_COUNT/);
   assert.match(source, /a non-synthetic or unrecognized user exists/);
   assert.match(source, /created_from_source = 'staging_rbac_uat'/);
@@ -855,10 +880,10 @@ test("comprehensive Control Plane gate is explicit and fixed to the disposable t
     /target\.pathname\.slice\(1\),[\s\S]*?isDynamicCiTarget \? dynamicCiDatabase : "fasos_apply_local"/,
   );
   assert.match(source, /target\.port, isDynamicCiTarget \? "5432" : "5433"/);
-  assert.match(source, /assert\.equal\(migrationCount\.rows\[0\]\.count, 103\)/);
+  assert.match(source, /assert\.equal\(migrationCount\.rows\[0\]\.count, 105\)/);
   assert.match(
     source,
-    /verifyAtomicDdlRollback[\s\S]*?SELECT count\(\*\)::int AS count FROM drizzle\.__drizzle_migrations[\s\S]*?103/,
+    /verifyAtomicDdlRollback[\s\S]*?SELECT count\(\*\)::int AS count FROM drizzle\.__drizzle_migrations[\s\S]*?105/,
   );
   assert.match(
     source,
@@ -892,7 +917,7 @@ test("Student Journey G45 PostgreSQL integration is explicit and loopback-only",
   assert.match(source, /target\.pathname, "\/fasos_apply_local"/);
   assert.match(source, /safeTarget\(executorUrl, "fas_journey_executor"\)/);
   assert.match(source, /ALLOW_LIVE_INTEGRATIONS/);
-  assert.match(source, /rows\[0\]\?\.count, 103/);
+  assert.match(source, /rows\[0\]\?\.count, 105/);
   assert.match(source, /journey_notification_intents_default_off_chk/);
   assert.match(
     source,
@@ -925,7 +950,7 @@ test("Institution Admissions PostgreSQL integration is explicit and least-privil
   assert.match(source, /institution_postgres_test_requires_disposable_loopback_database/);
   assert.match(source, /new URL\(actorUrl\)\.username !== "fas_institution_executor"/);
   assert.match(source, /NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS/);
-  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 103/);
+  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 105/);
   assert.match(source, /GRANT SELECT ON TABLE institution_memberships/);
   assert.doesNotMatch(source, /GRANT SELECT, INSERT ON TABLE institution_memberships/);
   assert.match(source, /institution_step_up_receipts/);
@@ -955,7 +980,7 @@ test("Institution case intake integration is explicit and EXECUTE-only", () => {
   assert.match(source, /institution_case_intake_test_requires_disposable_loopback_database/);
   assert.match(source, /fas_institution_intake_executor/);
   assert.match(source, /fas_institution_intake_owner/);
-  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 103/);
+  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 105/);
   assert.match(source, /case_insert: false/);
   assert.match(source, /receipt_insert: false/);
   assert.match(source, /can_execute: true/);
@@ -986,7 +1011,7 @@ test("Institution evidence sharing integration is explicit and EXECUTE-only", ()
   assert.match(source, /institution_evidence_share_test_requires_disposable_loopback_database/);
   assert.match(source, /fas_institution_evidence_share_executor/);
   assert.match(source, /fas_institution_evidence_owner/);
-  assert.match(source, /rows\[0\]\?\.count, 103/);
+  assert.match(source, /rows\[0\]\?\.count, 105/);
   assert.match(source, /evidence_select: false/);
   assert.match(source, /consent_select: false/);
   assert.match(source, /share_insert: false/);

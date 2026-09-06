@@ -162,7 +162,7 @@ jobs:
           PG_DISPOSABLE_ADMIN_URL: postgresql://postgres@127.0.0.1:5433/postgres
         run: node lib/db/prepare-disposable-migration-database.mjs
 
-      - name: Apply and replay all 103 migrations
+      - name: Apply and replay all 105 migrations
         env:
           ALLOW_REVIEWED_MIGRATIONS: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local

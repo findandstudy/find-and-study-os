@@ -137,6 +137,39 @@ services:
       - backend
       - edge
 
+  social-creative-worker:
+    profiles: ["social-ai"]
+    image: "${FASOS_STAGING_APP_IMAGE:?set FASOS_STAGING_APP_IMAGE}"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    user: "${FASOS_STAGING_UID:?set FASOS_STAGING_UID}:${FASOS_STAGING_GID:?set FASOS_STAGING_GID}"
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "run",
+        "worker:social-creative",
+      ]
+    env_file:
+      - "${FASOS_STAGING_APP_ENV_FILE:?set FASOS_STAGING_APP_ENV_FILE}"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - "${FASOS_STAGING_STORAGE_DIR:?set FASOS_STAGING_STORAGE_DIR}:/var/lib/findandstudy/storage"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - edge
+
 secrets:
   postgres_password:
     file: "${FASOS_STAGING_POSTGRES_PASSWORD_FILE:?set FASOS_STAGING_POSTGRES_PASSWORD_FILE}"

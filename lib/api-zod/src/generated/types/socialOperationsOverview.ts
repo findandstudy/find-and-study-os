@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SocialContentBrief } from './socialContentBrief';
+import type { SocialCreativeGate } from './socialCreativeGate';
 import type { SocialOperationsOverviewAccountCountsItem } from './socialOperationsOverviewAccountCountsItem';
 import type { SocialOperationsOverviewBriefCountsItem } from './socialOperationsOverviewBriefCountsItem';
 import type { SocialOperationsOverviewPublicationCountsItem } from './socialOperationsOverviewPublicationCountsItem';
@@ -22,10 +23,11 @@ export interface SocialOperationsOverview {
   publishingEnabled: boolean;
   publicationGate: SocialPublicationGate;
   performanceGate: SocialPerformanceGate;
+  creativeGate: SocialCreativeGate;
   providerConnectionGate: SocialProviderConnectionGate;
   /**
-     * @minItems 2
-     * @maxItems 2
+     * @minItems 3
+     * @maxItems 3
      */
   workerHealth: SocialWorkerHealth[];
 }

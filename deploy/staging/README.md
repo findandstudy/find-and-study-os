@@ -75,13 +75,19 @@ docker build \
 Keep `compose.env`, `app.env`, database password files, the initial-login file
 and the admin-password file under the host-only secrets directory. Never print
 their contents, add them to shell history, or copy them into Git. Validate the
-four mandatory integration kill switches before starting the app.
+core delivery gates and every social execution gate before starting the app.
 
 ```bash
 grep -x 'ALLOW_LIVE_INTEGRATIONS=false' /opt/findandstudy-staging/secrets/app.env
 grep -x 'EMAIL_DELIVERY_DISABLED=true' /opt/findandstudy-staging/secrets/app.env
 grep -x 'BACKGROUND_JOBS_ENABLED=false' /opt/findandstudy-staging/secrets/app.env
 grep -x 'AI_EXTERNAL_AUTO_REPLY_KILL_SWITCH=true' /opt/findandstudy-staging/secrets/app.env
+grep -x 'SOCIAL_PUBLICATION_WORKER_ENABLED=false' /opt/findandstudy-staging/secrets/app.env
+grep -x 'SOCIAL_PERFORMANCE_WORKER_ENABLED=false' /opt/findandstudy-staging/secrets/app.env
+grep -x 'SOCIAL_CREATIVE_WORKER_ENABLED=false' /opt/findandstudy-staging/secrets/app.env
+grep -x 'SOCIAL_PROVIDER_CONNECTIVITY_ENABLED=false' /opt/findandstudy-staging/secrets/app.env
+grep -x 'SOCIAL_PROVIDER_PUBLISHING_ENABLED=false' /opt/findandstudy-staging/secrets/app.env
+grep -x 'SOCIAL_CREATIVE_GENERATION_ENABLED=false' /opt/findandstudy-staging/secrets/app.env
 ```
 
 ## Database adoption and seed
@@ -107,7 +113,7 @@ database URL/password on the command line. The runner requires:
 - the dedicated `ALLOW_STAGING_MIGRATIONS=true` and
   `MIGRATION_TARGET_ENV=staging` opt-ins.
 
-After migration, run `deploy/staging/seed-staging.mjs` only for a fresh `83/83`
+After migration, run `deploy/staging/seed-staging.mjs` only for a fresh `105/105`
 database with zero users. It creates synthetic reference data and one synthetic
 Super Admin; it refuses any other database or pre-populated user table. Keep
 the generated password only in `/opt/findandstudy-staging/secrets/admin-password`.
@@ -132,7 +138,7 @@ Required acceptance evidence:
 - `GET /api/health` returns exact HTTP `200`, `dbConnected=true`, and the
   expected staging release ID;
 - TLS verification succeeds and HTTPS sends HSTS;
-- the migration ledger is exact `83/83`;
+- the migration ledger is exact `105/105`;
 - a server-side login / `auth/me` / logout smoke succeeds with the synthetic
   account without logging its password or session cookie;
 - the app runs as UID/GID `10042`, with read-only root filesystem, all Linux
@@ -148,7 +154,7 @@ contain `e2e` or `test`.
 
 `deploy/staging/seed-staging-rbac-uat.mjs` provisions the fixed `@audit.test`
 matrix used by `rbac-functional.spec.ts`. The seed refuses every target except
-`fas_migrator@127.0.0.1:5432/fasos_staging`, requires the exact `83/83` ledger,
+`fas_migrator@127.0.0.1:5432/fasos_staging`, requires the exact `105/105` ledger,
 accepts only the original staging admin plus its known fixture identities, and
 reconciles to exactly 11 UAT users, two agent profiles, one student profile and
 12 total users. Keep the UAT password and its complete runner env in
@@ -192,8 +198,8 @@ redirects or non-JSON identity responses. Supply its password and release-bound
 environment through the same restricted host-only env file, not command-line
 arguments.
 
-After the run, verify the ledger remains `83/83`, the six integration/worker
-kill switches remain off, app logs contain no fatal/unhandled error, and all
+After the run, verify the ledger remains `105/105`, the ten core/social
+delivery and worker gates remain off, app logs contain no fatal/unhandled error, and all
 unrelated VPS containers retain their pre-run health. Create and restore-drill a
 new checksum-attested backup for the accepted 12-user synthetic state.
 
@@ -209,7 +215,7 @@ directories. Restore into a new database with `--no-owner --no-privileges`,
 then verify at minimum:
 
 - database name is the drill-only name;
-- ledger count is exactly `83`;
+- ledger count is exactly `105`;
 - the attested synthetic denominator is exact: either the initial one-user
   state, or the accepted RBAC UAT state with 12 users, two active agent
   profiles and one active student profile;

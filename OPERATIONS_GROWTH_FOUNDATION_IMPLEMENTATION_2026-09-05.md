@@ -31,10 +31,24 @@ changing the external-provider activation gate.
   their media prerequisites at brief creation, review submission, publication
   creation and worker execution. This prevents legacy or malformed jobs from
   reaching a provider.
-- Disposable PostgreSQL verification passes with `103/103` migrations, `13/13`
+- Migration `0103_social_attribution_read_model.sql` assigns every brief an
+  immutable system tracking key, projects first-touch lead/application outcomes
+  without granting social readers access to the legacy CRM tables, and keeps
+  provider metrics distinct from CRM-attributed outcomes. Ad spend is grouped
+  by account currency and is never summed across currencies.
+- Migration `0104_social_creative_orchestration.sql` adds approval-gated caption,
+  image and video generation requests, immutable definitions, explicit
+  per-request cost caps, provider-lane isolation, leases, async polling,
+  bounded retry/dead-letter handling and append-only attempt evidence.
+- The creative gateway is exact-host HTTPS pinned, schema/budget strict and
+  receives no tenant identity or worker lease secret. Generated media must pass
+  MIME, length and SHA-256 checks before content-addressed private storage.
+  Outputs may only update a still-DRAFT brief and still require the existing
+  content and publication maker-checker approvals.
+- Disposable PostgreSQL verification passes with `105/105` migrations, `17/17`
   social tables under FORCE RLS, immutable tenant-isolated media, isolated
-  heartbeats and concurrent queue claims. Provider traffic is still not
-  authorized by these checks.
+  heartbeats, attribution forgery rejection and isolated publication/creative
+  queue claims. Provider traffic is still not authorized by these checks.
 
 Production and `Find-And-Study-OS-Next` remain outside this change. Real
 publishing still requires an approved provider account, sandbox/canary evidence,
@@ -124,9 +138,9 @@ Production, staging, GitHub and external providers: unchanged
   Privacy/Legal, purpose, expiry, revocation and maker-checker design gates.
 - Institution issuer/step-up/runtime adoption remains separate from these UI
   projections.
-- External provider activation, ad-spend mutation and AI video generation remain
-  separate BUY/integrate gates. The internal publication engine is implemented,
-  but real provider traffic still requires account verification, provider
-  contract, sandbox/canary evidence, quota/rate-limit policy, rollback evidence
-  and explicit activation of every kill switch.
+- External provider activation and ad-spend mutation remain separate
+  BUY/integrate gates. The internal publication and AI creative orchestration
+  engines are implemented, but real provider traffic still requires account
+  verification, provider contracts, sandbox/canary evidence, quota/rate-limit
+  policy, rollback evidence and explicit activation of every kill switch.
 - No deploy, commit, push or merge is included in this record.

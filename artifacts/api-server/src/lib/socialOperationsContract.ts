@@ -21,6 +21,13 @@ export type SocialProviderConnectionGate = {
 export type SocialPerformanceGate = SocialProviderConnectionGate & {
   workerEnabled: boolean;
 };
+export type SocialCreativeGate = {
+  enabled: boolean;
+  workerEnabled: boolean;
+  generationEnabled: boolean;
+  allowedProviders: string[];
+  reason: string | null;
+};
 
 const PROVIDER_RE = /^[a-z][a-z0-9._-]{1,63}$/;
 const SAFE_RUNTIME_ID_RE = /^[A-Za-z0-9._:-]{1,96}$/;
@@ -189,6 +196,62 @@ export function resolveSocialPerformanceGate(input: {
     };
   }
   return { ...connection, workerEnabled };
+}
+
+export function resolveSocialCreativeGate(input: {
+  workerEnabled?: string;
+  generationEnabled?: string;
+  allowLiveIntegrations?: string;
+  providerAllowlist?: string;
+}): SocialCreativeGate {
+  const workerEnabled = explicitTrue(input.workerEnabled);
+  const generationEnabled = explicitTrue(input.generationEnabled);
+  const liveIntegrationsEnabled = explicitTrue(input.allowLiveIntegrations);
+  const allowlist = providerAllowlist(input.providerAllowlist);
+  const base = {
+    workerEnabled,
+    generationEnabled,
+    allowedProviders: allowlist.allowedProviders,
+  };
+  if (!workerEnabled)
+    return {
+      ...base,
+      enabled: false,
+      reason: "SOCIAL_CREATIVE_WORKER_DISABLED",
+    };
+  if (!generationEnabled)
+    return {
+      ...base,
+      enabled: false,
+      reason: "SOCIAL_CREATIVE_GENERATION_DISABLED",
+    };
+  if (!liveIntegrationsEnabled)
+    return { ...base, enabled: false, reason: "LIVE_INTEGRATIONS_DISABLED" };
+  if (!allowlist.valid)
+    return {
+      ...base,
+      enabled: false,
+      allowedProviders: [],
+      reason: "SOCIAL_CREATIVE_PROVIDER_ALLOWLIST_INVALID",
+    };
+  if (allowlist.allowedProviders.length === 0)
+    return {
+      ...base,
+      enabled: false,
+      reason: "SOCIAL_CREATIVE_PROVIDER_ALLOWLIST_EMPTY",
+    };
+  return { ...base, enabled: true, reason: null };
+}
+
+export function assertSocialCreativeOutputCompatible(
+  contentKind: string,
+  outputKind: "CAPTION" | "IMAGE" | "VIDEO",
+): void {
+  if (outputKind === "CAPTION") return;
+  if (outputKind === "IMAGE" && ["REEL", "VIDEO"].includes(contentKind))
+    throw new Error("SOCIAL_CREATIVE_OUTPUT_INCOMPATIBLE");
+  if (outputKind === "VIDEO" && contentKind === "ARTICLE")
+    throw new Error("SOCIAL_CREATIVE_OUTPUT_INCOMPATIBLE");
 }
 
 export function socialPerformanceIntervalMs(value?: string): number {
@@ -361,6 +424,47 @@ export function nextSocialId(observedAt = Date.now()): string {
   const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   if (!UUID_V7_RE.test(id)) throw new Error("social_uuid_generation_failed");
   return id;
+}
+
+export function socialTrackingKey(briefId: string): string {
+  if (!UUID_V7_RE.test(briefId))
+    throw new Error("SOCIAL_TRACKING_BRIEF_ID_INVALID");
+  return `fas_${briefId.toLowerCase().replaceAll("-", "")}`;
+}
+
+function utcDateOnly(value: string, label: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+    throw new Error(`SOCIAL_ATTRIBUTION_${label}_INVALID`);
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  )
+    throw new Error(`SOCIAL_ATTRIBUTION_${label}_INVALID`);
+  return parsed;
+}
+
+export function resolveSocialAttributionWindow(input: {
+  from?: string;
+  to?: string;
+  now?: Date;
+}): { from: Date; toExclusive: Date } {
+  const now = input.now ?? new Date();
+  if (!Number.isFinite(now.getTime()))
+    throw new Error("SOCIAL_ATTRIBUTION_NOW_INVALID");
+  const today = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const defaultFrom = new Date(today.getTime() - 29 * 86_400_000);
+  const from = input.from
+    ? utcDateOnly(input.from, "FROM")
+    : defaultFrom;
+  const to = input.to ? utcDateOnly(input.to, "TO") : today;
+  const toExclusive = new Date(to.getTime() + 86_400_000);
+  const durationDays = (toExclusive.getTime() - from.getTime()) / 86_400_000;
+  if (durationDays < 1 || durationDays > 366)
+    throw new Error("SOCIAL_ATTRIBUTION_WINDOW_INVALID");
+  return { from, toExclusive };
 }
 
 function canonicalize(value: unknown): unknown {

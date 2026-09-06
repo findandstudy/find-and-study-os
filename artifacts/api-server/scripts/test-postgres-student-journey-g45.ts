@@ -687,7 +687,7 @@ async function seed(): Promise<ReturnType<typeof createStudentDocumentIngestRece
     const migrationCount = await migrator.query(
       "SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations",
     );
-    assert.equal(migrationCount.rows[0]?.count, 103);
+    assert.equal(migrationCount.rows[0]?.count, 105);
     const defaultGrantCount = await migrator.query(
       `SELECT count(*)::int AS count
        FROM role_package_capabilities

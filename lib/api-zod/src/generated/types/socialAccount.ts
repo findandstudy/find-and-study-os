@@ -5,6 +5,7 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
+import type { SocialAccountAccountKind } from './socialAccountAccountKind';
 import type { SocialAccountStatus } from './socialAccountStatus';
 
 export interface SocialAccount {
@@ -12,6 +13,12 @@ export interface SocialAccount {
   provider: string;
   account_key: string;
   display_name: string;
+  account_kind: SocialAccountAccountKind;
+  /**
+     * @nullable
+     * @pattern ^[A-Z]{3}$
+     */
+  currency_code?: string | null;
   integration_key?: string | null;
   status: SocialAccountStatus;
   created_at?: Date;

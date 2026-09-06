@@ -197,6 +197,7 @@ test("dedicated social workers heartbeat, contain transient ticks and close thei
   for (const file of [
     "../src/workers/socialPublicationWorker.ts",
     "../src/workers/socialPerformanceWorker.ts",
+    "../src/workers/socialCreativeWorker.ts",
   ]) {
     const worker = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.match(worker, /recordSocialWorkerHeartbeat/);
@@ -208,5 +209,9 @@ test("dedicated social workers heartbeat, contain transient ticks and close thei
     assert.doesNotMatch(worker, /console\.error\([^\n]*error\)/);
     if (file.includes("Publication"))
       assert.match(worker, /verifyStoredSocialMediaRefs/);
+    if (file.includes("Creative")) {
+      assert.match(worker, /materializeSocialCreativeResult/);
+      assert.match(worker, /resolveSocialCreativeGate/);
+    }
   }
 });

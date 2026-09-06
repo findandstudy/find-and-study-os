@@ -5,6 +5,7 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateSocialAccountBodyAccountKind } from './createSocialAccountBodyAccountKind';
 
 export interface CreateSocialAccountBody {
   /**
@@ -28,6 +29,9 @@ export interface CreateSocialAccountBody {
      * @maxLength 160
      */
   displayName: string;
+  accountKind?: CreateSocialAccountBodyAccountKind;
+  /** @pattern ^[A-Z]{3}$ */
+  currencyCode?: string;
   /** @maxLength 96 */
   integrationKey?: string;
   /**

@@ -14,6 +14,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizationsTable, tenantsTable } from "./authorization";
+import { applicationsTable } from "./applications";
+import { leadsTable } from "./leads";
+import { studentsTable } from "./students";
 import { usersTable } from "./users";
 
 const uuidV7 = (column: { name: string }) =>
@@ -30,6 +33,8 @@ export const socialAccountsTable = pgTable(
     provider: text("provider").notNull(),
     accountKey: text("account_key").notNull(),
     displayName: text("display_name").notNull(),
+    accountKind: text("account_kind").notNull().default("PROFILE"),
+    currencyCode: text("currency_code"),
     integrationKey: text("integration_key"),
     externalAccountRefHash: text("external_account_ref_hash"),
     verificationReceiptHash: text("verification_receipt_hash"),
@@ -140,6 +145,7 @@ export const socialContentBriefsTable = pgTable(
       .notNull()
       .default([]),
     utm: jsonb("utm").$type<Record<string, string>>().notNull().default({}),
+    trackingKey: text("tracking_key").notNull(),
     scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
     status: text("status").notNull().default("DRAFT"),
     version: bigint("version", { mode: "number" }).notNull().default(1),
@@ -163,6 +169,7 @@ export const socialContentBriefsTable = pgTable(
       table.tenantId,
       table.id,
     ),
+    unique("social_content_briefs_tracking_key_uq").on(table.trackingKey),
     foreignKey({
       columns: [table.tenantId, table.organizationId],
       foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
@@ -186,6 +193,126 @@ export const socialContentBriefsTable = pgTable(
     check("social_content_briefs_version_chk", sql`${table.version} > 0`),
   ],
 );
+
+export const socialAttributedLeadsTable = pgTable(
+  "social_attributed_leads",
+  {
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    briefId: uuid("brief_id").notNull(),
+    trackingKey: text("tracking_key").notNull(),
+    leadId: integer("lead_id")
+      .notNull()
+      .references(() => leadsTable.id, { onDelete: "restrict" }),
+    leadStatus: text("lead_status").notNull(),
+    convertedStudentId: integer("converted_student_id").references(
+      () => studentsTable.id,
+      { onDelete: "set null" },
+    ),
+    leadDeletedAt: timestamp("lead_deleted_at", { withTimezone: true }),
+    firstTouchAt: timestamp("first_touch_at", { withTimezone: true }).notNull(),
+    lastObservedAt: timestamp("last_observed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "social_attributed_leads_pk",
+      columns: [table.tenantId, table.leadId],
+    }),
+    unique("social_attributed_leads_one_touch_uq").on(table.leadId),
+    foreignKey({
+      columns: [table.tenantId, table.briefId],
+      foreignColumns: [
+        socialContentBriefsTable.tenantId,
+        socialContentBriefsTable.id,
+      ],
+      name: "social_attributed_leads_brief_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_attributed_leads_organization_fk",
+    }).onDelete("restrict"),
+    index("social_attributed_leads_scope_touch_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.firstTouchAt,
+      table.leadId,
+    ),
+    index("social_attributed_leads_brief_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.briefId,
+      table.firstTouchAt,
+    ),
+  ],
+).enableRLS();
+
+export const socialAttributedApplicationsTable = pgTable(
+  "social_attributed_applications",
+  {
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    briefId: uuid("brief_id").notNull(),
+    leadId: integer("lead_id").notNull(),
+    applicationId: integer("application_id")
+      .notNull()
+      .references(() => applicationsTable.id, { onDelete: "restrict" }),
+    applicationStage: text("application_stage").notNull(),
+    applicationDeletedAt: timestamp("application_deleted_at", {
+      withTimezone: true,
+    }),
+    applicationCreatedAt: timestamp("application_created_at", {
+      withTimezone: true,
+    }).notNull(),
+    lastObservedAt: timestamp("last_observed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "social_attributed_applications_pk",
+      columns: [table.tenantId, table.applicationId],
+    }),
+    unique("social_attributed_applications_one_touch_uq").on(
+      table.applicationId,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.leadId],
+      foreignColumns: [
+        socialAttributedLeadsTable.tenantId,
+        socialAttributedLeadsTable.leadId,
+      ],
+      name: "social_attributed_applications_lead_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.briefId],
+      foreignColumns: [
+        socialContentBriefsTable.tenantId,
+        socialContentBriefsTable.id,
+      ],
+      name: "social_attributed_applications_brief_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_attributed_applications_organization_fk",
+    }).onDelete("restrict"),
+    index("social_attributed_applications_scope_created_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.applicationCreatedAt,
+      table.applicationId,
+    ),
+    index("social_attributed_applications_brief_stage_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.briefId,
+      table.applicationStage,
+    ),
+  ],
+).enableRLS();
 
 export const socialMediaAssetsTable = pgTable(
   "social_media_assets",
@@ -240,6 +367,172 @@ export const socialMediaAssetsTable = pgTable(
       "social_media_assets_kind_chk",
       sql`${table.mediaKind} IN ('image', 'video')`,
     ),
+  ],
+).enableRLS();
+
+export const socialCreativeRequestsTable = pgTable(
+  "social_creative_requests",
+  {
+    id: uuid("id").primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    briefId: uuid("brief_id").notNull(),
+    outputKind: text("output_kind").notNull(),
+    provider: text("provider").notNull(),
+    integrationKey: text("integration_key").notNull(),
+    model: text("model"),
+    locale: text("locale").notNull(),
+    prompt: text("prompt").notNull(),
+    negativePrompt: text("negative_prompt"),
+    aspectRatio: text("aspect_ratio"),
+    durationSeconds: integer("duration_seconds"),
+    maxCostMinor: integer("max_cost_minor").notNull(),
+    currencyCode: text("currency_code").notNull(),
+    status: text("status").notNull().default("PENDING_APPROVAL"),
+    requestKey: text("request_key").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    failureCount: integer("failure_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    leaseTokenHash: text("lease_token_hash"),
+    leasedAt: timestamp("leased_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    workerId: text("worker_id"),
+    providerRequestHash: text("provider_request_hash"),
+    providerJobRef: text("provider_job_ref"),
+    providerJobRefHash: text("provider_job_ref_hash"),
+    providerReceiptHash: text("provider_receipt_hash"),
+    resultCaption: text("result_caption"),
+    generatedAssetId: uuid("generated_asset_id"),
+    resolvedModel: text("resolved_model"),
+    usage: jsonb("usage").$type<{
+      inputUnits?: number;
+      outputUnits?: number;
+      estimatedCostMinor?: number;
+      currencyCode?: string;
+    }>(),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    createdByLegacyUserId: integer("created_by_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    approvedByLegacyUserId: integer("approved_by_legacy_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("social_creative_requests_tenant_id_id_uq").on(
+      table.tenantId,
+      table.id,
+    ),
+    unique("social_creative_requests_scope_key_uq").on(
+      table.tenantId,
+      table.organizationId,
+      table.requestKey,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.briefId],
+      foreignColumns: [
+        socialContentBriefsTable.tenantId,
+        socialContentBriefsTable.id,
+      ],
+      name: "social_creative_requests_brief_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.generatedAssetId],
+      foreignColumns: [socialMediaAssetsTable.tenantId, socialMediaAssetsTable.id],
+      name: "social_creative_requests_asset_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_creative_requests_organization_fk",
+    }).onDelete("restrict"),
+    index("social_creative_requests_queue_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.status,
+      table.nextAttemptAt,
+      table.createdAt,
+    ),
+    index("social_creative_requests_brief_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.briefId,
+      table.createdAt,
+    ),
+    check("social_creative_requests_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
+
+export const socialCreativeAttemptsTable = pgTable(
+  "social_creative_attempts",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    creativeRequestId: uuid("creative_request_id").notNull(),
+    attemptNumber: integer("attempt_number").notNull(),
+    workerId: text("worker_id").notNull(),
+    runtimeReleaseId: text("runtime_release_id").notNull(),
+    outcome: text("outcome").notNull(),
+    providerRequestHash: text("provider_request_hash").notNull(),
+    providerReceiptHash: text("provider_receipt_hash"),
+    generatedAssetSha256: text("generated_asset_sha256"),
+    resolvedModel: text("resolved_model"),
+    usage: jsonb("usage").$type<{
+      inputUnits?: number;
+      outputUnits?: number;
+      estimatedCostMinor?: number;
+      currencyCode?: string;
+    }>(),
+    errorCode: text("error_code"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "social_creative_attempts_pk",
+      columns: [table.tenantId, table.id],
+    }),
+    unique("social_creative_attempts_once_uq").on(
+      table.tenantId,
+      table.creativeRequestId,
+      table.attemptNumber,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.creativeRequestId],
+      foreignColumns: [
+        socialCreativeRequestsTable.tenantId,
+        socialCreativeRequestsTable.id,
+      ],
+      name: "social_creative_attempts_request_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_creative_attempts_organization_fk",
+    }).onDelete("restrict"),
+    index("social_creative_attempts_request_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.creativeRequestId,
+      table.attemptNumber,
+    ),
+    check("social_creative_attempts_id_v7_chk", uuidV7(table.id)),
   ],
 ).enableRLS();
 
@@ -692,7 +985,7 @@ export const socialWorkerHeartbeatsTable = pgTable(
     }).onDelete("restrict"),
     check(
       "social_worker_heartbeats_kind_chk",
-      sql`${table.workerKind} IN ('publication', 'performance')`,
+      sql`${table.workerKind} IN ('publication', 'performance', 'creative')`,
     ),
     check(
       "social_worker_heartbeats_worker_id_chk",
@@ -717,5 +1010,9 @@ export const socialWorkerHeartbeatsTable = pgTable(
 
 export type SocialContentBrief = typeof socialContentBriefsTable.$inferSelect;
 export type SocialAccount = typeof socialAccountsTable.$inferSelect;
+export type SocialCreativeRequest =
+  typeof socialCreativeRequestsTable.$inferSelect;
+export type SocialCreativeAttempt =
+  typeof socialCreativeAttemptsTable.$inferSelect;
 export type SocialPublicationIntent =
   typeof socialPublicationIntentsTable.$inferSelect;
