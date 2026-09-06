@@ -8,10 +8,10 @@
     "defaultEnforcement": "legacy_quarantine"
   },
   "totals": {
-    "routeRegistrations": 805,
-    "requireAuth": 721,
-    "requireRole": 481,
-    "requirePermission": 47,
+    "routeRegistrations": 825,
+    "requireAuth": 743,
+    "requireRole": 485,
+    "requirePermission": 63,
     "requireScope": 0,
     "directRoleChecks": 29,
     "authOnlyRouteCandidates": 128,
@@ -320,7 +320,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/channelAccounts.ts",
-      "sha256": "ac947916b4231a6262b9ceb017e9af9f04de9819a0ceb4bf31844d87c203843e",
+      "sha256": "a58cfe9f0fd390e26cc01054d28c39e28c12fb54eed07b318c7a59fb98a0f562",
       "routeRegistrations": 7,
       "requireAuth": 8,
       "requireRole": 7,
@@ -440,7 +440,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/dataQuality.ts",
-      "sha256": "3c45b3bd3503a269a00d659902056a0b3ae49fbdf15a76c383fd8fcd81f2e1e4",
+      "sha256": "6c69bb19494b4929a48a444b8567e76adf415adbfaf9bc0503d6c5957025edf3",
       "routeRegistrations": 4,
       "requireAuth": 5,
       "requireRole": 4,
@@ -620,7 +620,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/index.ts",
-      "sha256": "038bada8222178c0d4bcc02a3fc0c581d262ac441e2ddcc2ecd2de051224466b",
+      "sha256": "a35b34279b0085584d357ac816097d8e8585e5090dd94191f7ca89af6ed65e5a",
       "routeRegistrations": 0,
       "requireAuth": 0,
       "requireRole": 0,
@@ -650,7 +650,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/integrations.ts",
-      "sha256": "bc3805273c966a2d55e92a7181f8b053c2bf5d4b0f47f6f4715ac50b175b9f00",
+      "sha256": "0c54dd8da10c8307ac2e1aef5c3c2668ab6a84b92f97005f059fe86c39d94445",
       "routeRegistrations": 6,
       "requireAuth": 7,
       "requireRole": 6,
@@ -739,6 +739,21 @@
       "note": "Route-local review required before corridor migration."
     },
     {
+      "path": "artifacts/api-server/src/routes/operations.ts",
+      "sha256": "f33695618de727b658c2abcecc4fab2477107518f8fee37e29996eaab72ab038",
+      "routeRegistrations": 1,
+      "requireAuth": 2,
+      "requireRole": 1,
+      "requirePermission": 0,
+      "requireScope": 0,
+      "directRoleChecks": 0,
+      "authOnlyRouteCandidates": 0,
+      "publicRouteCandidates": 0,
+      "enforcement": "legacy_quarantine",
+      "owner": "Operations",
+      "note": "Unified work actions remain quarantined until signed active-context authorization replaces route-local role checks."
+    },
+    {
       "path": "artifacts/api-server/src/routes/personFeed.ts",
       "sha256": "86fc64b702b82d080d98a903c6c4b5832b7ff1693779efa0618f0c89492240b4",
       "routeRegistrations": 6,
@@ -785,10 +800,10 @@
     },
     {
       "path": "artifacts/api-server/src/routes/portalAutomation.ts",
-      "sha256": "d57bf443e7ba160f81d8530c4c591de14fe6064482bb3cd3464043e593a4ed23",
-      "routeRegistrations": 42,
-      "requireAuth": 43,
-      "requireRole": 38,
+      "sha256": "430875b8e2018fd14044e582124d5f7c46ee223bac3ec700074ebabdd032d583",
+      "routeRegistrations": 44,
+      "requireAuth": 45,
+      "requireRole": 40,
       "requirePermission": 0,
       "requireScope": 0,
       "directRoleChecks": 0,
@@ -800,10 +815,10 @@
     },
     {
       "path": "artifacts/api-server/src/routes/portalMgmt.ts",
-      "sha256": "a0f16f0ef0900e25e3e505b33c719eb88f931324145c97ebbd8692c7a323e7a7",
-      "routeRegistrations": 24,
-      "requireAuth": 25,
-      "requireRole": 25,
+      "sha256": "25ac81861f73196c90709fc89ecd1c00f98d714069cc7861fbb6c9427ee38daa",
+      "routeRegistrations": 25,
+      "requireAuth": 26,
+      "requireRole": 26,
       "requirePermission": 0,
       "requireScope": 0,
       "directRoleChecks": 0,
@@ -815,7 +830,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/portalProgramFallbacks.ts",
-      "sha256": "2256b07b13fa1880f9be5fdf57a6f286804a454e8b3637b438c245ae405e3636",
+      "sha256": "dd58327526b1fe6b9b738175808a0f14be4d7739e222a5122321d855a318a0f2",
       "routeRegistrations": 4,
       "requireAuth": 5,
       "requireRole": 5,
@@ -920,7 +935,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/reporting.ts",
-      "sha256": "0019a591cc43c55f3b3ed748e5e1e4e7d36d141ec1ab3b366f90a9df708ae805",
+      "sha256": "473eb470d90d966fc77dc808ff3a921274c51cf191d06020ba1311bceed3dc07",
       "routeRegistrations": 6,
       "requireAuth": 7,
       "requireRole": 0,
@@ -962,6 +977,21 @@
       "enforcement": "legacy_quarantine",
       "owner": "Platform Engineering",
       "note": "Route-local review required before corridor migration."
+    },
+    {
+      "path": "artifacts/api-server/src/routes/socialOperations.ts",
+      "sha256": "884d001c61b8edf6cded26dc53071bcbd5a41cc28373a847eacf0547624b71ce",
+      "routeRegistrations": 16,
+      "requireAuth": 17,
+      "requireRole": 0,
+      "requirePermission": 16,
+      "requireScope": 0,
+      "directRoleChecks": 0,
+      "authOnlyRouteCandidates": 0,
+      "publicRouteCandidates": 0,
+      "enforcement": "legacy_quarantine",
+      "owner": "Growth & Social",
+      "note": "Social management uses explicit permissions but remains quarantined until the signed active-context corridor is adopted."
     },
     {
       "path": "artifacts/api-server/src/routes/staffCards.ts",
