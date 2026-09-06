@@ -858,6 +858,10 @@ test("comprehensive Control Plane gate is explicit and fixed to the disposable t
   assert.match(source, /assert\.equal\(migrationCount\.rows\[0\]\.count, 103\)/);
   assert.match(
     source,
+    /verifyAtomicDdlRollback[\s\S]*?SELECT count\(\*\)::int AS count FROM drizzle\.__drizzle_migrations[\s\S]*?103/,
+  );
+  assert.match(
+    source,
     /if \(isDynamicCiTarget\) \{[\s\S]*CREATE ROLE \$\{role\.name\}[\s\S]*NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS/,
   );
 });
