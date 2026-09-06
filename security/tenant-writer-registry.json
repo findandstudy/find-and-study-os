@@ -570,6 +570,15 @@
       "externalPilot": "quarantine"
     },
     {
+      "path": "artifacts/api-server/src/lib/portalLifecycleExecution.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "critical",
+      "owner": "Portal Automation",
+      "externalPilot": "quarantine",
+      "note": "Maker-checker approved lifecycle execution is idempotent and receipt-bound; external partner activation remains quarantined."
+    },
+    {
       "path": "artifacts/api-server/src/lib/portalLifecycleObservationStore.ts",
       "ownership": "external_integration",
       "enforcement": "quarantine_required",
@@ -756,6 +765,42 @@
       "risk": "critical",
       "owner": "Finance & Contracts",
       "externalPilot": "quarantine"
+    },
+    {
+      "path": "artifacts/api-server/src/lib/socialOperationsStore.ts",
+      "ownership": "tenant_owned",
+      "enforcement": "db_enforced",
+      "risk": "high",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Tenant and organization scope are transaction-bound and enforced by FORCE RLS; provider effects remain disabled."
+    },
+    {
+      "path": "artifacts/api-server/src/lib/socialPerformanceQueue.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "high",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Bounded performance collection uses leased attempts and immutable receipts; provider connectivity remains default-off."
+    },
+    {
+      "path": "artifacts/api-server/src/lib/socialPublicationQueue.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "critical",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Publication claims are lane-isolated, lease-bound, idempotent and receipt-backed; live publishing remains default-off."
+    },
+    {
+      "path": "artifacts/api-server/src/lib/socialPublisherAdapter.ts",
+      "ownership": "external_integration",
+      "enforcement": "quarantine_required",
+      "risk": "critical",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Managed provider access is HTTPS allowlisted and response-bounded, but no external provider pilot is authorized."
     },
     {
       "path": "artifacts/api-server/src/lib/stageFinance.ts",
@@ -1154,6 +1199,15 @@
       "externalPilot": "quarantine"
     },
     {
+      "path": "artifacts/api-server/src/routes/operations.ts",
+      "ownership": "mixed_legacy",
+      "enforcement": "quarantine_required",
+      "risk": "high",
+      "owner": "Operations",
+      "externalPilot": "quarantine",
+      "note": "Unified work actions remain behind authenticated legacy scope until the signed active-context corridor is adopted."
+    },
+    {
       "path": "artifacts/api-server/src/routes/personFeed.ts",
       "ownership": "tenant_owned",
       "enforcement": "quarantine_required",
@@ -1274,6 +1328,15 @@
       "externalPilot": "quarantine"
     },
     {
+      "path": "artifacts/api-server/src/routes/socialOperations.ts",
+      "ownership": "external_integration",
+      "enforcement": "quarantine_required",
+      "risk": "critical",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Management and dual approval are available internally; provider connectivity, publishing and performance workers remain independently default-off."
+    },
+    {
       "path": "artifacts/api-server/src/routes/staffCards.ts",
       "ownership": "platform_global",
       "enforcement": "quarantine_required",
@@ -1370,12 +1433,48 @@
       "externalPilot": "quarantine"
     },
     {
+      "path": "artifacts/api-server/src/workers/portalLifecycleWorker.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "critical",
+      "owner": "Portal Automation",
+      "externalPilot": "quarantine",
+      "note": "Lifecycle worker consumes approved durable jobs and writes receipts; external partner execution remains quarantined."
+    },
+    {
+      "path": "artifacts/api-server/src/workers/portalStatusWorker.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "critical",
+      "owner": "Portal Automation",
+      "externalPilot": "quarantine",
+      "note": "Status polling is lane-isolated and evidence-bound; named-partner activation remains gated."
+    },
+    {
+      "path": "artifacts/api-server/src/workers/socialPublicationWorker.ts",
+      "ownership": "external_integration",
+      "enforcement": "quarantine_required",
+      "risk": "critical",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Publication and performance loops are kill-switched and provider access is disabled until an approved pilot."
+    },
+    {
       "path": "artifacts/portal-automation-worker/src/credResolver.ts",
       "ownership": "external_integration",
       "enforcement": "quarantine_required",
       "risk": "critical",
       "owner": "Portal Automation",
       "externalPilot": "quarantine"
+    },
+    {
+      "path": "artifacts/portal-automation-worker/src/managementJobs.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "critical",
+      "owner": "Portal Automation",
+      "externalPilot": "quarantine",
+      "note": "Management jobs are release-bound and idempotent; partner traffic remains outside the approved pilot scope."
     },
     {
       "path": "artifacts/portal-automation-worker/src/profile.ts",
