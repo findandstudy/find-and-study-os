@@ -15,4 +15,3 @@ export function simulatedIntegrationTestResult(message: string): IntegrationTest
 export function unsupportedIntegrationTestResult(message: string): IntegrationTestResult {
   return { success: false, verified: false, simulated: false, status: "not_supported", message };
 }
-

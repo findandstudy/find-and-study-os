@@ -1,7 +1,7 @@
 # Operations & Growth Foundation — Local Implementation Record
 
-Date: 5 September 2026  
-Environment changed: local review worktree and `127.0.0.1:5433/fasos_apply_local` only  
+Date: 5 September 2026
+Environment changed: local review worktree and `127.0.0.1:5433/fasos_apply_local` only
 Production, staging, GitHub and external providers: unchanged
 
 ## Delivered slice

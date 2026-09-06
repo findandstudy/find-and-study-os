@@ -19,4 +19,3 @@ test("unsupported generic checks are explicit and fail closed", () => {
   assert.equal(result.success, false);
   assert.equal(result.verified, false);
 });
-

@@ -61,4 +61,3 @@ This is a read-only, secret-free and PII-free evidence packet for independent ar
 3. Disk use remains an operational risk and needs bounded attribution/retention work before large builds or image accumulation.
 4. Zero provider firewall rules and no provider malware scanner are defense-in-depth gaps; any change requires a separate approved operations plan.
 5. Portal Automation is intentionally empty and disabled. A named-partner strict dry-run pilot, receipt-bound verification and separate activation approval remain mandatory before a worker can run.
-

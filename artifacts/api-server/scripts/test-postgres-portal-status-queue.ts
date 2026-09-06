@@ -89,7 +89,7 @@ test("status claims are fair by lane, mutually exclusive and suspend poison rows
       await completePortalStatusCheck({
         submissionId: first[0]!.id,
         workerId: "status-worker-one",
-        nextCheckAt: new Date("2026-09-05T00:00:00.000Z"),
+        nextCheckAt: new Date("2099-09-05T00:00:00.000Z"),
       }),
       true,
     );
@@ -127,7 +127,7 @@ test("status claims are fair by lane, mutually exclusive and suspend poison rows
       await completePortalStatusCheck({
         submissionId: second[1]!.id,
         workerId: "status-worker-two",
-        nextCheckAt: new Date("2026-09-05T00:00:00.000Z"),
+        nextCheckAt: new Date("2099-09-05T00:00:00.000Z"),
       }),
       true,
     );
@@ -144,7 +144,7 @@ test("status claims are fair by lane, mutually exclusive and suspend poison rows
         completePortalStatusCheck({
           submissionId: row.id,
           workerId: "status-worker-three",
-          nextCheckAt: new Date("2026-09-05T00:00:00.000Z"),
+          nextCheckAt: new Date("2099-09-05T00:00:00.000Z"),
         }),
       ),
     );

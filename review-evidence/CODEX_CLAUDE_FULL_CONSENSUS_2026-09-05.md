@@ -1,7 +1,7 @@
 # Codex + Claude Full Consensus
 
-Date: 5 September 2026  
-Canonical repository: `findandstudy/Find-And-Study-OS-Next`  
+Date: 5 September 2026
+Canonical repository: `findandstudy/Find-And-Study-OS-Next`
 Decision: **FULL CONSENSUS**
 
 ## Evidence boundary

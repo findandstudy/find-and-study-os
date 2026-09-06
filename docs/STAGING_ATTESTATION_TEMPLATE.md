@@ -1,10 +1,10 @@
 # Staging Runtime Attestation Template
 
-Date/time (UTC):  
-Environment: staging  
-Operator:  
-Source commit:  
-Runtime release ID:  
+Date/time (UTC):
+Environment: staging
+Operator:
+Source commit:
+Runtime release ID:
 
 This template is secret-free and PII-free. Record only bounded aggregate facts,
 exact code/release identities and negative-test outcomes. Never include raw

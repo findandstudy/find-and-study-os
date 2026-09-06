@@ -32,4 +32,3 @@ This packet records authenticated, read-only visual inspection of the isolated s
 ## Review boundary
 
 The screenshots prove current visual behavior only. They do not prove authorization isolation, database RLS, queue behavior, idempotency, maker-checker enforcement, external portal compatibility or production readiness.
-

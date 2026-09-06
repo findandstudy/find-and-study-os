@@ -1,6 +1,6 @@
 # ADR — Portal Execution, Idempotency and Approval Planes
 
-Date: 5 September 2026  
+Date: 5 September 2026
 Status: Accepted for local implementation; runtime adoption remains gated
 
 ## Context
