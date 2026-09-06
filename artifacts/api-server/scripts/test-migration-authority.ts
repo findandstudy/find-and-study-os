@@ -1096,6 +1096,10 @@ test("staging CI is isolated, exact-source and integration-disabled", () => {
     path.join(root, "deploy/staging/app.env.example"),
     "utf8",
   );
+  const dockerfile = readFileSync(
+    path.join(root, "deploy/staging/Dockerfile"),
+    "utf8",
+  );
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(
     workflow,
@@ -1109,6 +1113,14 @@ test("staging CI is isolated, exact-source and integration-disabled", () => {
     /docker compose -f deploy\/staging\/compose\.yml config --quiet/,
   );
   assert.match(workflow, /FASOS_SOURCE_COMMIT="\$\{GITHUB_SHA\}"/);
+  assert.match(
+    workflow,
+    /test "\$\(pnpm --version\)" = "10\.33\.2"/,
+  );
+  assert.match(
+    dockerfile,
+    /FROM \$\{NODE_IMAGE\} AS runtime[\s\S]*corepack prepare pnpm@10\.33\.2 --activate[\s\S]*test "\$\(pnpm --version\)" = "10\.33\.2"/,
+  );
   assert.match(workflow, /test:migration-authority/);
   assert.match(workflow, /test:rate-limit-ip-security/);
   assert.match(workflow, /test:login-accessibility/);

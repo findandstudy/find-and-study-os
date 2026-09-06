@@ -31,7 +31,10 @@ RUN node lib/db/validate-migrations.mjs
 FROM ${NODE_IMAGE} AS runtime
 ARG APP_UID=10042
 ARG APP_GID=10042
-RUN groupadd --gid "${APP_GID}" findandstudy \
+RUN corepack enable \
+  && corepack prepare pnpm@10.33.2 --activate \
+  && test "$(pnpm --version)" = "10.33.2" \
+  && groupadd --gid "${APP_GID}" findandstudy \
   && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home \
        --shell /usr/sbin/nologin findandstudy \
   && install -d -o "${APP_UID}" -g "${APP_GID}" -m 0750 /app
