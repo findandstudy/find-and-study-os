@@ -6,8 +6,12 @@ import {
   nextSocialId,
   normalizeSocialErrorCode,
   resolveSocialOperationsConfiguration,
+  resolveSocialProviderConnectionGate,
   resolveSocialPublicationGate,
   socialHash,
+  socialPerformanceCadenceMs,
+  socialPerformanceIntervalMs,
+  socialPerformanceMaxAgeDays,
   socialRetryDelayMs,
   socialRetryDisposition,
 } from "../src/lib/socialOperationsContract";
@@ -73,6 +77,7 @@ test("legacy transition permissions separate management from approval", () => {
 test("publication execution needs all explicit kill switches and an allowlist", () => {
   const disabled = resolveSocialPublicationGate({
     workerEnabled: "true",
+    connectivityEnabled: "true",
     providerPublishingEnabled: "true",
     allowLiveIntegrations: "false",
     providerAllowlist: "meta",
@@ -81,6 +86,7 @@ test("publication execution needs all explicit kill switches and an allowlist", 
   assert.equal(disabled.reason, "LIVE_INTEGRATIONS_DISABLED");
   const enabled = resolveSocialPublicationGate({
     workerEnabled: "true",
+    connectivityEnabled: "true",
     providerPublishingEnabled: "true",
     allowLiveIntegrations: "true",
     providerAllowlist: "meta,linkedin,meta",
@@ -91,6 +97,50 @@ test("publication execution needs all explicit kill switches and an allowlist", 
     () => assertSocialProviderAllowed(enabled, "tiktok"),
     /SOCIAL_PROVIDER_NOT_ALLOWED/,
   );
+});
+
+test("provider connectivity and performance cadence are independently fail-closed", () => {
+  assert.equal(
+    resolveSocialProviderConnectionGate({
+      connectivityEnabled: "false",
+      allowLiveIntegrations: "true",
+      providerAllowlist: "meta",
+    }).reason,
+    "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED",
+  );
+  assert.deepEqual(
+    resolveSocialProviderConnectionGate({
+      connectivityEnabled: "true",
+      allowLiveIntegrations: "true",
+      providerAllowlist: "meta,linkedin,meta",
+    }),
+    {
+      enabled: true,
+      connectivityEnabled: true,
+      allowedProviders: ["meta", "linkedin"],
+      reason: null,
+    },
+  );
+  assert.equal(socialPerformanceIntervalMs(undefined), 21_600_000);
+  assert.equal(socialPerformanceIntervalMs("900"), 900_000);
+  assert.equal(socialPerformanceMaxAgeDays(undefined), 180);
+  assert.equal(
+    socialPerformanceCadenceMs({
+      baseIntervalSeconds: "21600",
+      publicationAgeMs: 8 * 86_400_000,
+    }),
+    86_400_000,
+  );
+  assert.equal(
+    socialPerformanceCadenceMs({
+      baseIntervalSeconds: "21600",
+      publicationAgeMs: 31 * 86_400_000,
+    }),
+    604_800_000,
+  );
+  assert.throws(() => socialPerformanceIntervalMs("899"));
+  assert.throws(() => socialPerformanceMaxAgeDays("0"));
+  assert.throws(() => socialPerformanceIntervalMs("not-a-number"));
 });
 
 test("retry policy is bounded and dead-letters exhausted or permanent failures", () => {

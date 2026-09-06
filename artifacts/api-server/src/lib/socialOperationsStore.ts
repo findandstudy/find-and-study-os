@@ -93,7 +93,7 @@ async function rollback(client: PoolClient): Promise<void> {
   } catch {}
 }
 
-export async function withSocialOperationsContext<T>(
+async function runSocialOperationsContext<T>(
   legacyUserId: number,
   requiredMode: "read" | "manage",
   operation: (
@@ -187,4 +187,37 @@ export async function withSocialOperationsContext<T>(
   } finally {
     client.release();
   }
+}
+
+function retryableTransactionError(error: unknown): boolean {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : "";
+  return code === "40001" || code === "40P01";
+}
+
+export async function withSocialOperationsContext<T>(
+  legacyUserId: number,
+  requiredMode: "read" | "manage",
+  operation: (
+    client: PoolClient,
+    context: SocialOperationsContext,
+  ) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await runSocialOperationsContext(
+        legacyUserId,
+        requiredMode,
+        operation,
+      );
+    } catch (error) {
+      if (!retryableTransactionError(error) || attempt === 3) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, 10 * 2 ** (attempt - 1)),
+      );
+    }
+  }
+  throw new Error("SOCIAL_TRANSACTION_RETRY_EXHAUSTED");
 }

@@ -32,6 +32,12 @@ export const socialAccountsTable = pgTable(
     displayName: text("display_name").notNull(),
     integrationKey: text("integration_key"),
     externalAccountRefHash: text("external_account_ref_hash"),
+    verificationReceiptHash: text("verification_receipt_hash"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    lastVerificationAt: timestamp("last_verification_at", {
+      withTimezone: true,
+    }),
+    lastVerificationErrorCode: text("last_verification_error_code"),
     status: text("status").notNull().default("DISCONNECTED"),
     createdByLegacyUserId: integer("created_by_legacy_user_id")
       .notNull()
@@ -61,6 +67,55 @@ export const socialAccountsTable = pgTable(
       table.status,
     ),
     check("social_accounts_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
+
+export const socialAccountVerificationsTable = pgTable(
+  "social_account_verifications",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    accountId: uuid("account_id").notNull(),
+    actorLegacyUserId: integer("actor_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    requestKey: text("request_key").notNull(),
+    outcome: text("outcome").notNull(),
+    providerRequestHash: text("provider_request_hash").notNull(),
+    providerReceiptHash: text("provider_receipt_hash"),
+    externalAccountRefHash: text("external_account_ref_hash"),
+    errorCode: text("error_code"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenantId, table.id],
+      name: "social_account_verifications_pk",
+    }),
+    unique("social_account_verifications_request_uq").on(
+      table.tenantId,
+      table.requestKey,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.accountId],
+      foreignColumns: [socialAccountsTable.tenantId, socialAccountsTable.id],
+      name: "social_account_verifications_account_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_account_verifications_organization_fk",
+    }).onDelete("restrict"),
+    index("social_account_verifications_account_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.accountId,
+      table.occurredAt,
+    ),
+    check("social_account_verifications_id_v7_chk", uuidV7(table.id)),
   ],
 ).enableRLS();
 
@@ -418,6 +473,11 @@ export const socialPerformanceSnapshotsTable = pgTable(
       columns: [table.tenantId, table.id],
       name: "social_performance_snapshots_pk",
     }),
+    unique("social_performance_snapshots_receipt_uq").on(
+      table.tenantId,
+      table.publicationIntentId,
+      table.providerReceiptHash,
+    ),
     foreignKey({
       columns: [table.tenantId, table.publicationIntentId],
       foreignColumns: [
@@ -432,8 +492,119 @@ export const socialPerformanceSnapshotsTable = pgTable(
       name: "social_performance_snapshots_organization_fk",
     }).onDelete("restrict"),
     check("social_performance_snapshots_id_v7_chk", uuidV7(table.id)),
+    index("social_performance_snapshots_observed_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.observedAt,
+      table.publicationIntentId,
+    ),
   ],
 );
+
+export const socialPerformanceSyncStateTable = pgTable(
+  "social_performance_sync_state",
+  {
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    publicationIntentId: uuid("publication_intent_id").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    nextSyncAt: timestamp("next_sync_at", { withTimezone: true }),
+    totalAttemptCount: bigint("total_attempt_count", { mode: "number" })
+      .notNull()
+      .default(0),
+    consecutiveFailureCount: integer("consecutive_failure_count")
+      .notNull()
+      .default(0),
+    maximumConsecutiveFailures: integer("maximum_consecutive_failures")
+      .notNull()
+      .default(8),
+    leaseTokenHash: text("lease_token_hash"),
+    leasedAt: timestamp("leased_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    workerId: text("worker_id"),
+    lastErrorCode: text("last_error_code"),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenantId, table.publicationIntentId],
+      name: "social_performance_sync_state_pk",
+    }),
+    foreignKey({
+      columns: [table.tenantId, table.publicationIntentId],
+      foreignColumns: [
+        socialPublicationIntentsTable.tenantId,
+        socialPublicationIntentsTable.id,
+      ],
+      name: "social_performance_sync_state_intent_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_performance_sync_state_organization_fk",
+    }).onDelete("restrict"),
+    index("social_performance_sync_state_due_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.nextSyncAt,
+      table.publicationIntentId,
+    ),
+  ],
+).enableRLS();
+
+export const socialPerformanceAttemptsTable = pgTable(
+  "social_performance_attempts",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    publicationIntentId: uuid("publication_intent_id").notNull(),
+    attemptNumber: bigint("attempt_number", { mode: "number" }).notNull(),
+    workerId: text("worker_id").notNull(),
+    runtimeReleaseId: text("runtime_release_id").notNull(),
+    outcome: text("outcome").notNull(),
+    providerRequestHash: text("provider_request_hash").notNull(),
+    providerReceiptHash: text("provider_receipt_hash"),
+    errorCode: text("error_code"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.tenantId, table.id],
+      name: "social_performance_attempts_pk",
+    }),
+    unique("social_performance_attempts_once_uq").on(
+      table.tenantId,
+      table.publicationIntentId,
+      table.attemptNumber,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.publicationIntentId],
+      foreignColumns: [
+        socialPublicationIntentsTable.tenantId,
+        socialPublicationIntentsTable.id,
+      ],
+      name: "social_performance_attempts_intent_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_performance_attempts_organization_fk",
+    }).onDelete("restrict"),
+    check("social_performance_attempts_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
 
 export type SocialContentBrief = typeof socialContentBriefsTable.$inferSelect;
 export type SocialAccount = typeof socialAccountsTable.$inferSelect;

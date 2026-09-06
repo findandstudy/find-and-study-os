@@ -32,7 +32,7 @@ assert.equal(
       "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
     )
   ).rows[0]?.count,
-  100,
+  101,
 );
 await admin.query(`DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='fas_social_executor') THEN
@@ -50,10 +50,12 @@ await admin.query(
   `GRANT SELECT ON tenants,organizations,users TO fas_social_executor`,
 );
 await admin.query(`GRANT SELECT,INSERT,UPDATE ON
-  social_accounts,social_content_briefs,social_publication_intents TO fas_social_executor`);
+  social_accounts,social_content_briefs,social_publication_intents,
+  social_performance_sync_state TO fas_social_executor`);
 await admin.query(`GRANT SELECT,INSERT ON
   social_content_reviews,social_publication_reviews,social_publication_attempts,
-  social_operation_receipts,social_performance_snapshots TO fas_social_executor`);
+  social_operation_receipts,social_performance_snapshots,
+  social_account_verifications,social_performance_attempts TO fas_social_executor`);
 
 const tenantId = "0199a100-0000-7000-8000-000000000001";
 const organizationId = "0199a100-0000-7000-8000-000000000002";
@@ -88,10 +90,12 @@ await admin.query(
 );
 await admin.query(
   `INSERT INTO social_accounts
-     (id,tenant_id,organization_id,provider,account_key,display_name,integration_key,status,created_by_legacy_user_id)
+     (id,tenant_id,organization_id,provider,account_key,display_name,integration_key,
+      external_account_ref_hash,verification_receipt_hash,verified_at,last_verification_at,
+      status,created_by_legacy_user_id)
    VALUES
-     ($1,$2,$3,'meta','meta:test','Test Account','meta_ads','VERIFIED',$4),
-     ($5,$2,$3,'linkedin','linkedin:test','Test Account B','linkedin','VERIFIED',$4)`,
+     ($1,$2,$3,'meta','meta:test','Test Account','meta_ads',repeat('b',64),repeat('c',64),now(),now(),'VERIFIED',$4),
+     ($5,$2,$3,'linkedin','linkedin:test','Test Account B','linkedin',repeat('d',64),repeat('e',64),now(),now(),'VERIFIED',$4)`,
   [accountId, tenantId, organizationId, makerUserId, accountBId],
 );
 await admin.query(
@@ -145,13 +149,19 @@ process.env.SOCIAL_OPERATIONS_ORGANIZATION_ID = organizationId;
 const {
   appendSocialOperationReceipt,
   findSocialOperationReplay,
+  nextSocialId,
   withSocialOperationsContext,
 } = await import("../src/lib/socialOperationsStore");
 const { claimSocialPublication, completeSocialPublication } =
   await import("../src/lib/socialPublicationQueue");
+const { claimSocialPerformance, completeSocialPerformance } =
+  await import("../src/lib/socialPerformanceQueue");
 
 after(async () => {
   const tables = [
+    "social_performance_attempts",
+    "social_performance_sync_state",
+    "social_account_verifications",
     "social_publication_attempts",
     "social_publication_reviews",
     "social_operation_receipts",
@@ -192,7 +202,7 @@ test("all social tables force RLS and evidence tables expose no delete policy", 
     LEFT JOIN pg_policies p ON p.schemaname=n.nspname AND p.tablename=c.relname
     WHERE n.nspname='public' AND c.relname LIKE 'social_%' AND c.relkind='r'
     GROUP BY c.relname,c.relforcerowsecurity ORDER BY c.relname`);
-  assert.equal(result.rowCount, 8);
+  assert.equal(result.rowCount, 11);
   assert.equal(
     result.rows.every(
       (row) => row.relforcerowsecurity === true && row.delete_policies === 0,
@@ -296,6 +306,13 @@ test("concurrent workers claim different jobs and record receipt-bound outcomes"
   assert.ok(first);
   assert.ok(second);
   assert.notEqual(first.id, second.id);
+  const saturated = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      claimSocialPublication(client, context, "social-worker-c"),
+  );
+  assert.equal(saturated, null);
   const published = await withSocialOperationsContext(
     makerUserId,
     "manage",
@@ -376,6 +393,151 @@ test("concurrent workers claim different jobs and record receipt-bound outcomes"
   await assert.rejects(
     admin.query(
       "UPDATE social_publication_attempts SET error_code='TAMPER' WHERE tenant_id=$1",
+      [tenantId],
+    ),
+    /append-only/i,
+  );
+});
+
+test("account verification evidence is immutable and receipt-bound", async () => {
+  await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    async (client, context) => {
+      await client.query(
+        `INSERT INTO social_account_verifications
+           (id,tenant_id,organization_id,account_id,actor_legacy_user_id,request_key,
+            outcome,provider_request_hash,provider_receipt_hash,external_account_ref_hash)
+         VALUES ($1,$2,$3,$4,$5,'social-account-verification-test','VERIFIED',
+           repeat('1',64),repeat('2',64),repeat('3',64))`,
+        [
+          nextSocialId(),
+          context.tenantId,
+          context.organizationId,
+          accountId,
+          context.legacyUserId,
+        ],
+      );
+    },
+  );
+  assert.equal(
+    (
+      await admin.query(
+        "SELECT count(*)::integer AS count FROM social_account_verifications WHERE tenant_id=$1",
+        [tenantId],
+      )
+    ).rows[0].count,
+    1,
+  );
+  await assert.rejects(
+    admin.query(
+      "UPDATE social_account_verifications SET outcome='REAUTH_REQUIRED' WHERE tenant_id=$1",
+      [tenantId],
+    ),
+    /append-only/i,
+  );
+});
+
+test("performance collection stores bounded snapshots and dead-letters permanent failures", async () => {
+  const first = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      claimSocialPerformance(client, context, "metrics-worker-a"),
+  );
+  assert.ok(first);
+  const snapshot = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      completeSocialPerformance(
+        client,
+        context,
+        first,
+        "metrics-worker-a",
+        "test-release-1",
+        {
+          ok: true,
+          providerReceipt: "metrics-receipt-0001",
+          observedAt: new Date().toISOString(),
+          metrics: {
+            impressions: 1200,
+            reach: 900,
+            engagements: 80,
+            clicks: 25,
+            leads: 4,
+          },
+        },
+        "900",
+      ),
+  );
+  assert.equal(snapshot, "SNAPSHOT");
+  assert.equal(
+    (
+      await admin.query(
+        `SELECT count(*)::integer AS count
+         FROM social_performance_snapshots
+         WHERE tenant_id=$1 AND publication_intent_id=$2
+           AND metrics->>'impressions'='1200'`,
+        [tenantId, first.publicationId],
+      )
+    ).rows[0].count,
+    1,
+  );
+  await assert.rejects(
+    admin.query(
+      `INSERT INTO social_performance_snapshots
+         (id,tenant_id,organization_id,publication_intent_id,metrics,provider_receipt_hash,observed_at)
+       VALUES ($1,$2,$3,$4,'{"impressions":-1}'::jsonb,repeat('9',64),now())`,
+      [nextSocialId(), tenantId, organizationId, first.publicationId],
+    ),
+    /social_performance_snapshots_payload_v2_chk/i,
+  );
+  await admin.query(
+    `UPDATE social_performance_sync_state SET next_sync_at=now()
+     WHERE tenant_id=$1 AND publication_intent_id=$2 AND status='ACTIVE'`,
+    [tenantId, first.publicationId],
+  );
+  const second = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      claimSocialPerformance(client, context, "metrics-worker-a"),
+  );
+  assert.ok(second);
+  const deadLetter = await withSocialOperationsContext(
+    makerUserId,
+    "manage",
+    (client, context) =>
+      completeSocialPerformance(
+        client,
+        context,
+        second,
+        "metrics-worker-a",
+        "test-release-1",
+        {
+          ok: false,
+          retryable: false,
+          errorCode: "PROVIDER_RESPONSE_SCHEMA_INVALID",
+        },
+      ),
+  );
+  assert.equal(deadLetter, "DEAD_LETTER");
+  assert.equal(
+    (
+      await admin.query(
+        `SELECT count(*)::integer AS count
+         FROM social_performance_sync_state
+         WHERE tenant_id=$1 AND publication_intent_id=$2
+           AND status='DEAD_LETTER' AND last_error_code='PROVIDER_RESPONSE_SCHEMA_INVALID'`,
+        [tenantId, first.publicationId],
+      )
+    ).rows[0].count,
+    1,
+  );
+  await assert.rejects(
+    admin.query(
+      "UPDATE social_performance_snapshots SET metrics='{}'::jsonb WHERE tenant_id=$1",
       [tenantId],
     ),
     /append-only/i,

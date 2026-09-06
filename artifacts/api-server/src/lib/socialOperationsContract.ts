@@ -7,7 +7,14 @@ export type SocialOperationsMode = "off" | "read" | "manage";
 export type SocialPublicationGate = {
   enabled: boolean;
   workerEnabled: boolean;
+  connectivityEnabled: boolean;
   providerPublishingEnabled: boolean;
+  allowedProviders: string[];
+  reason: string | null;
+};
+export type SocialProviderConnectionGate = {
+  enabled: boolean;
+  connectivityEnabled: boolean;
   allowedProviders: string[];
   reason: string | null;
 };
@@ -20,37 +27,107 @@ function explicitTrue(value?: string): boolean {
   return value?.trim().toLowerCase() === "true";
 }
 
+function providerAllowlist(value?: string): {
+  rawProviders: string[];
+  allowedProviders: string[];
+  valid: boolean;
+} {
+  const rawProviders = (value ?? "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  const validProviders = rawProviders.filter((provider) =>
+    PROVIDER_RE.test(provider),
+  );
+  return {
+    rawProviders,
+    allowedProviders: [...new Set(validProviders)],
+    valid: rawProviders.length === validProviders.length,
+  };
+}
+
+export function resolveSocialProviderConnectionGate(input: {
+  connectivityEnabled?: string;
+  allowLiveIntegrations?: string;
+  providerAllowlist?: string;
+}): SocialProviderConnectionGate {
+  const connectivityEnabled = explicitTrue(input.connectivityEnabled);
+  const liveIntegrationsEnabled = explicitTrue(input.allowLiveIntegrations);
+  const allowlist = providerAllowlist(input.providerAllowlist);
+  if (!connectivityEnabled)
+    return {
+      enabled: false,
+      connectivityEnabled,
+      allowedProviders: allowlist.allowedProviders,
+      reason: "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED",
+    };
+  if (!liveIntegrationsEnabled)
+    return {
+      enabled: false,
+      connectivityEnabled,
+      allowedProviders: allowlist.allowedProviders,
+      reason: "LIVE_INTEGRATIONS_DISABLED",
+    };
+  if (!allowlist.valid)
+    return {
+      enabled: false,
+      connectivityEnabled,
+      allowedProviders: [],
+      reason: "SOCIAL_PROVIDER_ALLOWLIST_INVALID",
+    };
+  if (allowlist.allowedProviders.length === 0)
+    return {
+      enabled: false,
+      connectivityEnabled,
+      allowedProviders: [],
+      reason: "SOCIAL_PROVIDER_ALLOWLIST_EMPTY",
+    };
+  return {
+    enabled: true,
+    connectivityEnabled,
+    allowedProviders: allowlist.allowedProviders,
+    reason: null,
+  };
+}
+
 export function resolveSocialPublicationGate(input: {
   workerEnabled?: string;
+  connectivityEnabled?: string;
   providerPublishingEnabled?: string;
   allowLiveIntegrations?: string;
   providerAllowlist?: string;
 }): SocialPublicationGate {
   const workerEnabled = explicitTrue(input.workerEnabled);
+  const connectivityEnabled = explicitTrue(input.connectivityEnabled);
   const providerPublishingEnabled = explicitTrue(
     input.providerPublishingEnabled,
   );
   const liveIntegrationsEnabled = explicitTrue(input.allowLiveIntegrations);
-  const rawProviders = (input.providerAllowlist ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  const validProviders = rawProviders.filter((provider) =>
-    PROVIDER_RE.test(provider),
-  );
-  const allowedProviders = [...new Set(validProviders)];
+  const allowlist = providerAllowlist(input.providerAllowlist);
+  const allowedProviders = allowlist.allowedProviders;
   if (!workerEnabled)
     return {
       enabled: false,
       workerEnabled,
+      connectivityEnabled,
       providerPublishingEnabled,
       allowedProviders,
       reason: "SOCIAL_PUBLICATION_WORKER_DISABLED",
+    };
+  if (!connectivityEnabled)
+    return {
+      enabled: false,
+      workerEnabled,
+      connectivityEnabled,
+      providerPublishingEnabled,
+      allowedProviders,
+      reason: "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED",
     };
   if (!providerPublishingEnabled)
     return {
       enabled: false,
       workerEnabled,
+      connectivityEnabled,
       providerPublishingEnabled,
       allowedProviders,
       reason: "SOCIAL_PROVIDER_PUBLISHING_DISABLED",
@@ -59,14 +136,16 @@ export function resolveSocialPublicationGate(input: {
     return {
       enabled: false,
       workerEnabled,
+      connectivityEnabled,
       providerPublishingEnabled,
       allowedProviders,
       reason: "LIVE_INTEGRATIONS_DISABLED",
     };
-  if (rawProviders.length !== validProviders.length)
+  if (!allowlist.valid)
     return {
       enabled: false,
       workerEnabled,
+      connectivityEnabled,
       providerPublishingEnabled,
       allowedProviders: [],
       reason: "SOCIAL_PROVIDER_ALLOWLIST_INVALID",
@@ -75,6 +154,7 @@ export function resolveSocialPublicationGate(input: {
     return {
       enabled: false,
       workerEnabled,
+      connectivityEnabled,
       providerPublishingEnabled,
       allowedProviders,
       reason: "SOCIAL_PROVIDER_ALLOWLIST_EMPTY",
@@ -82,14 +162,47 @@ export function resolveSocialPublicationGate(input: {
   return {
     enabled: true,
     workerEnabled,
+    connectivityEnabled,
     providerPublishingEnabled,
     allowedProviders,
     reason: null,
   };
 }
 
+export function socialPerformanceIntervalMs(value?: string): number {
+  const raw = value?.trim() || "21600";
+  if (!/^\d+$/.test(raw))
+    throw new Error("SOCIAL_PERFORMANCE_INTERVAL_INVALID");
+  const seconds = Number(raw);
+  if (!Number.isSafeInteger(seconds) || seconds < 900 || seconds > 604_800)
+    throw new Error("SOCIAL_PERFORMANCE_INTERVAL_INVALID");
+  return seconds * 1000;
+}
+
+export function socialPerformanceMaxAgeDays(value?: string): number {
+  const raw = value?.trim() || "180";
+  if (!/^\d+$/.test(raw)) throw new Error("SOCIAL_PERFORMANCE_MAX_AGE_INVALID");
+  const days = Number(raw);
+  if (!Number.isSafeInteger(days) || days < 1 || days > 730)
+    throw new Error("SOCIAL_PERFORMANCE_MAX_AGE_INVALID");
+  return days;
+}
+
+export function socialPerformanceCadenceMs(input: {
+  baseIntervalSeconds?: string;
+  publicationAgeMs: number;
+}): number {
+  if (!Number.isFinite(input.publicationAgeMs) || input.publicationAgeMs < 0)
+    throw new Error("SOCIAL_PERFORMANCE_PUBLICATION_AGE_INVALID");
+  const base = socialPerformanceIntervalMs(input.baseIntervalSeconds);
+  const day = 86_400_000;
+  if (input.publicationAgeMs < 7 * day) return base;
+  if (input.publicationAgeMs < 30 * day) return Math.max(base, day);
+  return Math.max(base, 7 * day);
+}
+
 export function assertSocialProviderAllowed(
-  gate: SocialPublicationGate,
+  gate: { enabled: boolean; allowedProviders: string[]; reason: string | null },
   provider: string,
 ): void {
   const normalized = provider.trim().toLowerCase();

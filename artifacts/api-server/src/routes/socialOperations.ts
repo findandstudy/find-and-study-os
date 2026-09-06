@@ -9,7 +9,11 @@ import {
   socialOperationsConfiguration,
   withSocialOperationsContext,
 } from "../lib/socialOperationsStore";
-import { resolveSocialPublicationGate } from "../lib/socialOperationsContract";
+import {
+  resolveSocialProviderConnectionGate,
+  resolveSocialPublicationGate,
+} from "../lib/socialOperationsContract";
+import { verifySocialAccount } from "../lib/socialPublisherAdapter";
 
 const router: IRouter = Router();
 const uuidSchema = z.string().uuid();
@@ -118,7 +122,16 @@ const publicationBodySchema = z
 function publicationGate() {
   return resolveSocialPublicationGate({
     workerEnabled: process.env.SOCIAL_PUBLICATION_WORKER_ENABLED,
+    connectivityEnabled: process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED,
     providerPublishingEnabled: process.env.SOCIAL_PROVIDER_PUBLISHING_ENABLED,
+    allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
+    providerAllowlist: process.env.SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST,
+  });
+}
+
+function providerConnectionGate() {
+  return resolveSocialProviderConnectionGate({
+    connectivityEnabled: process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED,
     allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
     providerAllowlist: process.env.SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST,
   });
@@ -149,7 +162,9 @@ function failureStatus(error: unknown): number {
     code.includes("CONFLICT") ||
     code.includes("MAKER_CHECKER") ||
     code.includes("NOT_APPROVED") ||
-    code.includes("NOT_VERIFIED")
+    code.includes("NOT_VERIFIED") ||
+    code.includes("INTEGRATION_MISSING") ||
+    code.includes("ALREADY_RUNNING")
   )
     return 409;
   return 500;
@@ -175,6 +190,7 @@ router.get(
         ...config,
         publishingEnabled: false,
         publicationGate: publicationGate(),
+        providerConnectionGate: providerConnectionGate(),
       });
       return;
     }
@@ -191,6 +207,7 @@ router.get(
         organizationId: context.organizationId,
         publishingEnabled: publicationGate().enabled,
         publicationGate: publicationGate(),
+        providerConnectionGate: providerConnectionGate(),
       });
     } catch (error) {
       sendFailure(res, error);
@@ -233,6 +250,7 @@ router.get(
             briefs: recent.rows,
             publishingEnabled: publicationGate().enabled,
             publicationGate: publicationGate(),
+            providerConnectionGate: providerConnectionGate(),
           };
         },
       );
@@ -257,7 +275,9 @@ router.get(
           (
             await client.query(
               `
-      SELECT id,provider,account_key,display_name,integration_key,status,created_at,updated_at
+      SELECT id,provider,account_key,display_name,integration_key,status,
+             verified_at,last_verification_at,last_verification_error_code,
+             created_at,updated_at
       FROM social_accounts WHERE tenant_id=$1 AND organization_id=$2 ORDER BY provider,display_name
     `,
               [context.tenantId, context.organizationId],
@@ -267,6 +287,215 @@ router.get(
       res.setHeader("Cache-Control", "private, no-store");
       res.json({ data: rows });
     } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/accounts/:id/verify",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    const body = submitBodySchema.safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.status(400).json({ error: "SOCIAL_ACCOUNT_VERIFY_INVALID" });
+      return;
+    }
+    const payload = { accountId: id.data };
+    try {
+      const source = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            payload,
+          );
+          if (replay) return { replay } as const;
+          const account = await client.query<{
+            provider: string;
+            account_key: string;
+            integration_key: string | null;
+            status: string;
+          }>(
+            `SELECT provider,account_key,integration_key,status
+             FROM social_accounts
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (account.rowCount !== 1)
+            throw new Error("SOCIAL_ACCOUNT_NOT_FOUND");
+          if (account.rows[0].status === "DISABLED")
+            throw new Error("SOCIAL_ACCOUNT_DISABLED");
+          if (!account.rows[0].integration_key)
+            throw new Error("SOCIAL_ACCOUNT_INTEGRATION_MISSING");
+          return { account: account.rows[0] } as const;
+        },
+      );
+      if ("replay" in source) {
+        res.json(source.replay);
+        return;
+      }
+      const verification = await verifySocialAccount({
+        requestKey: body.data.requestKey,
+        provider: source.account.provider,
+        accountKey: source.account.account_key,
+        integrationKey: source.account.integration_key!,
+      });
+      const result = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            payload,
+          );
+          if (replay) return replay;
+          const account = await client.query<{
+            provider: string;
+            account_key: string;
+            integration_key: string | null;
+            status: string;
+          }>(
+            `SELECT provider,account_key,integration_key,status
+             FROM social_accounts
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 FOR UPDATE`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (account.rowCount !== 1)
+            throw new Error("SOCIAL_ACCOUNT_NOT_FOUND");
+          const current = account.rows[0];
+          if (
+            current.status === "DISABLED" ||
+            current.provider !== source.account.provider ||
+            current.account_key !== source.account.account_key ||
+            current.integration_key !== source.account.integration_key
+          )
+            throw new Error("SOCIAL_ACCOUNT_VERIFY_STATE_CONFLICT");
+          const providerRequestHash = socialHash({
+            provider: current.provider,
+            accountKey: current.account_key,
+            integrationKey: current.integration_key,
+          });
+          const outcome = verification.ok
+            ? "VERIFIED"
+            : verification.retryable
+              ? "RETRYABLE_FAILURE"
+              : "REAUTH_REQUIRED";
+          const providerReceiptHash = verification.ok
+            ? socialHash(verification.providerReceipt)
+            : null;
+          const externalAccountRefHash = verification.ok
+            ? socialHash(verification.externalAccountRef)
+            : null;
+          const errorCode = verification.ok ? null : verification.errorCode;
+          await client.query(
+            `INSERT INTO social_account_verifications
+               (id,tenant_id,organization_id,account_id,actor_legacy_user_id,
+                request_key,outcome,provider_request_hash,provider_receipt_hash,
+                external_account_ref_hash,error_code)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            [
+              nextSocialId(),
+              context.tenantId,
+              context.organizationId,
+              id.data,
+              context.legacyUserId,
+              body.data.requestKey,
+              outcome,
+              providerRequestHash,
+              providerReceiptHash,
+              externalAccountRefHash,
+              errorCode,
+            ],
+          );
+          if (verification.ok) {
+            await client.query(
+              `UPDATE social_accounts
+               SET status='VERIFIED',external_account_ref_hash=$4,
+                   verification_receipt_hash=$5,verified_at=now(),
+                   last_verification_at=now(),last_verification_error_code=NULL,
+                   display_name=COALESCE($6,display_name),updated_at=now()
+               WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+              [
+                context.tenantId,
+                context.organizationId,
+                id.data,
+                externalAccountRefHash,
+                providerReceiptHash,
+                verification.displayName,
+              ],
+            );
+          } else if (!verification.retryable) {
+            await client.query(
+              `UPDATE social_accounts
+               SET status='REAUTH_REQUIRED',verification_receipt_hash=NULL,
+                   verified_at=NULL,last_verification_at=now(),
+                   last_verification_error_code=$4,updated_at=now()
+               WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+              [context.tenantId, context.organizationId, id.data, errorCode],
+            );
+          } else if (current.status !== "VERIFIED") {
+            await client.query(
+              `UPDATE social_accounts
+               SET status='CONNECTED_UNVERIFIED',verification_receipt_hash=NULL,
+                   verified_at=NULL,last_verification_at=now(),
+                   last_verification_error_code=$4,updated_at=now()
+               WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+              [context.tenantId, context.organizationId, id.data, errorCode],
+            );
+          } else {
+            // Preserve the last provider-backed verification evidence while
+            // making a transient connectivity failure visible to operators.
+            await client.query(
+              `UPDATE social_accounts
+               SET last_verification_at=now(),last_verification_error_code=$4,
+                   updated_at=now()
+               WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+              [context.tenantId, context.organizationId, id.data, errorCode],
+            );
+          }
+          const answer = {
+            id: id.data,
+            status: verification.ok
+              ? "VERIFIED"
+              : verification.retryable
+                ? current.status
+                : "REAUTH_REQUIRED",
+            outcome,
+            errorCode,
+          };
+          await appendSocialOperationReceipt(client, context, {
+            operation: "VERIFY_SOCIAL_ACCOUNT",
+            entityType: "social_account",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload,
+            result: answer,
+          });
+          return answer;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "verify_social_account_connection",
+        "social_account",
+        undefined,
+        { socialAccountId: id.data, outcome: result.outcome },
+        req.ip,
+      );
+      res.json(result);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        res.status(409).json({ error: "SOCIAL_ACCOUNT_VERIFY_CONFLICT" });
+        return;
+      }
       sendFailure(res, error);
     }
   },
@@ -1023,6 +1252,148 @@ router.post(
         req.ip,
       );
       res.json(row);
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/performance",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    const query = z
+      .object({ limit: z.coerce.number().int().min(1).max(200).default(100) })
+      .safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "SOCIAL_PERFORMANCE_QUERY_INVALID" });
+      return;
+    }
+    try {
+      const rows = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client, context) =>
+          (
+            await client.query(
+              `WITH latest AS (
+                 SELECT DISTINCT ON (snapshot.publication_intent_id)
+                        snapshot.publication_intent_id,snapshot.metrics,snapshot.observed_at
+                 FROM social_performance_snapshots snapshot
+                 WHERE snapshot.tenant_id=$1 AND snapshot.organization_id=$2
+                 ORDER BY snapshot.publication_intent_id,snapshot.observed_at DESC,snapshot.created_at DESC
+               )
+               SELECT intent.id AS publication_id,brief.title,account.provider,
+                      account.display_name AS account_name,intent.published_at,
+                      state.status AS sync_status,state.next_sync_at,state.last_success_at,
+                      state.last_error_code,state.consecutive_failure_count,
+                      latest.metrics,latest.observed_at
+               FROM social_publication_intents intent
+               JOIN social_content_briefs brief
+                 ON brief.tenant_id=intent.tenant_id AND brief.id=intent.brief_id
+               JOIN social_accounts account
+                 ON account.tenant_id=intent.tenant_id AND account.id=intent.account_id
+               LEFT JOIN social_performance_sync_state state
+                 ON state.tenant_id=intent.tenant_id AND state.publication_intent_id=intent.id
+               LEFT JOIN latest ON latest.publication_intent_id=intent.id
+               WHERE intent.tenant_id=$1 AND intent.organization_id=$2
+                 AND intent.status='PUBLISHED'
+               ORDER BY COALESCE(latest.observed_at,intent.published_at) DESC,intent.id DESC
+               LIMIT $3`,
+              [context.tenantId, context.organizationId, query.data.limit],
+            )
+          ).rows,
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({
+        data: rows,
+        providerConnectionGate: providerConnectionGate(),
+        performanceWorkerEnabled:
+          process.env.SOCIAL_PERFORMANCE_WORKER_ENABLED?.trim().toLowerCase() ===
+          "true",
+      });
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/performance/:id/sync",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    const body = submitBodySchema.safeParse(req.body);
+    if (!id.success || !body.success) {
+      res.status(400).json({ error: "SOCIAL_PERFORMANCE_SYNC_INVALID" });
+      return;
+    }
+    const payload = { publicationId: id.data, action: "REQUEST_SYNC" };
+    try {
+      const result = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            body.data.requestKey,
+            payload,
+          );
+          if (replay) return replay;
+          const intent = await client.query(
+            `SELECT id FROM social_publication_intents
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3
+               AND status='PUBLISHED' FOR UPDATE`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (intent.rowCount !== 1)
+            throw new Error("SOCIAL_PERFORMANCE_PUBLICATION_NOT_FOUND");
+          await client.query(
+            `INSERT INTO social_performance_sync_state
+               (tenant_id,organization_id,publication_intent_id,status,next_sync_at)
+             VALUES ($1,$2,$3,'PENDING',now())
+             ON CONFLICT (tenant_id,publication_intent_id) DO UPDATE
+             SET status='ACTIVE',next_sync_at=now(),consecutive_failure_count=0,
+                 last_error_code=NULL,last_error_at=NULL,updated_at=now()
+             WHERE social_performance_sync_state.status <> 'RUNNING'`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          const state = await client.query(
+            `SELECT status,next_sync_at,last_success_at,last_error_code
+             FROM social_performance_sync_state
+             WHERE tenant_id=$1 AND organization_id=$2 AND publication_intent_id=$3`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (state.rowCount !== 1 || state.rows[0].status === "RUNNING")
+            throw new Error("SOCIAL_PERFORMANCE_SYNC_ALREADY_RUNNING");
+          const answer = {
+            publicationId: id.data,
+            status: state.rows[0].status,
+            nextSyncAt: state.rows[0].next_sync_at,
+          };
+          await appendSocialOperationReceipt(client, context, {
+            operation: "REQUEST_SOCIAL_PERFORMANCE_SYNC",
+            entityType: "social_publication_intent",
+            entityId: id.data,
+            requestKey: body.data.requestKey,
+            payload,
+            result: answer,
+          });
+          return answer;
+        },
+      );
+      await bestEffortAudit(
+        req.user!.id,
+        "request_social_performance_sync",
+        "social_publication_intent",
+        undefined,
+        { socialPublicationIntentId: id.data },
+        req.ip,
+      );
+      res.json(result);
     } catch (error) {
       sendFailure(res, error);
     }

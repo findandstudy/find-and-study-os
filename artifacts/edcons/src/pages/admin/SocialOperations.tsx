@@ -28,7 +28,6 @@ import {
   FileText,
   Link2,
   Loader2,
-  Megaphone,
   Plus,
   Send,
   Settings,
@@ -42,6 +41,11 @@ type SocialContext = {
   reason?: string | null;
   publishingEnabled: boolean;
   publicationGate?: { reason: string | null; allowedProviders: string[] };
+  providerConnectionGate?: {
+    enabled: boolean;
+    reason: string | null;
+    allowedProviders: string[];
+  };
   tenantId?: string;
   organizationId?: string;
 };
@@ -75,8 +79,58 @@ type SocialAccount = {
   display_name: string;
   integration_key: string | null;
   status: string;
+  verified_at: string | null;
+  last_verification_at: string | null;
+  last_verification_error_code: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type SocialMetrics = Partial<
+  Record<
+    | "impressions"
+    | "reach"
+    | "views"
+    | "engagements"
+    | "reactions"
+    | "comments"
+    | "shares"
+    | "saves"
+    | "clicks"
+    | "linkClicks"
+    | "videoViews"
+    | "watchTimeSeconds"
+    | "followersGained"
+    | "spendMinor"
+    | "conversions"
+    | "leads",
+    number
+  >
+>;
+
+type SocialPerformanceItem = {
+  publication_id: string;
+  title: string;
+  provider: string;
+  account_name: string;
+  published_at: string;
+  sync_status: string | null;
+  next_sync_at: string | null;
+  last_success_at: string | null;
+  last_error_code: string | null;
+  consecutive_failure_count: number | null;
+  metrics: SocialMetrics | null;
+  observed_at: string | null;
+};
+
+type SocialPerformanceResponse = {
+  data: SocialPerformanceItem[];
+  performanceWorkerEnabled: boolean;
+  providerConnectionGate: {
+    enabled: boolean;
+    reason: string | null;
+    allowedProviders: string[];
+  };
 };
 
 type SocialPublication = {
@@ -152,6 +206,12 @@ function date(value: string | null): string {
   return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "—";
 }
 
+function metric(value: number | undefined): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(
+    value ?? 0,
+  );
+}
+
 function requestKey(prefix: string): string {
   return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
@@ -216,6 +276,12 @@ export default function SocialOperations() {
     enabled,
     retry: false,
   });
+  const performance = useQuery<SocialPerformanceResponse>({
+    queryKey: ["social-operations", "performance"],
+    queryFn: () => customFetch("/api/social/performance?limit=100"),
+    enabled,
+    retry: false,
+  });
   const integrations = useQuery<{ data: Integration[] }>({
     queryKey: ["social-operations", "integrations"],
     queryFn: () => customFetch("/api/integrations"),
@@ -232,6 +298,9 @@ export default function SocialOperations() {
       }),
       queryClient.invalidateQueries({
         queryKey: ["social-operations", "publications"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["social-operations", "performance"],
       }),
     ]);
   };
@@ -322,6 +391,32 @@ export default function SocialOperations() {
     onError: (error) =>
       toast({
         title: tr ? "Hesap eklenemedi" : "Account could not be added",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const verifyAccount = useMutation({
+    mutationFn: (id: string) =>
+      customFetch(`/api/social/accounts/${id}/verify`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestKey: requestKey("social-account-verify"),
+        }),
+      }),
+    onSuccess: async () => {
+      await invalidate();
+      toast({
+        title: tr
+          ? "Hesap bağlantı doğrulaması tamamlandı"
+          : "Account connection verification completed",
+      });
+    },
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "Hesap bağlantısı doğrulanamadı"
+          : "Account connection could not be verified",
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       }),
@@ -443,6 +538,32 @@ export default function SocialOperations() {
       }),
   });
 
+  const requestPerformanceSync = useMutation({
+    mutationFn: (id: string) =>
+      customFetch(`/api/social/performance/${id}/sync`, {
+        method: "POST",
+        body: JSON.stringify({
+          requestKey: requestKey("social-performance-sync"),
+        }),
+      }),
+    onSuccess: async () => {
+      await invalidate();
+      toast({
+        title: tr
+          ? "Performans yenileme kuyruğa alındı"
+          : "Performance refresh queued",
+      });
+    },
+    onError: (error) =>
+      toast({
+        title: tr
+          ? "Performans yenileme başlatılamadı"
+          : "Performance refresh could not be started",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
   const reviewBrief = useMutation({
     mutationFn: ({
       id,
@@ -487,6 +608,18 @@ export default function SocialOperations() {
   const verifiedAccounts = (accounts.data?.data ?? []).filter(
     (account) => account.status === "VERIFIED",
   );
+  const performanceTotals = useMemo(() => {
+    const totals: SocialMetrics = {};
+    for (const item of performance.data?.data ?? []) {
+      for (const [key, value] of Object.entries(item.metrics ?? {})) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          const metric = key as keyof SocialMetrics;
+          totals[metric] = (totals[metric] ?? 0) + value;
+        }
+      }
+    }
+    return totals;
+  }, [performance.data?.data]);
   const canManage =
     context.data?.mode === "manage" && hasPermission("social.manage");
   const canApprove = hasPermission("social.approve");
@@ -838,9 +971,47 @@ export default function SocialOperations() {
                         {account.integration_key ||
                           (tr ? "Kasa referansı yok" : "No vault reference")}
                       </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {tr ? "Son doğrulama" : "Last verification"}:{" "}
+                        {date(account.last_verification_at)}
+                      </p>
+                      {account.last_verification_error_code && (
+                        <p className="mt-1 text-xs text-red-600">
+                          {account.last_verification_error_code}
+                        </p>
+                      )}
+                      {account.integration_key &&
+                        account.status !== "DISABLED" && (
+                          <Button
+                            className="mt-3"
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              !canManage ||
+                              verifyAccount.isPending ||
+                              context.data?.providerConnectionGate?.enabled !==
+                                true
+                            }
+                            onClick={() => verifyAccount.mutate(account.id)}
+                          >
+                            {verifyAccount.isPending ? (
+                              <Loader2 className="mr-2 size-4 animate-spin" />
+                            ) : (
+                              <ShieldCheck className="mr-2 size-4" />
+                            )}
+                            {tr ? "Bağlantıyı doğrula" : "Verify connection"}
+                          </Button>
+                        )}
                     </div>
                   ))}
                 </div>
+              )}
+              {context.data?.providerConnectionGate?.enabled !== true && (
+                <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
+                  {tr
+                    ? `Sağlayıcı bağlantı testi güvenlik kapısında kapalıdır (${context.data?.providerConnectionGate?.reason ?? "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED"}).`
+                    : `Provider connection testing is safety-gated (${context.data?.providerConnectionGate?.reason ?? "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED"}).`}
+                </p>
               )}
               <Button variant="link" asChild className="mt-4 px-0">
                 <a href="/admin/settings">
@@ -1010,47 +1181,133 @@ export default function SocialOperations() {
         <TabsContent value="performance">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                {tr
-                  ? "Performans & reklam ölçümü"
-                  : "Performance & ad measurement"}
-              </CardTitle>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">
+                    {tr
+                      ? "Doğrulanmış yayın performansı"
+                      : "Verified publication performance"}
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {tr
+                      ? "Her kart yalnız sağlayıcı receipt'ine bağlı en güncel snapshot'ı kullanır."
+                      : "Each card uses only the latest snapshot bound to a provider receipt."}
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    performance.data?.performanceWorkerEnabled
+                      ? "default"
+                      : "outline"
+                  }
+                >
+                  {performance.data?.performanceWorkerEnabled
+                    ? tr
+                      ? "Toplayıcı aktif"
+                      : "Collector active"
+                    : tr
+                      ? "Toplayıcı kapalı"
+                      : "Collector disabled"}
+                </Badge>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-xl border p-4">
-                  <BarChart3 className="size-5 text-primary" />
-                  <p className="mt-3 font-medium">UTM attribution</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {tr
-                      ? "Brief → kampanya → lead/application zinciri için hazır."
-                      : "Ready for brief → campaign → lead/application lineage."}
-                  </p>
-                </div>
-                <div className="rounded-xl border p-4">
-                  <Megaphone className="size-5 text-primary" />
-                  <p className="mt-3 font-medium">Meta Ads</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {tr
-                      ? "Mevcut Meta bağlantısına bağlanacak; gerçek metrik snapshot'ı henüz yok."
-                      : "Will use the existing Meta connection; no real metric snapshot exists yet."}
-                  </p>
-                </div>
-                <div className="rounded-xl border p-4">
-                  <ShieldCheck className="size-5 text-primary" />
-                  <p className="mt-3 font-medium">Receipt-bound metrics</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {tr
-                      ? "Performans kayıtları provider receipt hash ile append-only tutulacak."
-                      : "Performance snapshots are append-only and bound to provider receipt hashes."}
-                  </p>
-                </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                {[
+                  [
+                    tr ? "Gösterim" : "Impressions",
+                    performanceTotals.impressions,
+                  ],
+                  [tr ? "Erişim" : "Reach", performanceTotals.reach],
+                  [
+                    tr ? "Etkileşim" : "Engagements",
+                    performanceTotals.engagements,
+                  ],
+                  [tr ? "Tıklama" : "Clicks", performanceTotals.clicks],
+                  [
+                    tr ? "Dönüşüm" : "Conversions",
+                    performanceTotals.conversions,
+                  ],
+                  [tr ? "Lead" : "Leads", performanceTotals.leads],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border p-4">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="mt-2 text-2xl font-semibold">
+                      {metric(value as number | undefined)}
+                    </p>
+                  </div>
+                ))}
               </div>
-              <div className="mt-4 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                {tr
-                  ? "Doğrulanmış provider performans verisi gelmediği için oran veya ROI uydurulmuyor."
-                  : "No rates or ROI are fabricated before verified provider performance data arrives."}
-              </div>
+              {(performance.data?.data ?? []).length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  {tr
+                    ? "Henüz receipt-bound performans snapshot'ı yok; oran veya ROI uydurulmuyor."
+                    : "There is no receipt-bound performance snapshot yet; no rates or ROI are fabricated."}
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {performance.data!.data.map((item) => (
+                    <div
+                      key={item.publication_id}
+                      className="flex flex-col gap-3 rounded-xl border p-4 lg:flex-row lg:items-center"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{item.title}</p>
+                          <Badge variant="outline">{item.provider}</Badge>
+                          <Badge
+                            className={`border-0 ${statusTone(item.sync_status ?? "PENDING")}`}
+                          >
+                            {item.sync_status ?? "PENDING"}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {item.account_name} · {tr ? "Gözlem" : "Observed"}:{" "}
+                          {date(item.observed_at)}
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {tr ? "Gösterim" : "Impressions"}:{" "}
+                          {metric(item.metrics?.impressions)} ·{" "}
+                          {tr ? "Etkileşim" : "Engagements"}:{" "}
+                          {metric(item.metrics?.engagements)} ·{" "}
+                          {tr ? "Tıklama" : "Clicks"}:{" "}
+                          {metric(item.metrics?.clicks)} ·{" "}
+                          {tr ? "Lead" : "Leads"}: {metric(item.metrics?.leads)}
+                        </p>
+                        {item.last_error_code && (
+                          <p className="mt-1 text-xs text-red-600">
+                            {item.last_error_code}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          !canManage ||
+                          requestPerformanceSync.isPending ||
+                          item.sync_status === "RUNNING"
+                        }
+                        onClick={() =>
+                          requestPerformanceSync.mutate(item.publication_id)
+                        }
+                      >
+                        {requestPerformanceSync.isPending && (
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                        )}
+                        {tr ? "Yenilemeyi sırala" : "Queue refresh"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {performance.data?.providerConnectionGate.enabled !== true && (
+                <p className="mt-4 text-xs text-amber-700 dark:text-amber-300">
+                  {tr
+                    ? `Gerçek metrik toplama güvenlik kapısında kapalıdır (${performance.data?.providerConnectionGate.reason ?? "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED"}).`
+                    : `Real metric collection is safety-gated (${performance.data?.providerConnectionGate.reason ?? "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED"}).`}
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

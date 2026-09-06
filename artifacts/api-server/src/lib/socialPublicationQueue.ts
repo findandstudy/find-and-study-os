@@ -115,6 +115,17 @@ export async function claimSocialPublication(
            AND running.organization_id=intent.organization_id
            AND running.account_id=intent.account_id AND running.status='RUNNING'
        )
+       AND NOT EXISTS (
+         SELECT 1
+         FROM social_performance_sync_state performance_state
+         JOIN social_publication_intents performance_intent
+           ON performance_intent.tenant_id=performance_state.tenant_id
+          AND performance_intent.id=performance_state.publication_intent_id
+         WHERE performance_state.tenant_id=intent.tenant_id
+           AND performance_state.organization_id=intent.organization_id
+           AND performance_state.status='RUNNING'
+           AND performance_intent.account_id=intent.account_id
+       )
      ORDER BY intent.next_attempt_at,intent.created_at,intent.id
      FOR UPDATE SKIP LOCKED LIMIT 1`,
     [context.tenantId, context.organizationId],
@@ -122,7 +133,7 @@ export async function claimSocialPublication(
   if (candidate.rowCount !== 1) return null;
   const accountLock = await client.query<{ locked: boolean }>(
     "SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS locked",
-    [`social-publication-account:${candidate.rows[0].account_id}`],
+    [`social-provider-account:${candidate.rows[0].account_id}`],
   );
   if (accountLock.rows[0]?.locked !== true) return null;
   if (candidate.rows[0].status !== "QUEUED") {
@@ -276,6 +287,13 @@ export async function completeSocialPublication(
         receiptHash,
         postRefHash,
       ],
+    );
+    await client.query(
+      `INSERT INTO social_performance_sync_state
+         (tenant_id,organization_id,publication_intent_id,status,next_sync_at)
+       VALUES ($1,$2,$3,'PENDING',now())
+       ON CONFLICT (tenant_id,publication_intent_id) DO NOTHING`,
+      [context.tenantId, context.organizationId, claim.id],
     );
     return "PUBLISHED";
   }
