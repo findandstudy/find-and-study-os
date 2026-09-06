@@ -1119,8 +1119,9 @@ test("staging CI is isolated, exact-source and integration-disabled", () => {
   );
   assert.match(
     dockerfile,
-    /FROM \$\{NODE_IMAGE\} AS runtime[\s\S]*corepack prepare pnpm@10\.33\.2 --activate[\s\S]*test "\$\(pnpm --version\)" = "10\.33\.2"/,
+    /FROM \$\{NODE_IMAGE\} AS runtime[\s\S]*ENV COREPACK_HOME=\/usr\/local\/share\/corepack[\s\S]*corepack prepare pnpm@10\.33\.2 --activate[\s\S]*test "\$\(pnpm --version\)" = "10\.33\.2"/,
   );
+  assert.match(workflow, /docker run --rm --network none --read-only --tmpfs/);
   assert.match(workflow, /test:migration-authority/);
   assert.match(workflow, /test:rate-limit-ip-security/);
   assert.match(workflow, /test:login-accessibility/);

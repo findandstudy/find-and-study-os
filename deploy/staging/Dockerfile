@@ -29,9 +29,11 @@ RUN SKIP_PLAYWRIGHT_BROWSER_CHECK=1 pnpm run build:prod
 RUN node lib/db/validate-migrations.mjs
 
 FROM ${NODE_IMAGE} AS runtime
+ENV COREPACK_HOME=/usr/local/share/corepack
 ARG APP_UID=10042
 ARG APP_GID=10042
-RUN corepack enable \
+RUN install -d -o root -g root -m 0755 "${COREPACK_HOME}" \
+  && corepack enable \
   && corepack prepare pnpm@10.33.2 --activate \
   && test "$(pnpm --version)" = "10.33.2" \
   && groupadd --gid "${APP_GID}" findandstudy \
