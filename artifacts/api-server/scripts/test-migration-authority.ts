@@ -225,6 +225,8 @@ test("production prefix and canonical additive migration tail are pinned", () =>
       "0098_operations_work_read_model_indexes",
       "0099_social_publication_orchestration",
       "0100_social_provider_observability",
+      "0101_social_worker_heartbeats",
+      "0102_social_media_assets",
     ],
   );
 
@@ -853,7 +855,7 @@ test("comprehensive Control Plane gate is explicit and fixed to the disposable t
     /target\.pathname\.slice\(1\),[\s\S]*?isDynamicCiTarget \? dynamicCiDatabase : "fasos_apply_local"/,
   );
   assert.match(source, /target\.port, isDynamicCiTarget \? "5432" : "5433"/);
-  assert.match(source, /assert\.equal\(migrationCount\.rows\[0\]\.count, 101\)/);
+  assert.match(source, /assert\.equal\(migrationCount\.rows\[0\]\.count, 103\)/);
   assert.match(
     source,
     /if \(isDynamicCiTarget\) \{[\s\S]*CREATE ROLE \$\{role\.name\}[\s\S]*NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS/,
@@ -886,7 +888,7 @@ test("Student Journey G45 PostgreSQL integration is explicit and loopback-only",
   assert.match(source, /target\.pathname, "\/fasos_apply_local"/);
   assert.match(source, /safeTarget\(executorUrl, "fas_journey_executor"\)/);
   assert.match(source, /ALLOW_LIVE_INTEGRATIONS/);
-  assert.match(source, /rows\[0\]\?\.count, 101/);
+  assert.match(source, /rows\[0\]\?\.count, 103/);
   assert.match(source, /journey_notification_intents_default_off_chk/);
   assert.match(
     source,
@@ -919,7 +921,7 @@ test("Institution Admissions PostgreSQL integration is explicit and least-privil
   assert.match(source, /institution_postgres_test_requires_disposable_loopback_database/);
   assert.match(source, /new URL\(actorUrl\)\.username !== "fas_institution_executor"/);
   assert.match(source, /NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS/);
-  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 101/);
+  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 103/);
   assert.match(source, /GRANT SELECT ON TABLE institution_memberships/);
   assert.doesNotMatch(source, /GRANT SELECT, INSERT ON TABLE institution_memberships/);
   assert.match(source, /institution_step_up_receipts/);
@@ -949,7 +951,7 @@ test("Institution case intake integration is explicit and EXECUTE-only", () => {
   assert.match(source, /institution_case_intake_test_requires_disposable_loopback_database/);
   assert.match(source, /fas_institution_intake_executor/);
   assert.match(source, /fas_institution_intake_owner/);
-  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 101/);
+  assert.match(source, /migrationCount\.rows\[0\]\?\.count, 103/);
   assert.match(source, /case_insert: false/);
   assert.match(source, /receipt_insert: false/);
   assert.match(source, /can_execute: true/);
@@ -980,7 +982,7 @@ test("Institution evidence sharing integration is explicit and EXECUTE-only", ()
   assert.match(source, /institution_evidence_share_test_requires_disposable_loopback_database/);
   assert.match(source, /fas_institution_evidence_share_executor/);
   assert.match(source, /fas_institution_evidence_owner/);
-  assert.match(source, /rows\[0\]\?\.count, 101/);
+  assert.match(source, /rows\[0\]\?\.count, 103/);
   assert.match(source, /evidence_select: false/);
   assert.match(source, /consent_select: false/);
   assert.match(source, /share_insert: false/);

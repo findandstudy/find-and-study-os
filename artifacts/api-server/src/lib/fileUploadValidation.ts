@@ -32,6 +32,7 @@ export {
   validateApplicationDocumentFile,
   validateStudentDocumentFile,
   validateUploadedFileBuffer,
+  detectUploadedFileType,
   validateFile,
 } from "@workspace/file-upload-validation";
 

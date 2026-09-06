@@ -1900,10 +1900,22 @@ paths:
         - { name: country, in: query, schema: { type: string } }
         - { name: universityId, in: query, schema: { type: integer } }
         - { name: year, in: query, schema: { type: integer } }
-        - { name: status, in: query, schema: { type: string, enum: [active, expiring_soon, expired, no_dates] } }
+        - {
+            name: status,
+            in: query,
+            schema:
+              {
+                type: string,
+                enum: [active, expiring_soon, expired, no_dates],
+              },
+          }
         - { name: search, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, default: 1 } }
-        - { name: pageSize, in: query, schema: { type: integer, default: 25, maximum: 100 } }
+        - {
+            name: pageSize,
+            in: query,
+            schema: { type: integer, default: 25, maximum: 100 },
+          }
       responses:
         "200":
           description: Page of contracts
@@ -2640,7 +2652,16 @@ paths:
           in: query
           schema:
             type: string
-            enum: [queued, running, submitted, already_exists, program_missing, failed, canceled]
+            enum:
+              [
+                queued,
+                running,
+                submitted,
+                already_exists,
+                program_missing,
+                failed,
+                canceled,
+              ]
         - name: mode
           in: query
           schema:
@@ -2838,7 +2859,10 @@ paths:
           description: Request accepted
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/PortalSubmissionProcessingAccepted" }
+              schema:
+                {
+                  $ref: "#/components/schemas/PortalSubmissionProcessingAccepted",
+                }
         "404":
           description: Submission not found
           content:
@@ -2867,7 +2891,8 @@ paths:
             schema:
               type: object
               properties:
-                thresholdMinutes: { type: integer, minimum: 1, maximum: 60, default: 10 }
+                thresholdMinutes:
+                  { type: integer, minimum: 1, maximum: 60, default: 10 }
       responses:
         "409":
           description: Recovery is owned exclusively by the release-matched worker
@@ -2924,7 +2949,8 @@ paths:
           description: Selection accepted
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/PortalBulkProcessingAccepted" }
+              schema:
+                { $ref: "#/components/schemas/PortalBulkProcessingAccepted" }
         "503":
           description: A matching healthy worker is unavailable
           content:
@@ -2953,7 +2979,8 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: "#/components/schemas/PortalLifecycleProposal" }
+                    items:
+                      { $ref: "#/components/schemas/PortalLifecycleProposal" }
                 required: [items]
 
   /portal-lifecycle-proposals/{id}/review:
@@ -2970,13 +2997,17 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/PortalLifecycleProposalReviewBody" }
+            schema:
+              { $ref: "#/components/schemas/PortalLifecycleProposalReviewBody" }
       responses:
         "200":
           description: Review persisted; response states whether bounded execution was queued
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/PortalLifecycleProposalReviewResult" }
+              schema:
+                {
+                  $ref: "#/components/schemas/PortalLifecycleProposalReviewResult",
+                }
         "404":
           description: Proposal not found
           content:
@@ -3026,7 +3057,13 @@ paths:
             schema:
               type: object
               properties:
-                requestKey: { type: string, minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9._:-]+$' }
+                requestKey:
+                  {
+                    type: string,
+                    minLength: 1,
+                    maxLength: 100,
+                    pattern: "^[A-Za-z0-9._:-]+$",
+                  }
       responses:
         "202":
           description: Test queued
@@ -3843,7 +3880,8 @@ paths:
           schema: { type: string, enum: [critical, high, medium, low] }
         - name: source
           in: query
-          schema: { type: string, enum: [task, application, document, portal, offer] }
+          schema:
+            { type: string, enum: [task, application, document, portal, offer] }
         - name: scope
           in: query
           schema: { type: string, enum: [all, mine], default: all }
@@ -3876,13 +3914,14 @@ paths:
                 $ref: "#/components/schemas/SocialOperationsContext"
         "401": { description: Authentication required }
         "403": { description: social.view permission required }
-        "503": { description: Social operations scope is unavailable or disabled }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
 
   /social/overview:
     get:
       operationId: getSocialOperationsOverview
       tags: [social]
-      summary: Get content, account and publication-intent counts
+      summary: Get content, account, publication and release-bound worker health
       responses:
         "200":
           description: Tenant and organization scoped overview
@@ -3892,7 +3931,8 @@ paths:
                 $ref: "#/components/schemas/SocialOperationsOverview"
         "401": { description: Authentication required }
         "403": { description: social.view permission required }
-        "503": { description: Social operations scope is unavailable or disabled }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
 
   /social/accounts:
     get:
@@ -3913,7 +3953,8 @@ paths:
                     items: { $ref: "#/components/schemas/SocialAccount" }
         "401": { description: Authentication required }
         "403": { description: social.view permission required }
-        "503": { description: Social operations scope is unavailable or disabled }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
     post:
       operationId: createSocialAccount
       tags: [social]
@@ -3933,7 +3974,76 @@ paths:
         "401": { description: Authentication required }
         "403": { description: social.manage permission required }
         "409": { description: Account key already exists in this scope }
-        "503": { description: Social operations scope is unavailable or disabled }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
+
+  /social/media/uploads/request-url:
+    post:
+      operationId: requestSocialMediaUpload
+      tags: [social]
+      summary: Request an uploader-bound temporary social media upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SocialMediaUploadRequest" }
+      responses:
+        "200":
+          description: Short-lived upload target issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialMediaUploadTarget" }
+        "400": { description: Unsupported media metadata }
+        "401": { description: Authentication required }
+        "403": { description: social.manage permission required }
+        "429": { description: Upload request rate limit exceeded }
+        "503": { description: Upload ownership binding unavailable }
+
+  /social/media:
+    post:
+      operationId: registerSocialMediaAsset
+      tags: [social]
+      summary: Verify uploaded bytes and register an immutable media asset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/RegisterSocialMediaAssetBody" }
+      responses:
+        "201":
+          description: Content-addressed media asset registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialMediaAsset" }
+        "400": { description: Metadata or file signature mismatch }
+        "401": { description: Authentication required }
+        "403": { description: Asset is not owned by the current user }
+        "404": { description: Temporary upload not found }
+        "503": { description: Social operations scope is unavailable }
+
+  /social/media/{id}/content:
+    get:
+      operationId: getSocialMediaAssetContent
+      tags: [social]
+      summary: Stream a tenant-authorized private social media asset
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Private media bytes
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            video/mp4: { schema: { type: string, format: binary } }
+        "400": { description: Invalid asset id }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+        "404": { description: Asset not found in the selected tenant scope }
 
   /social/briefs:
     post:
@@ -3944,7 +4054,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CreateSocialContentBriefBody" }
+            schema:
+              { $ref: "#/components/schemas/CreateSocialContentBriefBody" }
       responses:
         "201":
           description: Draft brief created
@@ -3954,7 +4065,8 @@ paths:
         "400": { description: Invalid brief }
         "401": { description: Authentication required }
         "403": { description: social.manage permission required }
-        "503": { description: Social operations scope is unavailable or disabled }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
 
   /social/briefs/{id}/submit:
     post:
@@ -3966,6 +4078,11 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitSocialOperationBody" }
       responses:
         "200":
           description: Brief submitted for review
@@ -3976,7 +4093,8 @@ paths:
         "401": { description: Authentication required }
         "403": { description: social.manage permission required }
         "409": { description: Brief is not in DRAFT state }
-        "503": { description: Social operations scope is unavailable or disabled }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
 
   /social/briefs/{id}/review:
     post:
@@ -3992,7 +4110,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ReviewSocialContentBriefBody" }
+            schema:
+              { $ref: "#/components/schemas/ReviewSocialContentBriefBody" }
       responses:
         "200":
           description: Append-only review decision recorded
@@ -4003,7 +4122,214 @@ paths:
         "401": { description: Authentication required }
         "403": { description: social.approve permission required }
         "409": { description: "Maker-checker, state or idempotency conflict" }
-        "503": { description: Social operations scope is unavailable or disabled }
+        "503":
+          { description: Social operations scope is unavailable or disabled }
+
+  /social/accounts/{id}/verify:
+    post:
+      operationId: verifySocialAccount
+      tags: [social]
+      summary: Verify an account through the explicitly enabled provider adapter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitSocialOperationBody" }
+      responses:
+        "200":
+          description: Verification outcome recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialAccountVerificationResult" }
+        "400": { description: Invalid request }
+        "401": { description: Authentication required }
+        "403": { description: social.manage permission required }
+        "409": { description: Verification state or idempotency conflict }
+        "503": { description: Provider connectivity is disabled }
+
+  /social/publications:
+    get:
+      operationId: listSocialPublications
+      tags: [social]
+      summary: List publication intents in the selected tenant scope
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/SocialPublicationStatus" }
+      responses:
+        "200":
+          description: Publication intents
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialPublicationListResponse" }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+    post:
+      operationId: createSocialPublication
+      tags: [social]
+      summary: Create a draft publication intent from an approved brief and verified account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSocialPublicationBody" }
+      responses:
+        "201":
+          description: Draft publication intent created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialPublication" }
+        "400": { description: Invalid request or media preflight failure }
+        "401": { description: Authentication required }
+        "403": { description: social.manage permission required }
+        "409": { description: "Brief, account or idempotency conflict" }
+
+  /social/publications/{id}/submit:
+    post:
+      operationId: submitSocialPublication
+      tags: [social]
+      summary: Submit a draft publication intent for maker-checker review
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitSocialOperationBody" }
+      responses:
+        "200":
+          description: Publication submitted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialPublication" }
+        "400": { description: Invalid request }
+        "409": { description: Publication is not in draft state }
+
+  /social/publications/{id}/review:
+    post:
+      operationId: reviewSocialPublication
+      tags: [social]
+      summary: Approve or reject a publication intent using maker-checker
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReviewSocialContentBriefBody" }
+      responses:
+        "200":
+          description: Review decision recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialContentReviewResult" }
+        "400": { description: Invalid request }
+        "409": { description: "Maker-checker, state or idempotency conflict" }
+
+  /social/publications/{id}/attempts:
+    get:
+      operationId: listSocialPublicationAttempts
+      tags: [social]
+      summary: List immutable worker attempts for a publication
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Publication attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/SocialPublicationAttempt" }
+        "400": { description: Invalid publication id }
+
+  /social/publications/{id}/cancel:
+    post:
+      operationId: cancelSocialPublication
+      tags: [social]
+      summary: Cancel a publication that has not started executing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitSocialOperationBody" }
+      responses:
+        "200":
+          description: Publication canceled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialPublication" }
+        "400": { description: Invalid request }
+        "409": { description: Publication cannot be canceled in its current state }
+
+  /social/performance:
+    get:
+      operationId: listSocialPerformance
+      tags: [social]
+      summary: List latest receipt-backed performance snapshots
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        "200":
+          description: Latest performance snapshots and collection gate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialPerformanceResponse" }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+
+  /social/performance/{id}/sync:
+    post:
+      operationId: requestSocialPerformanceSync
+      tags: [social]
+      summary: Queue a bounded performance refresh for a published item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitSocialOperationBody" }
+      responses:
+        "200":
+          description: Performance refresh queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialPerformanceSyncResult" }
+        "400": { description: Invalid request }
+        "404": { description: Published item not found }
+        "409": { description: A refresh is already running }
 
 components:
   parameters:
@@ -4060,7 +4386,17 @@ components:
       description: Null means the denominator is zero or unavailable; zero is a measured 0%.
     ReportingResponseMeta:
       type: object
-      required: [schemaVersion, metricVersion, asOf, filters, freshness, latencyMs, warnings, privacy]
+      required:
+        [
+          schemaVersion,
+          metricVersion,
+          asOf,
+          filters,
+          freshness,
+          latencyMs,
+          warnings,
+          privacy,
+        ]
       properties:
         schemaVersion: { type: integer, minimum: 1 }
         metricVersion: { type: string }
@@ -4089,27 +4425,58 @@ components:
         privacy: { type: string, const: aggregate_non_personal }
     ReportingMetricDefinition:
       type: object
-      required: [key, label, domain, description, grain, timeSemantics, sensitivity]
+      required:
+        [key, label, domain, description, grain, timeSemantics, sensitivity]
       properties:
         key: { type: string }
         label: { type: string }
-        domain: { type: string, enum: [executive, funnel, applications, finance, data_quality] }
+        domain:
+          {
+            type: string,
+            enum: [executive, funnel, applications, finance, data_quality],
+          }
         description: { type: string }
         grain: { type: string, enum: [record, application, currency, issue] }
-        timeSemantics: { type: string, enum: [created_cohort, financial_event, current_inventory, global_snapshot] }
+        timeSemantics:
+          {
+            type: string,
+            enum:
+              [
+                created_cohort,
+                financial_event,
+                current_inventory,
+                global_snapshot,
+              ],
+          }
         denominator: { type: string }
         sensitivity: { type: string, const: aggregate_non_personal }
     ReportingMetaResponse:
       type: object
-      required: [schemaVersion, metricVersion, generatedAt, timezone, maximumRangeDays, currencyPolicy, exportPolicy, metrics, branches]
+      required:
+        [
+          schemaVersion,
+          metricVersion,
+          generatedAt,
+          timezone,
+          maximumRangeDays,
+          currencyPolicy,
+          exportPolicy,
+          metrics,
+          branches,
+        ]
       properties:
         schemaVersion: { type: integer, minimum: 1 }
         metricVersion: { type: string }
         generatedAt: { type: string, format: date-time }
         timezone: { type: string, const: UTC }
         maximumRangeDays: { type: integer, const: 366 }
-        currencyPolicy: { type: string, const: original_currency_only_no_cross_currency_sum }
-        exportPolicy: { type: string, const: disabled_in_v1_until_audited_field_level_export_is_approved }
+        currencyPolicy:
+          { type: string, const: original_currency_only_no_cross_currency_sum }
+        exportPolicy:
+          {
+            type: string,
+            const: disabled_in_v1_until_audited_field_level_export_is_approved,
+          }
         metrics:
           type: array
           items: { $ref: "#/components/schemas/ReportingMetricDefinition" }
@@ -4135,16 +4502,30 @@ components:
           properties:
             cards:
               type: object
-              required: [leadsCreated, leadsChangePercent, leadConversionRate, studentsCreated, studentsChangePercent, applicationsCreated, applicationsChangePercent, applicationWinRate, activeApplications, staleApplications]
+              required:
+                [
+                  leadsCreated,
+                  leadsChangePercent,
+                  leadConversionRate,
+                  studentsCreated,
+                  studentsChangePercent,
+                  applicationsCreated,
+                  applicationsChangePercent,
+                  applicationWinRate,
+                  activeApplications,
+                  staleApplications,
+                ]
               properties:
                 leadsCreated: { type: integer, minimum: 0 }
                 leadsChangePercent: { type: [number, "null"] }
-                leadConversionRate: { $ref: "#/components/schemas/ReportingNullablePercent" }
+                leadConversionRate:
+                  { $ref: "#/components/schemas/ReportingNullablePercent" }
                 studentsCreated: { type: integer, minimum: 0 }
                 studentsChangePercent: { type: [number, "null"] }
                 applicationsCreated: { type: integer, minimum: 0 }
                 applicationsChangePercent: { type: [number, "null"] }
-                applicationWinRate: { $ref: "#/components/schemas/ReportingNullablePercent" }
+                applicationWinRate:
+                  { $ref: "#/components/schemas/ReportingNullablePercent" }
                 activeApplications: { type: integer, minimum: 0 }
                 staleApplications: { type: integer, minimum: 0 }
             trendBucket: { type: string, enum: [day, week, month] }
@@ -4175,22 +4556,34 @@ components:
                 properties:
                   key: { type: string }
                   value: { type: integer, minimum: 0 }
-                  rateFromPrevious: { $ref: "#/components/schemas/ReportingNullablePercent" }
+                  rateFromPrevious:
+                    { $ref: "#/components/schemas/ReportingNullablePercent" }
             lost: { type: integer, minimum: 0 }
             sources:
               type: array
               maxItems: 20
               items:
                 type: object
-                required: [source, leads, converted, applications, won, leadConversionRate, applicationWinRate]
+                required:
+                  [
+                    source,
+                    leads,
+                    converted,
+                    applications,
+                    won,
+                    leadConversionRate,
+                    applicationWinRate,
+                  ]
                 properties:
                   source: { type: string }
                   leads: { type: integer, minimum: 0 }
                   converted: { type: integer, minimum: 0 }
                   applications: { type: integer, minimum: 0 }
                   won: { type: integer, minimum: 0 }
-                  leadConversionRate: { $ref: "#/components/schemas/ReportingNullablePercent" }
-                  applicationWinRate: { $ref: "#/components/schemas/ReportingNullablePercent" }
+                  leadConversionRate:
+                    { $ref: "#/components/schemas/ReportingNullablePercent" }
+                  applicationWinRate:
+                    { $ref: "#/components/schemas/ReportingNullablePercent" }
     ReportingApplicationsResponse:
       type: object
       required: [meta, data]
@@ -4223,7 +4616,8 @@ components:
                 type: object
                 required: [bucket, value]
                 properties:
-                  bucket: { type: string, enum: [0-2d, 3-7d, 8-14d, 15-30d, 31d+] }
+                  bucket:
+                    { type: string, enum: [0-2d, 3-7d, 8-14d, 15-30d, 31d+] }
                   value: { type: integer, minimum: 0 }
             destinations:
               type: array
@@ -4235,10 +4629,20 @@ components:
                   destination: { type: string }
                   applications: { type: integer, minimum: 0 }
                   won: { type: integer, minimum: 0 }
-                  winRate: { $ref: "#/components/schemas/ReportingNullablePercent" }
+                  winRate:
+                    { $ref: "#/components/schemas/ReportingNullablePercent" }
     ReportingCommissionByCurrency:
       type: object
-      required: [currency, records, grossCommission, agentLiability, netCommission, collected, outstanding]
+      required:
+        [
+          currency,
+          records,
+          grossCommission,
+          agentLiability,
+          netCommission,
+          collected,
+          outstanding,
+        ]
       properties:
         currency: { type: string, pattern: "^[A-Z]{3}$" }
         records: { type: integer, minimum: 0 }
@@ -4265,13 +4669,19 @@ components:
           type: object
           required: [currencyPolicy, commissions, serviceFees, transactions]
           properties:
-            currencyPolicy: { type: string, const: original_currency_only_no_cross_currency_sum }
+            currencyPolicy:
+              {
+                type: string,
+                const: original_currency_only_no_cross_currency_sum,
+              }
             commissions:
               type: array
-              items: { $ref: "#/components/schemas/ReportingCommissionByCurrency" }
+              items:
+                { $ref: "#/components/schemas/ReportingCommissionByCurrency" }
             serviceFees:
               type: array
-              items: { $ref: "#/components/schemas/ReportingServiceFeeByCurrency" }
+              items:
+                { $ref: "#/components/schemas/ReportingServiceFeeByCurrency" }
             transactions:
               type: array
               items:
@@ -4293,11 +4703,19 @@ components:
           properties:
             coverage:
               type: object
-              required: [leadSourcePercent, applicationLeadLineagePercent, applicationCatalogLinkPercent]
+              required:
+                [
+                  leadSourcePercent,
+                  applicationLeadLineagePercent,
+                  applicationCatalogLinkPercent,
+                ]
               properties:
-                leadSourcePercent: { $ref: "#/components/schemas/ReportingNullablePercent" }
-                applicationLeadLineagePercent: { $ref: "#/components/schemas/ReportingNullablePercent" }
-                applicationCatalogLinkPercent: { $ref: "#/components/schemas/ReportingNullablePercent" }
+                leadSourcePercent:
+                  { $ref: "#/components/schemas/ReportingNullablePercent" }
+                applicationLeadLineagePercent:
+                  { $ref: "#/components/schemas/ReportingNullablePercent" }
+                applicationCatalogLinkPercent:
+                  { $ref: "#/components/schemas/ReportingNullablePercent" }
             summary:
               type: object
               required: [critical, warning]
@@ -4315,7 +4733,11 @@ components:
                   severity: { type: string, enum: [critical, warning] }
                   count: { type: integer, minimum: 0 }
                   affectedRecords: { type: integer, minimum: 0 }
-                  scope: { type: string, enum: [selected_cohort, branch_snapshot, global_snapshot] }
+                  scope:
+                    {
+                      type: string,
+                      enum: [selected_cohort, branch_snapshot, global_snapshot],
+                    }
             mutationAvailable: { type: boolean, const: false }
     AdapterSpecSummary:
       type: object
@@ -4459,7 +4881,20 @@ components:
       additionalProperties: false
     UpsertAdapterSpecResponse:
       type: object
-      required: [key, version, enabled, jsHookApproved, privilegedApproved, hasJsHook, privileged, sha256, byteLength, activationBlockers, activationRequiresSeparateStep]
+      required:
+        [
+          key,
+          version,
+          enabled,
+          jsHookApproved,
+          privilegedApproved,
+          hasJsHook,
+          privileged,
+          sha256,
+          byteLength,
+          activationBlockers,
+          activationRequiresSeparateStep,
+        ]
       properties:
         key: { type: string }
         version: { type: integer }
@@ -7295,7 +7730,17 @@ components:
               type: boolean
             topic:
               type: ["string", "null"]
-              enum: [contract, payment, commission, partner, human_request, visa_documents, supplier, null]
+              enum:
+                [
+                  contract,
+                  payment,
+                  commission,
+                  partner,
+                  human_request,
+                  visa_documents,
+                  supplier,
+                  null,
+                ]
           required:
             - escalated
             - topic
@@ -7475,11 +7920,31 @@ components:
     KommoSummary:
       type: object
       properties:
-        avgReplyTime: { type: integer, description: "Average reply time in seconds (0 if no data)" }
-        medianReplyTime: { type: integer, description: "Median reply time in seconds (0 if no data)" }
-        longestAwaiting: { type: integer, description: "Longest currently unanswered customer turn in seconds" }
-        awaitingReplyCount: { type: integer, description: "Open conversations currently awaiting a human reply" }
-        replySamples: { type: integer, description: "Customer turns with a sender-attributed human reply in the selected period" }
+        avgReplyTime:
+          {
+            type: integer,
+            description: "Average reply time in seconds (0 if no data)",
+          }
+        medianReplyTime:
+          {
+            type: integer,
+            description: "Median reply time in seconds (0 if no data)",
+          }
+        longestAwaiting:
+          {
+            type: integer,
+            description: "Longest currently unanswered customer turn in seconds",
+          }
+        awaitingReplyCount:
+          {
+            type: integer,
+            description: "Open conversations currently awaiting a human reply",
+          }
+        replySamples:
+          {
+            type: integer,
+            description: "Customer turns with a sender-attributed human reply in the selected period",
+          }
         activeLeads: { type: integer }
         wonLeads: { type: integer }
         lostLeads: { type: integer }
@@ -7499,24 +7964,87 @@ components:
         tasks:
           type: object
           properties:
-            created: { type: integer, description: "Tasks created in the selected period" }
-            completed: { type: integer, description: "Tasks completed in the selected period" }
+            created:
+              {
+                type: integer,
+                description: "Tasks created in the selected period",
+              }
+            completed:
+              {
+                type: integer,
+                description: "Tasks completed in the selected period",
+              }
             open: { type: integer, description: "Tasks currently open" }
-            overdue: { type: integer, description: "Open tasks currently overdue" }
-            completionRate: { type: integer, minimum: 0, maximum: 100, description: "Percent of tasks due in the selected period that were completed" }
-            onTimeRate: { type: integer, minimum: 0, maximum: 100, description: "Percent of completed due tasks finished on time" }
-          required: [created, completed, open, overdue, completionRate, onTimeRate]
+            overdue:
+              { type: integer, description: "Open tasks currently overdue" }
+            completionRate:
+              {
+                type: integer,
+                minimum: 0,
+                maximum: 100,
+                description: "Percent of tasks due in the selected period that were completed",
+              }
+            onTimeRate:
+              {
+                type: integer,
+                minimum: 0,
+                maximum: 100,
+                description: "Percent of completed due tasks finished on time",
+              }
+          required:
+            [created, completed, open, overdue, completionRate, onTimeRate]
         followUps:
           type: object
           properties:
-            scheduled: { type: integer, description: "Follow-ups scheduled in the selected period" }
-            completed: { type: integer, description: "Follow-ups completed in the selected period" }
-            pending: { type: integer, description: "Follow-ups currently pending" }
-            overdue: { type: integer, description: "Pending follow-ups currently overdue" }
-            completionRate: { type: integer, minimum: 0, maximum: 100, description: "Percent of follow-ups scheduled in the selected period that were completed" }
-            onTimeRate: { type: integer, minimum: 0, maximum: 100, description: "Percent of completed follow-ups finished by their scheduled time" }
-          required: [scheduled, completed, pending, overdue, completionRate, onTimeRate]
-      required: [avgReplyTime, medianReplyTime, longestAwaiting, awaitingReplyCount, replySamples, activeLeads, wonLeads, lostLeads, incomingMessages, outgoingMessages, channels, tasks, followUps]
+            scheduled:
+              {
+                type: integer,
+                description: "Follow-ups scheduled in the selected period",
+              }
+            completed:
+              {
+                type: integer,
+                description: "Follow-ups completed in the selected period",
+              }
+            pending:
+              { type: integer, description: "Follow-ups currently pending" }
+            overdue:
+              {
+                type: integer,
+                description: "Pending follow-ups currently overdue",
+              }
+            completionRate:
+              {
+                type: integer,
+                minimum: 0,
+                maximum: 100,
+                description: "Percent of follow-ups scheduled in the selected period that were completed",
+              }
+            onTimeRate:
+              {
+                type: integer,
+                minimum: 0,
+                maximum: 100,
+                description: "Percent of completed follow-ups finished by their scheduled time",
+              }
+          required:
+            [scheduled, completed, pending, overdue, completionRate, onTimeRate]
+      required:
+        [
+          avgReplyTime,
+          medianReplyTime,
+          longestAwaiting,
+          awaitingReplyCount,
+          replySamples,
+          activeLeads,
+          wonLeads,
+          lostLeads,
+          incomingMessages,
+          outgoingMessages,
+          channels,
+          tasks,
+          followUps,
+        ]
 
     RecordEntityViewBody:
       type: object
@@ -7549,7 +8077,17 @@ components:
         activeDurationSeconds: { type: integer }
         idleDurationSeconds: { type: integer }
         totalDurationSeconds: { type: integer }
-      required: [range, leadsViewed, studentsViewed, applicationsViewed, messagesViewed, activeDurationSeconds, idleDurationSeconds, totalDurationSeconds]
+      required:
+        [
+          range,
+          leadsViewed,
+          studentsViewed,
+          applicationsViewed,
+          messagesViewed,
+          activeDurationSeconds,
+          idleDurationSeconds,
+          totalDurationSeconds,
+        ]
 
     AddInboxConversationTaskResponse:
       type: object
@@ -7653,9 +8191,24 @@ components:
           enum: [dry, real]
         status:
           type: string
-          enum: [queued, running, submitted, already_exists, program_missing, failed, canceled, dry_run, program_full, exclusive_region, accepted, rejected]
+          enum:
+            [
+              queued,
+              running,
+              submitted,
+              already_exists,
+              program_missing,
+              failed,
+              canceled,
+              dry_run,
+              program_full,
+              exclusive_region,
+              accepted,
+              rejected,
+            ]
         submitIntentKey: { type: ["string", "null"] }
-        targetIdentitySha256: { type: ["string", "null"], pattern: '^[0-9a-f]{64}$' }
+        targetIdentitySha256:
+          { type: ["string", "null"], pattern: "^[0-9a-f]{64}$" }
         targetIdentity: { type: ["object", "null"], additionalProperties: true }
         submissionAction:
           type: string
@@ -7676,15 +8229,41 @@ components:
         statusCheckError:
           type: string
           nullable: true
-          enum: [STATUS_CHECK_UNSUPPORTED, STATUS_CHECK_TIMEOUT, STATUS_CHECK_AUTHENTICATION, STATUS_CHECK_PORTAL_DRIFT, STATUS_CHECK_NETWORK, STATUS_CHECK_LEASE_LOST, STATUS_CHECK_FAILED]
+          enum:
+            [
+              STATUS_CHECK_UNSUPPORTED,
+              STATUS_CHECK_TIMEOUT,
+              STATUS_CHECK_AUTHENTICATION,
+              STATUS_CHECK_PORTAL_DRIFT,
+              STATUS_CHECK_NETWORK,
+              STATUS_CHECK_LEASE_LOST,
+              STATUS_CHECK_FAILED,
+            ]
         statusCheckLockedAt: { type: string, format: date-time, nullable: true }
         statusCheckLockedBy: { type: string, nullable: true }
-        statusCheckSuspendedAt: { type: string, format: date-time, nullable: true }
+        statusCheckSuspendedAt:
+          { type: string, format: date-time, nullable: true }
         enqueuedBy: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         deletedAt: { type: string, format: date-time, nullable: true }
-      required: [id, applicationId, studentId, universityKey, universityName, mode, status, submissionAction, attempts, maxAttempts, statusCheckAttempts, statusCheckNextAt, createdAt, updatedAt]
+      required:
+        [
+          id,
+          applicationId,
+          studentId,
+          universityKey,
+          universityName,
+          mode,
+          status,
+          submissionAction,
+          attempts,
+          maxAttempts,
+          statusCheckAttempts,
+          statusCheckNextAt,
+          createdAt,
+          updatedAt,
+        ]
 
     PortalSubmissionIdsBody:
       type: object
@@ -7732,7 +8311,16 @@ components:
 
     PortalLifecycleProposalStatus:
       type: string
-      enum: [pending_review, approved, rejected, executing, executed, failed, canceled]
+      enum:
+        [
+          pending_review,
+          approved,
+          rejected,
+          executing,
+          executed,
+          failed,
+          canceled,
+        ]
 
     PortalLifecycleProposal:
       type: object
@@ -7758,7 +8346,20 @@ components:
         reviewedBy: { type: ["integer", "null"] }
         reviewedAt: { type: ["string", "null"], format: date-time }
         createdAt: { type: string, format: date-time }
-      required: [id, submissionId, applicationId, observationId, rawStatus, currentStage, decision, artifacts, missingDocuments, status, createdAt]
+      required:
+        [
+          id,
+          submissionId,
+          applicationId,
+          observationId,
+          rawStatus,
+          currentStage,
+          decision,
+          artifacts,
+          missingDocuments,
+          status,
+          createdAt,
+        ]
 
     PortalLifecycleProposalReviewBody:
       type: object
@@ -7766,7 +8367,13 @@ components:
       properties:
         decision: { type: string, enum: [approve, reject] }
         reason: { type: string, maxLength: 1000 }
-        requestKey: { type: string, minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9._:-]+$' }
+        requestKey:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 100,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
       required: [decision, requestKey]
 
     PortalLifecycleProposalReviewResult:
@@ -7784,10 +8391,18 @@ components:
       type: object
       properties:
         id: { type: integer }
-        jobKind: { type: string, enum: [test_login, catalog_sync, status_sweep, lifecycle_execute] }
+        jobKind:
+          {
+            type: string,
+            enum: [test_login, catalog_sync, status_sweep, lifecycle_execute],
+          }
         portalUniversityId: { type: ["integer", "null"] }
         requestKey: { type: string }
-        status: { type: string, enum: [queued, running, succeeded, failed, dead_letter, canceled] }
+        status:
+          {
+            type: string,
+            enum: [queued, running, succeeded, failed, dead_letter, canceled],
+          }
         attempts: { type: integer, minimum: 0 }
         maxAttempts: { type: integer, minimum: 1 }
         lastErrorCode: { type: ["string", "null"] }
@@ -7795,7 +8410,17 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         finishedAt: { type: ["string", "null"], format: date-time }
-      required: [id, jobKind, requestKey, status, attempts, maxAttempts, createdAt, updatedAt]
+      required:
+        [
+          id,
+          jobKind,
+          requestKey,
+          status,
+          attempts,
+          maxAttempts,
+          createdAt,
+          updatedAt,
+        ]
 
     PortalWorkerJobAccepted:
       type: object
@@ -7820,7 +8445,19 @@ components:
         missingDocuments24h: { type: integer, minimum: 0 }
         decisions24h: { type: integer, minimum: 0 }
         pendingReviews: { type: integer, minimum: 0 }
-      required: [tracked, due, checking, retrying, suspended, observations24h, unverified24h, missingDocuments24h, decisions24h, pendingReviews]
+      required:
+        [
+          tracked,
+          due,
+          checking,
+          retrying,
+          suspended,
+          observations24h,
+          unverified24h,
+          missingDocuments24h,
+          decisions24h,
+          pendingReviews,
+        ]
 
     PortalStatusLane:
       type: object
@@ -7835,7 +8472,19 @@ components:
         suspended: { type: integer, minimum: 0 }
         oldestDue: { type: string, format: date-time, nullable: true }
         lastCheckedAt: { type: string, format: date-time, nullable: true }
-      required: [laneKey, adapterKey, universityKey, tracked, due, checking, retrying, suspended, oldestDue, lastCheckedAt]
+      required:
+        [
+          laneKey,
+          adapterKey,
+          universityKey,
+          tracked,
+          due,
+          checking,
+          retrying,
+          suspended,
+          oldestDue,
+          lastCheckedAt,
+        ]
 
     PortalLifecycleObservationSummary:
       type: object
@@ -7847,11 +8496,40 @@ components:
         universityKey: { type: string }
         disposition:
           type: string
-          enum: [SUBMITTED, UNDER_REVIEW, MISSING_DOCUMENT, FEE_REQUIRED, CONDITIONAL_OFFER, UNCONDITIONAL_OFFER, DEPOSIT_RECEIVED, WAITLISTED, REJECTED, FINAL_ACCEPTANCE, ENROLLED, FULL_QUOTA, DUPLICATE, ALREADY_REGISTERED, WITHDRAWN, UNKNOWN]
+          enum:
+            [
+              SUBMITTED,
+              UNDER_REVIEW,
+              MISSING_DOCUMENT,
+              FEE_REQUIRED,
+              CONDITIONAL_OFFER,
+              UNCONDITIONAL_OFFER,
+              DEPOSIT_RECEIVED,
+              WAITLISTED,
+              REJECTED,
+              FINAL_ACCEPTANCE,
+              ENROLLED,
+              FULL_QUOTA,
+              DUPLICATE,
+              ALREADY_REGISTERED,
+              WITHDRAWN,
+              UNKNOWN,
+            ]
         identityVerified: { type: boolean }
         missingDocumentCount: { type: integer, minimum: 0, maximum: 50 }
         observedAt: { type: string, format: date-time }
-      required: [id, submissionId, applicationId, adapterKey, universityKey, disposition, identityVerified, missingDocumentCount, observedAt]
+      required:
+        [
+          id,
+          submissionId,
+          applicationId,
+          adapterKey,
+          universityKey,
+          disposition,
+          identityVerified,
+          missingDocumentCount,
+          observedAt,
+        ]
 
     SuspendedPortalStatusCheck:
       type: object
@@ -7864,8 +8542,26 @@ components:
         suspendedAt: { type: string, format: date-time }
         errorCategory:
           type: string
-          enum: [unsupported, timeout, authentication, portal_drift, network, lease_lost, other]
-      required: [submissionId, applicationId, adapterKey, universityKey, attempts, suspendedAt, errorCategory]
+          enum:
+            [
+              unsupported,
+              timeout,
+              authentication,
+              portal_drift,
+              network,
+              lease_lost,
+              other,
+            ]
+      required:
+        [
+          submissionId,
+          applicationId,
+          adapterKey,
+          universityKey,
+          attempts,
+          suspendedAt,
+          errorCategory,
+        ]
 
     PortalOperationsResponse:
       type: object
@@ -8010,7 +8706,15 @@ components:
         studentEmail: { type: string, nullable: true }
         portalUniversityKey: { type: string }
         portalUniversityName: { type: string }
-      required: [id, stage, studentFirstName, studentLastName, portalUniversityKey, portalUniversityName]
+      required:
+        [
+          id,
+          stage,
+          studentFirstName,
+          studentLastName,
+          portalUniversityKey,
+          portalUniversityName,
+        ]
 
     UniversityPortal:
       type: object
@@ -8084,10 +8788,27 @@ components:
 
     OperationsWorkItem:
       type: object
-      required: [id, source, severity, reasonCode, identity, state, nextAction, owner, dueAt, blocker, lastActivityAt, href, score, isMine]
+      required:
+        [
+          id,
+          source,
+          severity,
+          reasonCode,
+          identity,
+          state,
+          nextAction,
+          owner,
+          dueAt,
+          blocker,
+          lastActivityAt,
+          href,
+          score,
+          isMine,
+        ]
       properties:
         id: { type: string }
-        source: { type: string, enum: [task, application, document, portal, offer] }
+        source:
+          { type: string, enum: [task, application, document, portal, offer] }
         severity: { type: string, enum: [critical, high, medium, low] }
         reasonCode: { type: string }
         identity: { type: string }
@@ -8104,7 +8825,20 @@ components:
 
     OperationsWorkSummary:
       type: object
-      required: [total, critical, high, medium, low, mine, tasks, applications, documents, portal, offers]
+      required:
+        [
+          total,
+          critical,
+          high,
+          medium,
+          low,
+          mine,
+          tasks,
+          applications,
+          documents,
+          portal,
+          offers,
+        ]
       properties:
         total: { type: integer, minimum: 0 }
         critical: { type: integer, minimum: 0 }
@@ -8140,7 +8874,15 @@ components:
 
     SocialOperationsContext:
       type: object
-      required: [enabled, mode, publishingEnabled]
+      required:
+        [
+          enabled,
+          mode,
+          publishingEnabled,
+          publicationGate,
+          performanceGate,
+          providerConnectionGate,
+        ]
       properties:
         enabled: { type: boolean }
         mode: { type: string, enum: [off, read, manage] }
@@ -8149,7 +8891,60 @@ components:
         organizationId: { type: string, format: uuid }
         publishingEnabled:
           type: boolean
-          const: false
+        publicationGate: { $ref: "#/components/schemas/SocialPublicationGate" }
+        performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
+        providerConnectionGate:
+          { $ref: "#/components/schemas/SocialProviderConnectionGate" }
+
+    SocialProviderConnectionGate:
+      type: object
+      required: [enabled, connectivityEnabled, allowedProviders, reason]
+      properties:
+        enabled: { type: boolean }
+        connectivityEnabled: { type: boolean }
+        allowedProviders:
+          type: array
+          items: { type: string }
+        reason: { type: [string, "null"] }
+
+    SocialPublicationGate:
+      allOf:
+        - $ref: "#/components/schemas/SocialProviderConnectionGate"
+        - type: object
+          required: [workerEnabled, providerPublishingEnabled]
+          properties:
+            workerEnabled: { type: boolean }
+            providerPublishingEnabled: { type: boolean }
+
+    SocialPerformanceGate:
+      allOf:
+        - $ref: "#/components/schemas/SocialProviderConnectionGate"
+        - type: object
+          required: [workerEnabled]
+          properties:
+            workerEnabled: { type: boolean }
+
+    SocialWorkerHealth:
+      type: object
+      required:
+        [
+          kind,
+          expected,
+          status,
+          activeWorkers,
+          currentReleaseWorkers,
+          lastSeenAt,
+          reason,
+        ]
+      properties:
+        kind: { type: string, enum: [publication, performance] }
+        expected: { type: boolean }
+        status:
+          { type: string, enum: [DISABLED, READY, RELEASE_MISMATCH, STALE] }
+        activeWorkers: { type: integer, minimum: 0 }
+        currentReleaseWorkers: { type: integer, minimum: 0 }
+        lastSeenAt: { type: [string, "null"], format: date-time }
+        reason: { type: [string, "null"] }
 
     SocialAccount:
       type: object
@@ -8162,13 +8957,31 @@ components:
         integration_key: { type: string, nullable: true }
         status:
           type: string
-          enum: [DISCONNECTED, CONNECTED_UNVERIFIED, VERIFIED, REAUTH_REQUIRED, DISABLED]
+          enum:
+            [
+              DISCONNECTED,
+              CONNECTED_UNVERIFIED,
+              VERIFIED,
+              REAUTH_REQUIRED,
+              DISABLED,
+            ]
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
     SocialContentBrief:
       type: object
-      required: [id, title, objective, audience, content_kind, locales, channels, status]
+      required:
+        [
+          id,
+          title,
+          objective,
+          audience,
+          content_kind,
+          locales,
+          channels,
+          media_refs,
+          status,
+        ]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
@@ -8182,9 +8995,17 @@ components:
           items: { type: string }
         channels:
           type: array
-          items: { type: string, enum: [instagram, facebook, linkedin, youtube, tiktok, x, blog] }
+          items:
+            {
+              type: string,
+              enum: [instagram, facebook, linkedin, youtube, tiktok, x, blog],
+            }
         campaign_key: { type: string, nullable: true }
         caption: { type: string, nullable: true }
+        media_refs:
+          type: array
+          maxItems: 10
+          items: { $ref: "#/components/schemas/SocialMediaRef" }
         utm: { type: object, additionalProperties: { type: string } }
         scheduled_for: { type: string, format: date-time, nullable: true }
         status:
@@ -8198,7 +9019,18 @@ components:
 
     SocialOperationsOverview:
       type: object
-      required: [briefCounts, accountCounts, publicationCounts, briefs, publishingEnabled]
+      required:
+        [
+          briefCounts,
+          accountCounts,
+          publicationCounts,
+          briefs,
+          publishingEnabled,
+          publicationGate,
+          performanceGate,
+          providerConnectionGate,
+          workerHealth,
+        ]
       properties:
         briefCounts:
           type: array
@@ -8229,13 +9061,28 @@ components:
           items: { $ref: "#/components/schemas/SocialContentBrief" }
         publishingEnabled:
           type: boolean
-          const: false
+        publicationGate: { $ref: "#/components/schemas/SocialPublicationGate" }
+        performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
+        providerConnectionGate:
+          { $ref: "#/components/schemas/SocialProviderConnectionGate" }
+        workerHealth:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: "#/components/schemas/SocialWorkerHealth" }
 
     CreateSocialAccountBody:
       type: object
       additionalProperties: false
-      required: [provider, accountKey, displayName]
+      required: [requestKey, provider, accountKey, displayName]
       properties:
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
         provider: { type: string, minLength: 2, maxLength: 64 }
         accountKey: { type: string, minLength: 2, maxLength: 96 }
         displayName: { type: string, minLength: 1, maxLength: 160 }
@@ -8245,8 +9092,16 @@ components:
     CreateSocialContentBriefBody:
       type: object
       additionalProperties: false
-      required: [title, objective, audience, contentKind, locales, channels]
+      required:
+        [requestKey, title, objective, audience, contentKind, locales, channels]
       properties:
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
         title: { type: string, minLength: 1, maxLength: 240 }
         objective: { type: string, minLength: 1, maxLength: 2000 }
         audience: { type: string, minLength: 1, maxLength: 1000 }
@@ -8262,9 +9117,18 @@ components:
           type: array
           minItems: 1
           maxItems: 20
-          items: { type: string, enum: [instagram, facebook, linkedin, youtube, tiktok, x, blog] }
+          items:
+            {
+              type: string,
+              enum: [instagram, facebook, linkedin, youtube, tiktok, x, blog],
+            }
         campaignKey: { type: string, maxLength: 96 }
         caption: { type: string, maxLength: 10000 }
+        mediaAssetIds:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
         scheduledFor: { type: string, format: date-time }
         utm:
           type: object
@@ -8276,6 +9140,242 @@ components:
             term: { type: string, maxLength: 128 }
             content: { type: string, maxLength: 128 }
 
+    SocialMediaRef:
+      type: object
+      additionalProperties: false
+      required: [kind, ref]
+      properties:
+        kind: { type: string, enum: [image, video] }
+        ref:
+          type: string
+          pattern: "^/objects/social-media/assets/"
+
+    SocialMediaAsset:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          object_path,
+          media_kind,
+          mime_type,
+          size_bytes,
+          original_file_name,
+          created_at,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        object_path:
+          type: string
+          pattern: "^/objects/social-media/assets/"
+        media_kind: { type: string, enum: [image, video] }
+        mime_type:
+          type: string
+          enum: [image/jpeg, image/png, image/webp, video/mp4]
+        size_bytes: { type: integer, minimum: 1, maximum: 26214400 }
+        original_file_name: { type: string, minLength: 1, maxLength: 240 }
+        created_at: { type: string, format: date-time }
+
+    SocialMediaUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [name, size, contentType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 240 }
+        size: { type: integer, minimum: 1, maximum: 26214400 }
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp, video/mp4]
+
+    SocialMediaUploadTarget:
+      type: object
+      additionalProperties: false
+      required: [uploadURL, objectPath, metadata]
+      properties:
+        uploadURL: { type: string }
+        objectPath:
+          type: string
+          pattern: "^/objects/social-media/staging/"
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [name, size, contentType]
+          properties:
+            name: { type: string }
+            size: { type: integer }
+            contentType: { type: string }
+
+    RegisterSocialMediaAssetBody:
+      type: object
+      additionalProperties: false
+      required: [requestKey, objectPath, originalFileName, mimeType, sizeBytes]
+      properties:
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
+        objectPath:
+          type: string
+          pattern: "^/objects/social-media/staging/"
+        originalFileName: { type: string, minLength: 1, maxLength: 240 }
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp, video/mp4]
+        sizeBytes: { type: integer, minimum: 1, maximum: 26214400 }
+
+    SocialAccountVerificationResult:
+      type: object
+      required: [id, status, outcome]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string }
+        outcome:
+          type: string
+          enum: [VERIFIED, RETRYABLE_FAILURE, REAUTH_REQUIRED]
+        errorCode: { type: string, nullable: true }
+        replay: { type: boolean }
+
+    SocialPublicationStatus:
+      type: string
+      enum:
+        [DRAFT, PENDING_APPROVAL, APPROVED, REJECTED, QUEUED, RUNNING, PUBLISHED, FAILED, DEAD_LETTER, CANCELED]
+
+    CreateSocialPublicationBody:
+      type: object
+      additionalProperties: false
+      required: [briefId, accountId, scheduledFor, requestKey]
+      properties:
+        briefId: { type: string, format: uuid }
+        accountId: { type: string, format: uuid }
+        scheduledFor: { type: string, format: date-time }
+        maxAttempts: { type: integer, minimum: 1, maximum: 12, default: 5 }
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
+
+    SocialPublication:
+      type: object
+      required:
+        [id, brief_id, account_id, scheduled_for, status, attempt_count, max_attempts]
+      properties:
+        id: { type: string, format: uuid }
+        brief_id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        title: { type: string }
+        content_kind:
+          type: string
+          enum: [POST, STORY, REEL, VIDEO, ARTICLE, AD_CREATIVE]
+        provider: { type: string }
+        account_name: { type: string }
+        scheduled_for: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/SocialPublicationStatus" }
+        attempt_count: { type: integer, minimum: 0 }
+        max_attempts: { type: integer, minimum: 1, maximum: 12 }
+        next_attempt_at: { type: string, format: date-time, nullable: true }
+        last_error_code: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+        created_by_legacy_user_id: { type: integer }
+        approved_by_legacy_user_id: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        replay: { type: boolean }
+
+    SocialPublicationListResponse:
+      type: object
+      required: [data, limit]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SocialPublication" }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+
+    SocialPublicationAttempt:
+      type: object
+      required:
+        [attempt_number, worker_id, runtime_release_id, outcome, started_at, completed_at, created_at]
+      properties:
+        attempt_number: { type: integer, minimum: 1, maximum: 12 }
+        worker_id: { type: string }
+        runtime_release_id: { type: string }
+        outcome:
+          type: string
+          enum: [PUBLISHED, RETRY, FAILED, DEAD_LETTER, CANCELED]
+        error_code: { type: string, nullable: true }
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    SocialMetrics:
+      type: object
+      minProperties: 1
+      maxProperties: 17
+      additionalProperties: false
+      properties:
+        impressions: { type: number, minimum: 0 }
+        reach: { type: number, minimum: 0 }
+        views: { type: number, minimum: 0 }
+        engagements: { type: number, minimum: 0 }
+        reactions: { type: number, minimum: 0 }
+        comments: { type: number, minimum: 0 }
+        shares: { type: number, minimum: 0 }
+        saves: { type: number, minimum: 0 }
+        clicks: { type: number, minimum: 0 }
+        linkClicks: { type: number, minimum: 0 }
+        videoViews: { type: number, minimum: 0 }
+        watchTimeSeconds: { type: number, minimum: 0 }
+        followersGained: { type: number, minimum: 0 }
+        spendMinor: { type: number, minimum: 0 }
+        conversions: { type: number, minimum: 0 }
+        leads: { type: number, minimum: 0 }
+
+    SocialPerformanceItem:
+      type: object
+      required: [publication_id, title, provider, account_name, published_at]
+      properties:
+        publication_id: { type: string, format: uuid }
+        title: { type: string }
+        provider: { type: string }
+        account_name: { type: string }
+        published_at: { type: string, format: date-time }
+        sync_status: { type: string, nullable: true }
+        next_sync_at: { type: string, format: date-time, nullable: true }
+        last_success_at: { type: string, format: date-time, nullable: true }
+        last_error_code: { type: string, nullable: true }
+        consecutive_failure_count: { type: integer, nullable: true }
+        metrics:
+          allOf: [{ $ref: "#/components/schemas/SocialMetrics" }]
+          nullable: true
+        observed_at: { type: string, format: date-time, nullable: true }
+
+    SocialPerformanceResponse:
+      type: object
+      required:
+        [data, providerConnectionGate, performanceGate, performanceWorkerEnabled]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SocialPerformanceItem" }
+        providerConnectionGate:
+          { $ref: "#/components/schemas/SocialProviderConnectionGate" }
+        performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
+        performanceWorkerEnabled: { type: boolean }
+
+    SocialPerformanceSyncResult:
+      type: object
+      required: [publicationId, status, nextSyncAt]
+      properties:
+        publicationId: { type: string, format: uuid }
+        status: { type: string, enum: [PENDING, ACTIVE] }
+        nextSyncAt: { type: string, format: date-time }
+        replay: { type: boolean }
+
     ReviewSocialContentBriefBody:
       type: object
       additionalProperties: false
@@ -8284,6 +9384,19 @@ components:
         decision: { type: string, enum: [APPROVE, REJECT] }
         reason: { type: string, maxLength: 2000 }
         requestKey: { type: string, minLength: 8, maxLength: 160 }
+
+    SubmitSocialOperationBody:
+      type: object
+      additionalProperties: false
+      required: [requestKey]
+      properties:
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
 
     SocialContentReviewResult:
       type: object

@@ -21,7 +21,8 @@ class FakeAdvisoryDatabase {
               if (locked) thisDb.owner = id;
               return { rows: [{ locked }] as T[] };
             }
-            if (sql.includes("pg_advisory_unlock") && thisDb.owner === id) thisDb.owner = null;
+            if (sql.includes("pg_advisory_unlock") && thisDb.owner === id)
+              thisDb.owner = null;
             return { rows: [] as T[] };
           },
           release() {},
@@ -32,13 +33,19 @@ class FakeAdvisoryDatabase {
 }
 
 function fakeTimers() {
-  const pending = new Set<{ callback: () => void; cleared: boolean; unref(): void }>();
+  const pending = new Set<{
+    callback: () => void;
+    cleared: boolean;
+    unref(): void;
+  }>();
   const schedule = ((callback: () => void) => {
     const timer = { callback, cleared: false, unref() {} };
     pending.add(timer);
     return timer;
   }) as unknown as typeof setTimeout;
-  const cancel = ((timer: { cleared: boolean }) => { timer.cleared = true; }) as unknown as typeof clearTimeout;
+  const cancel = ((timer: { cleared: boolean }) => {
+    timer.cleared = true;
+  }) as unknown as typeof clearTimeout;
   return { pending, schedule, cancel };
 }
 
@@ -54,7 +61,12 @@ test("missing or invalid production config is disabled; development remains comp
 test("disabled coordinator does not connect and HTTP boot may continue", async () => {
   let connects = 0;
   const coordinator = new BackgroundJobCoordinator(
-    { async connect() { connects += 1; throw new Error("must not connect"); } },
+    {
+      async connect() {
+        connects += 1;
+        throw new Error("must not connect");
+      },
+    },
     [],
   );
   assert.equal(await coordinator.start(false), false);
@@ -65,15 +77,32 @@ test("only one scheduler set owns the advisory lock and ownership transfers afte
   const database = new FakeAdvisoryDatabase();
   let starts = 0;
   let stops = 0;
-  const jobs: BackgroundJobDefinition[] = [{
-    name: "fixture",
-    offsetMs: 1,
-    start: () => { starts += 1; return () => { stops += 1; }; },
-  }];
+  const jobs: BackgroundJobDefinition[] = [
+    {
+      name: "fixture",
+      offsetMs: 1,
+      start: () => {
+        starts += 1;
+        return () => {
+          stops += 1;
+        };
+      },
+    },
+  ];
   const timersA = fakeTimers();
   const timersB = fakeTimers();
-  const first = new BackgroundJobCoordinator(database.pool(), jobs, timersA.schedule, timersA.cancel);
-  const second = new BackgroundJobCoordinator(database.pool(), jobs, timersB.schedule, timersB.cancel);
+  const first = new BackgroundJobCoordinator(
+    database.pool(),
+    jobs,
+    timersA.schedule,
+    timersA.cancel,
+  );
+  const second = new BackgroundJobCoordinator(
+    database.pool(),
+    jobs,
+    timersB.schedule,
+    timersB.cancel,
+  );
 
   assert.equal(await first.start(true), true);
   assert.equal(await second.start(true), false);
@@ -94,7 +123,15 @@ test("shutdown clears pending starts before releasing the lock", async () => {
   let starts = 0;
   const coordinator = new BackgroundJobCoordinator(
     database.pool(),
-    [{ name: "pending", offsetMs: 100, start: () => { starts += 1; } }],
+    [
+      {
+        name: "pending",
+        offsetMs: 100,
+        start: () => {
+          starts += 1;
+        },
+      },
+    ],
     timers.schedule,
     timers.cancel,
   );
@@ -108,13 +145,19 @@ test("shutdown clears pending starts before releasing the lock", async () => {
 });
 
 test("API boot does not start the dedicated portal automation worker or auto-drain", () => {
-  const index = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const index = readFileSync(
+    new URL("../src/index.ts", import.meta.url),
+    "utf8",
+  );
   assert.doesNotMatch(index, /startPortalAutoDrain/);
   assert.doesNotMatch(index, /portal-automation-worker\/src\/worker/);
 });
 
 test("every API background registration returns a shutdown contract", () => {
-  const index = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  const index = readFileSync(
+    new URL("../src/index.ts", import.meta.url),
+    "utf8",
+  );
   for (const starter of [
     "startEmailWorker",
     "startContractChecker",
@@ -148,4 +191,22 @@ test("dedicated portal worker drains an active claim and exits on fatal process 
   assert.match(worker, /pool\.end\(\)/);
   assert.match(worker, /beginShutdown\("uncaughtException", 1\)/);
   assert.doesNotMatch(worker, /contained — worker stays up/);
+});
+
+test("dedicated social workers heartbeat, contain transient ticks and close their pools", () => {
+  for (const file of [
+    "../src/workers/socialPublicationWorker.ts",
+    "../src/workers/socialPerformanceWorker.ts",
+  ]) {
+    const worker = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(worker, /recordSocialWorkerHeartbeat/);
+    assert.match(worker, /scheduleNextSocialWorkerHeartbeat/);
+    assert.match(worker, /while \(!stopping\)/);
+    assert.match(worker, /socialWorkerRetryDelayMs/);
+    assert.match(worker, /socialWorkerFailureCode/);
+    assert.match(worker, /await pool\.end\(\)/);
+    assert.doesNotMatch(worker, /console\.error\([^\n]*error\)/);
+    if (file.includes("Publication"))
+      assert.match(worker, /verifyStoredSocialMediaRefs/);
+  }
 });

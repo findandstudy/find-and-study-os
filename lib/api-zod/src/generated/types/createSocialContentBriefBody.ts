@@ -11,6 +11,12 @@ import type { CreateSocialContentBriefBodyUtm } from './createSocialContentBrief
 
 export interface CreateSocialContentBriefBody {
   /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
+  requestKey: string;
+  /**
      * @minLength 1
      * @maxLength 240
      */
@@ -40,6 +46,8 @@ export interface CreateSocialContentBriefBody {
   campaignKey?: string;
   /** @maxLength 10000 */
   caption?: string;
+  /** @maxItems 10 */
+  mediaAssetIds?: string[];
   scheduledFor?: Date;
   utm?: CreateSocialContentBriefBodyUtm;
 }

@@ -8,6 +8,12 @@
 
 export interface CreateSocialAccountBody {
   /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
+  requestKey: string;
+  /**
      * @minLength 2
      * @maxLength 64
      */

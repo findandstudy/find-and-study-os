@@ -32,7 +32,7 @@ assert.equal(
       "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
     )
   ).rows[0]?.count,
-  101,
+  103,
 );
 await admin.query(`DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='fas_social_executor') THEN
@@ -51,8 +51,9 @@ await admin.query(
 );
 await admin.query(`GRANT SELECT,INSERT,UPDATE ON
   social_accounts,social_content_briefs,social_publication_intents,
-  social_performance_sync_state TO fas_social_executor`);
+  social_performance_sync_state,social_worker_heartbeats TO fas_social_executor`);
 await admin.query(`GRANT SELECT,INSERT ON
+  social_media_assets,
   social_content_reviews,social_publication_reviews,social_publication_attempts,
   social_operation_receipts,social_performance_snapshots,
   social_account_verifications,social_performance_attempts TO fas_social_executor`);
@@ -69,6 +70,7 @@ const briefId = "0199a100-0000-7000-8000-000000000006";
 const intentA = "0199a100-0000-7000-8000-000000000007";
 const intentB = "0199a100-0000-7000-8000-000000000008";
 const expiredIntent = "0199a100-0000-7000-8000-00000000000a";
+const mediaAssetId = "0199a100-0000-7000-8000-00000000000b";
 
 await admin.query(
   `INSERT INTO tenants(id,slug,legal_name,display_name,status,home_region) VALUES
@@ -156,9 +158,17 @@ const { claimSocialPublication, completeSocialPublication } =
   await import("../src/lib/socialPublicationQueue");
 const { claimSocialPerformance, completeSocialPerformance } =
   await import("../src/lib/socialPerformanceQueue");
+const {
+  createSocialWorkerHeartbeatState,
+  isSocialWorkerHeartbeatDue,
+  recordSocialWorkerHeartbeat,
+  scheduleNextSocialWorkerHeartbeat,
+} = await import("../src/lib/socialWorkerRuntime");
 
 after(async () => {
   const tables = [
+    "social_worker_heartbeats",
+    "social_media_assets",
     "social_performance_attempts",
     "social_performance_sync_state",
     "social_account_verifications",
@@ -202,12 +212,138 @@ test("all social tables force RLS and evidence tables expose no delete policy", 
     LEFT JOIN pg_policies p ON p.schemaname=n.nspname AND p.tablename=c.relname
     WHERE n.nspname='public' AND c.relname LIKE 'social_%' AND c.relkind='r'
     GROUP BY c.relname,c.relforcerowsecurity ORDER BY c.relname`);
-  assert.equal(result.rowCount, 11);
+  assert.equal(result.rowCount, 13);
   assert.equal(
     result.rows.every(
       (row) => row.relforcerowsecurity === true && row.delete_policies === 0,
     ),
     true,
+  );
+});
+
+test("worker heartbeats are release-bound, throttled and tenant-isolated", async () => {
+  const state = createSocialWorkerHeartbeatState({
+    workerKind: "publication",
+    workerId: "social-worker-heartbeat-a",
+    runtimeReleaseId: "test-release-1",
+    observedAt: new Date("2090-01-01T00:00:00.000Z"),
+  });
+  const firstObservedAt = new Date("2090-01-01T00:00:00.000Z");
+  const first = isSocialWorkerHeartbeatDue(state, firstObservedAt);
+  await withSocialOperationsContext(makerUserId, "manage", (client, context) =>
+    recordSocialWorkerHeartbeat(client, context, state, firstObservedAt),
+  );
+  scheduleNextSocialWorkerHeartbeat(state, "30", firstObservedAt);
+  const throttled = isSocialWorkerHeartbeatDue(
+    state,
+    new Date("2090-01-01T00:00:10.000Z"),
+  );
+  const refreshedObservedAt = new Date("2090-01-01T00:00:31.000Z");
+  const refreshed = isSocialWorkerHeartbeatDue(state, refreshedObservedAt);
+  await withSocialOperationsContext(makerUserId, "manage", (client, context) =>
+    recordSocialWorkerHeartbeat(client, context, state, refreshedObservedAt),
+  );
+  scheduleNextSocialWorkerHeartbeat(state, "30", refreshedObservedAt);
+  assert.equal(first, true);
+  assert.equal(throttled, false);
+  assert.equal(refreshed, true);
+  const stored = await admin.query(
+    `SELECT runtime_release_id,last_seen_at
+     FROM social_worker_heartbeats
+     WHERE tenant_id=$1 AND organization_id=$2 AND worker_kind='publication'
+       AND worker_id='social-worker-heartbeat-a'`,
+    [tenantId, organizationId],
+  );
+  assert.equal(stored.rowCount, 1);
+  assert.equal(stored.rows[0].runtime_release_id, "test-release-1");
+  assert.equal(
+    new Date(stored.rows[0].last_seen_at).toISOString(),
+    "2090-01-01T00:00:31.000Z",
+  );
+  const actor = new pg.Client({ connectionString: actorUrl });
+  await actor.connect();
+  try {
+    await actor.query("BEGIN");
+    await actor.query("SELECT set_config('app.tenant_id',$1,true)", [
+      otherTenantId,
+    ]);
+    await actor.query("SELECT set_config('app.organization_id',$1,true)", [
+      otherOrganizationId,
+    ]);
+    assert.equal(
+      (
+        await actor.query(
+          "SELECT count(*)::integer AS count FROM social_worker_heartbeats",
+        )
+      ).rows[0].count,
+      0,
+    );
+  } finally {
+    await actor.query("ROLLBACK").catch(() => undefined);
+    await actor.end();
+  }
+});
+
+test("media assets are immutable, content-addressed and tenant-isolated", async () => {
+  const objectPath = `/objects/social-media/assets/${tenantId}/${organizationId}/${"f".repeat(64)}.mp4`;
+  await withSocialOperationsContext(makerUserId, "manage", (client, context) =>
+    client.query(
+      `INSERT INTO social_media_assets
+         (id,tenant_id,organization_id,object_path,content_sha256,media_kind,
+          mime_type,size_bytes,original_file_name,created_by_legacy_user_id)
+       VALUES ($1,$2,$3,$4,$5,'video','video/mp4',1024,'campaign.mp4',$6)`,
+      [
+        mediaAssetId,
+        context.tenantId,
+        context.organizationId,
+        objectPath,
+        "f".repeat(64),
+        makerUserId,
+      ],
+    ),
+  );
+  const actor = new pg.Client({ connectionString: actorUrl });
+  await actor.connect();
+  try {
+    await actor.query("BEGIN");
+    await actor.query("SELECT set_config('app.tenant_id',$1,true)", [tenantId]);
+    await actor.query("SELECT set_config('app.organization_id',$1,true)", [
+      organizationId,
+    ]);
+    assert.equal(
+      (
+        await actor.query(
+          "SELECT count(*)::integer AS count FROM social_media_assets",
+        )
+      ).rows[0].count,
+      1,
+    );
+    await actor.query("ROLLBACK");
+    await actor.query("BEGIN");
+    await actor.query("SELECT set_config('app.tenant_id',$1,true)", [
+      otherTenantId,
+    ]);
+    await actor.query("SELECT set_config('app.organization_id',$1,true)", [
+      otherOrganizationId,
+    ]);
+    assert.equal(
+      (
+        await actor.query(
+          "SELECT count(*)::integer AS count FROM social_media_assets",
+        )
+      ).rows[0].count,
+      0,
+    );
+  } finally {
+    await actor.query("ROLLBACK").catch(() => undefined);
+    await actor.end();
+  }
+  await assert.rejects(
+    admin.query(
+      "UPDATE social_media_assets SET original_file_name='tampered.mp4' WHERE tenant_id=$1 AND id=$2",
+      [tenantId, mediaAssetId],
+    ),
+    /social media assets are immutable/,
   );
 });
 

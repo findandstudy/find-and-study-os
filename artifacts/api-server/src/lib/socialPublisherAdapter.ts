@@ -5,6 +5,10 @@ import {
   resolveSocialProviderConnectionGate,
   resolveSocialPublicationGate,
 } from "./socialOperationsContract";
+import {
+  assertSocialContentMedia,
+  type SocialMediaRef,
+} from "./socialMediaAssets";
 
 export type SocialPublicationJob = {
   id: string;
@@ -16,7 +20,7 @@ export type SocialPublicationJob = {
   contentKind: string;
   locales: string[];
   channels: string[];
-  mediaRefs: Array<{ kind: string; ref: string }>;
+  mediaRefs: SocialMediaRef[];
   utm: Record<string, string>;
   scheduledFor: string;
 };
@@ -282,6 +286,7 @@ export async function verifySocialAccount(input: {
 export async function publishSocialJob(
   job: SocialPublicationJob,
 ): Promise<SocialPublisherResult> {
+  assertSocialContentMedia(job.contentKind, job.mediaRefs);
   const gate = resolveSocialPublicationGate({
     workerEnabled: process.env.SOCIAL_PUBLICATION_WORKER_ENABLED,
     connectivityEnabled: process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED,

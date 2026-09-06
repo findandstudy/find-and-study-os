@@ -187,6 +187,62 @@ export const socialContentBriefsTable = pgTable(
   ],
 );
 
+export const socialMediaAssetsTable = pgTable(
+  "social_media_assets",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id").notNull(),
+    objectPath: text("object_path").notNull(),
+    contentSha256: text("content_sha256").notNull(),
+    mediaKind: text("media_kind").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    originalFileName: text("original_file_name").notNull(),
+    createdByLegacyUserId: integer("created_by_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "social_media_assets_pk",
+      columns: [table.tenantId, table.id],
+    }),
+    unique("social_media_assets_tenant_id_id_uq").on(table.tenantId, table.id),
+    unique("social_media_assets_content_uq").on(
+      table.tenantId,
+      table.organizationId,
+      table.contentSha256,
+    ),
+    unique("social_media_assets_object_uq").on(table.objectPath),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_media_assets_organization_fk",
+    }).onDelete("restrict"),
+    index("social_media_assets_scope_created_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.createdAt,
+      table.id,
+    ),
+    check("social_media_assets_id_v7_chk", uuidV7(table.id)),
+    check(
+      "social_media_assets_hash_chk",
+      sql`${table.contentSha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "social_media_assets_kind_chk",
+      sql`${table.mediaKind} IN ('image', 'video')`,
+    ),
+  ],
+).enableRLS();
+
 export const socialContentReviewsTable = pgTable(
   "social_content_reviews",
   {
@@ -603,6 +659,59 @@ export const socialPerformanceAttemptsTable = pgTable(
       name: "social_performance_attempts_organization_fk",
     }).onDelete("restrict"),
     check("social_performance_attempts_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
+
+export const socialWorkerHeartbeatsTable = pgTable(
+  "social_worker_heartbeats",
+  {
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    workerKind: text("worker_kind").notNull(),
+    workerId: text("worker_id").notNull(),
+    runtimeReleaseId: text("runtime_release_id").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.tenantId,
+        table.organizationId,
+        table.workerKind,
+        table.workerId,
+      ],
+      name: "social_worker_heartbeats_pk",
+    }),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_worker_heartbeats_organization_fk",
+    }).onDelete("restrict"),
+    check(
+      "social_worker_heartbeats_kind_chk",
+      sql`${table.workerKind} IN ('publication', 'performance')`,
+    ),
+    check(
+      "social_worker_heartbeats_worker_id_chk",
+      sql`${table.workerId} ~ '^[A-Za-z0-9._:-]{1,96}$'`,
+    ),
+    check(
+      "social_worker_heartbeats_release_chk",
+      sql`${table.runtimeReleaseId} ~ '^[A-Za-z0-9._:-]{1,96}$'`,
+    ),
+    check(
+      "social_worker_heartbeats_time_chk",
+      sql`${table.lastSeenAt} >= ${table.startedAt}`,
+    ),
+    index("social_worker_heartbeats_liveness_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.workerKind,
+      table.lastSeenAt,
+    ),
   ],
 ).enableRLS();
 

@@ -9,6 +9,7 @@ import type { SocialContentBriefChannelsItem } from './socialContentBriefChannel
 import type { SocialContentBriefContentKind } from './socialContentBriefContentKind';
 import type { SocialContentBriefStatus } from './socialContentBriefStatus';
 import type { SocialContentBriefUtm } from './socialContentBriefUtm';
+import type { SocialMediaRef } from './socialMediaRef';
 
 export interface SocialContentBrief {
   id: string;
@@ -20,6 +21,8 @@ export interface SocialContentBrief {
   channels: SocialContentBriefChannelsItem[];
   campaign_key?: string | null;
   caption?: string | null;
+  /** @maxItems 10 */
+  media_refs: SocialMediaRef[];
   utm?: SocialContentBriefUtm;
   scheduled_for?: Date | null;
   status: SocialContentBriefStatus;

@@ -1,5 +1,45 @@
 # Operations & Growth Foundation — Local Implementation Record
 
+## 6 September 2026 reliability addendum
+
+This addendum supersedes the first-slice publication limitations below without
+changing the external-provider activation gate.
+
+- Managed-provider account verification, publication execution and performance
+  collection now use allowlisted HTTPS endpoints, bounded responses,
+  idempotency keys, leases, exponential retry, dead-letter states and hashed
+  provider receipts.
+- Migration `0101_social_worker_heartbeats.sql` adds release-bound publication
+  and performance worker liveness evidence under tenant/organization FORCE RLS.
+- Dedicated publication and performance services are defined under the explicit
+  `social-external` staging compose profile. The profile and all provider kill
+  switches remain off by default.
+- Both worker loops contain transient infrastructure failures, publish only
+  redacted error codes, refresh bounded heartbeats and close their PostgreSQL
+  pools during controlled shutdown.
+- `/admin/social` now distinguishes disabled workers from a missing or
+  release-mismatched heartbeat instead of inferring health from configuration.
+- The OpenAPI contract includes every implemented social account, media,
+  publication and performance route together with provider gates,
+  worker-health projection and required idempotency request keys.
+- Migration `0102_social_media_assets.sql` and the Social UI add uploader-bound
+  JPG/PNG/WebP/MP4 intake, server-side signature and size verification,
+  tenant-scoped immutable content-addressed assets, private streaming and brief
+  attachment selection. Arbitrary URLs and another user's upload key are never
+  accepted as publication media.
+- Reel and Video require exactly one verified MP4; Story and Ad Creative enforce
+  their media prerequisites at brief creation, review submission, publication
+  creation and worker execution. This prevents legacy or malformed jobs from
+  reaching a provider.
+- Disposable PostgreSQL verification passes with `103/103` migrations, `13/13`
+  social tables under FORCE RLS, immutable tenant-isolated media, isolated
+  heartbeats and concurrent queue claims. Provider traffic is still not
+  authorized by these checks.
+
+Production and `Find-And-Study-OS-Next` remain outside this change. Real
+publishing still requires an approved provider account, sandbox/canary evidence,
+quota policy and explicit activation of every external gate.
+
 Date: 5 September 2026
 Environment changed: local review worktree and `127.0.0.1:5433/fasos_apply_local` only
 Production, staging, GitHub and external providers: unchanged
@@ -84,7 +124,9 @@ Production, staging, GitHub and external providers: unchanged
   Privacy/Legal, purpose, expiry, revocation and maker-checker design gates.
 - Institution issuer/step-up/runtime adoption remains separate from these UI
   projections.
-- Social publishing, ad management and video generation remain BUY/integrate
-  work behind the two-paid-tenant demand gate, provider contract, approval,
-  receipt, rate-limit and rollback evidence.
+- External provider activation, ad-spend mutation and AI video generation remain
+  separate BUY/integrate gates. The internal publication engine is implemented,
+  but real provider traffic still requires account verification, provider
+  contract, sandbox/canary evidence, quota/rate-limit policy, rollback evidence
+  and explicit activation of every kill switch.
 - No deploy, commit, push or merge is included in this record.

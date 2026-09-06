@@ -25,7 +25,7 @@ await admin.connect();
 const migrationCount = await admin.query(
   "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
 );
-assert.equal(migrationCount.rows[0]?.count, 101);
+assert.equal(migrationCount.rows[0]?.count, 103);
 await admin.query(`DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fas_institution_executor') THEN
     CREATE ROLE fas_institution_executor LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS;

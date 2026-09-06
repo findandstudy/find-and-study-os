@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SocialOperationsContextMode } from './socialOperationsContextMode';
+import type { SocialPerformanceGate } from './socialPerformanceGate';
+import type { SocialProviderConnectionGate } from './socialProviderConnectionGate';
+import type { SocialPublicationGate } from './socialPublicationGate';
 
 export interface SocialOperationsContext {
   enabled: boolean;
@@ -13,5 +16,8 @@ export interface SocialOperationsContext {
   reason?: string | null;
   tenantId?: string;
   organizationId?: string;
-  publishingEnabled: false;
+  publishingEnabled: boolean;
+  publicationGate: SocialPublicationGate;
+  performanceGate: SocialPerformanceGate;
+  providerConnectionGate: SocialProviderConnectionGate;
 }

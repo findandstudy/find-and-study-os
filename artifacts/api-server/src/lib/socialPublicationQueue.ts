@@ -157,7 +157,7 @@ export async function claimSocialPublication(
     content_kind: string;
     locales: string[];
     channels: string[];
-    media_refs: Array<{ kind: string; ref: string }>;
+    media_refs: SocialPublicationJob["mediaRefs"];
     utm: Record<string, string>;
     scheduled_for: string;
     attempt_count: number;

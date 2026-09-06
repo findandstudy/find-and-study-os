@@ -60,6 +60,7 @@ import type {
   CreateServiceFeeBody,
   CreateSocialAccountBody,
   CreateSocialContentBriefBody,
+  CreateSocialPublicationBody,
   CreateStudentBody,
   CreateUniversityBody,
   CreateUniversityContract201,
@@ -77,6 +78,7 @@ import type {
   GetFinanceSummary200,
   GetFinanceSummaryParams,
   GetKommoSummaryParams,
+  GetOperationsWorkItemsParams,
   GetOverviewStatsParams,
   GetPortalLifecycleProposals200,
   GetPortalLifecycleProposalsParams,
@@ -116,6 +118,9 @@ import type {
   ListServiceFees200,
   ListServiceFeesParams,
   ListSocialAccounts200,
+  ListSocialPerformanceParams,
+  ListSocialPublicationAttempts200,
+  ListSocialPublicationsParams,
   ListStudentsParams,
   ListUniversitiesParams,
   ListUniversityContracts200,
@@ -128,6 +133,7 @@ import type {
   MultiPortalMembersResponse,
   Note,
   OkResponse,
+  OperationsWorkResponse,
   OverviewStats,
   PatchAdapterSpecBody,
   PatchAdapterSpecResponse,
@@ -155,6 +161,7 @@ import type {
   QueuePortalUniversityTestLoginBody,
   RecordEntityViewBody,
   RecordEntityViewResponse,
+  RegisterSocialMediaAssetBody,
   RejectApiOwnedPortalSubmissionRecoveryBody,
   ReportingApplicationsResponse,
   ReportingCommandCenterResponse,
@@ -173,13 +180,22 @@ import type {
   SetPortalCredentialsBody,
   Settings,
   SocialAccount,
+  SocialAccountVerificationResult,
   SocialContentBrief,
   SocialContentReviewResult,
+  SocialMediaAsset,
+  SocialMediaUploadRequest,
+  SocialMediaUploadTarget,
   SocialOperationsContext,
   SocialOperationsOverview,
+  SocialPerformanceResponse,
+  SocialPerformanceSyncResult,
+  SocialPublication,
+  SocialPublicationListResponse,
   Student,
   StudentEducationResponse,
   StudentsListResponse,
+  SubmitSocialOperationBody,
   SuccessResponse,
   SummarizeInboxConversationResponse,
   UniversitiesListResponse,
@@ -11556,6 +11572,90 @@ export function useGetReportingDataQuality<TData = Awaited<ReturnType<typeof get
 
 
 
+export const getGetOperationsWorkItemsUrl = (params?: GetOperationsWorkItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/operations/work-items?${stringifiedParams}` : `/api/operations/work-items`
+}
+
+/**
+ * @summary Get the server-side, cursor-paginated work and exception queue
+ */
+export const getOperationsWorkItems = async (params?: GetOperationsWorkItemsParams, options?: Parameters<typeof customFetch>[1]): Promise<OperationsWorkResponse> => {
+
+  return customFetch<OperationsWorkResponse>(getGetOperationsWorkItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOperationsWorkItemsQueryKey = (params?: GetOperationsWorkItemsParams,) => {
+    return [
+    `/api/operations/work-items`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetOperationsWorkItemsQueryOptions = <TData = Awaited<ReturnType<typeof getOperationsWorkItems>>, TError = ErrorType<void>>(params?: GetOperationsWorkItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOperationsWorkItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOperationsWorkItemsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOperationsWorkItems>>> = ({ signal }) => getOperationsWorkItems(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOperationsWorkItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOperationsWorkItemsQueryResult = NonNullable<Awaited<ReturnType<typeof getOperationsWorkItems>>>
+export type GetOperationsWorkItemsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the server-side, cursor-paginated work and exception queue
+ */
+
+export function useGetOperationsWorkItems<TData = Awaited<ReturnType<typeof getOperationsWorkItems>>, TError = ErrorType<void>>(
+ params?: GetOperationsWorkItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOperationsWorkItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOperationsWorkItemsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetSocialOperationsContextUrl = () => {
 
 
@@ -11642,7 +11742,7 @@ export const getGetSocialOperationsOverviewUrl = () => {
 }
 
 /**
- * @summary Get content, account and publication-intent counts
+ * @summary Get content, account, publication and release-bound worker health
  */
 export const getSocialOperationsOverview = async ( options?: Parameters<typeof customFetch>[1]): Promise<SocialOperationsOverview> => {
 
@@ -11689,7 +11789,7 @@ export type GetSocialOperationsOverviewQueryError = ErrorType<void>
 
 
 /**
- * @summary Get content, account and publication-intent counts
+ * @summary Get content, account, publication and release-bound worker health
  */
 
 export function useGetSocialOperationsOverview<TData = Awaited<ReturnType<typeof getSocialOperationsOverview>>, TError = ErrorType<void>>(
@@ -11858,6 +11958,225 @@ export const useCreateSocialAccount = <TError = ErrorType<void>,
       return useMutation(getCreateSocialAccountMutationOptions(options));
     }
 
+export const getRequestSocialMediaUploadUrl = () => {
+
+
+
+
+  return `/api/social/media/uploads/request-url`
+}
+
+/**
+ * @summary Request an uploader-bound temporary social media upload URL
+ */
+export const requestSocialMediaUpload = async (socialMediaUploadRequest: SocialMediaUploadRequest, options?: Parameters<typeof customFetch>[1]): Promise<SocialMediaUploadTarget> => {
+
+  return customFetch<SocialMediaUploadTarget>(getRequestSocialMediaUploadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(socialMediaUploadRequest)
+  }
+);}
+
+
+
+
+
+export const getRequestSocialMediaUploadMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestSocialMediaUpload>>, TError,{data: BodyType<SocialMediaUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestSocialMediaUpload>>, TError,{data: BodyType<SocialMediaUploadRequest>}, TContext> => {
+
+const mutationKey = ['requestSocialMediaUpload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestSocialMediaUpload>>, {data: BodyType<SocialMediaUploadRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestSocialMediaUpload(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestSocialMediaUploadMutationResult = NonNullable<Awaited<ReturnType<typeof requestSocialMediaUpload>>>
+    export type RequestSocialMediaUploadMutationBody = BodyType<SocialMediaUploadRequest>
+    export type RequestSocialMediaUploadMutationError = ErrorType<void>
+
+    /**
+ * @summary Request an uploader-bound temporary social media upload URL
+ */
+export const useRequestSocialMediaUpload = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestSocialMediaUpload>>, TError,{data: BodyType<SocialMediaUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestSocialMediaUpload>>,
+        TError,
+        {data: BodyType<SocialMediaUploadRequest>},
+        TContext
+      > => {
+      return useMutation(getRequestSocialMediaUploadMutationOptions(options));
+    }
+
+export const getRegisterSocialMediaAssetUrl = () => {
+
+
+
+
+  return `/api/social/media`
+}
+
+/**
+ * @summary Verify uploaded bytes and register an immutable media asset
+ */
+export const registerSocialMediaAsset = async (registerSocialMediaAssetBody: RegisterSocialMediaAssetBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialMediaAsset> => {
+
+  return customFetch<SocialMediaAsset>(getRegisterSocialMediaAssetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(registerSocialMediaAssetBody)
+  }
+);}
+
+
+
+
+
+export const getRegisterSocialMediaAssetMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerSocialMediaAsset>>, TError,{data: BodyType<RegisterSocialMediaAssetBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerSocialMediaAsset>>, TError,{data: BodyType<RegisterSocialMediaAssetBody>}, TContext> => {
+
+const mutationKey = ['registerSocialMediaAsset'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerSocialMediaAsset>>, {data: BodyType<RegisterSocialMediaAssetBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerSocialMediaAsset(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterSocialMediaAssetMutationResult = NonNullable<Awaited<ReturnType<typeof registerSocialMediaAsset>>>
+    export type RegisterSocialMediaAssetMutationBody = BodyType<RegisterSocialMediaAssetBody>
+    export type RegisterSocialMediaAssetMutationError = ErrorType<void>
+
+    /**
+ * @summary Verify uploaded bytes and register an immutable media asset
+ */
+export const useRegisterSocialMediaAsset = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerSocialMediaAsset>>, TError,{data: BodyType<RegisterSocialMediaAssetBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof registerSocialMediaAsset>>,
+        TError,
+        {data: BodyType<RegisterSocialMediaAssetBody>},
+        TContext
+      > => {
+      return useMutation(getRegisterSocialMediaAssetMutationOptions(options));
+    }
+
+export const getGetSocialMediaAssetContentUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/media/${id}/content`
+}
+
+/**
+ * @summary Stream a tenant-authorized private social media asset
+ */
+export const getSocialMediaAssetContent = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetSocialMediaAssetContentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSocialMediaAssetContentQueryKey = (id: string,) => {
+    return [
+    `/api/social/media/${id}/content`
+    ] as const;
+    }
+
+
+export const getGetSocialMediaAssetContentQueryOptions = <TData = Awaited<ReturnType<typeof getSocialMediaAssetContent>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialMediaAssetContent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSocialMediaAssetContentQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSocialMediaAssetContent>>> = ({ signal }) => getSocialMediaAssetContent(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSocialMediaAssetContent>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSocialMediaAssetContentQueryResult = NonNullable<Awaited<ReturnType<typeof getSocialMediaAssetContent>>>
+export type GetSocialMediaAssetContentQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stream a tenant-authorized private social media asset
+ */
+
+export function useGetSocialMediaAssetContent<TData = Awaited<ReturnType<typeof getSocialMediaAssetContent>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialMediaAssetContent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSocialMediaAssetContentQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getCreateSocialContentBriefUrl = () => {
 
 
@@ -11940,14 +12259,15 @@ export const getSubmitSocialContentBriefUrl = (id: string,) => {
 /**
  * @summary Move a DRAFT brief to IN_REVIEW
  */
-export const submitSocialContentBrief = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<SocialContentBrief> => {
+export const submitSocialContentBrief = async (id: string,
+    submitSocialOperationBody: SubmitSocialOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialContentBrief> => {
 
   return customFetch<SocialContentBrief>(getSubmitSocialContentBriefUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitSocialOperationBody)
   }
 );}
 
@@ -11956,8 +12276,8 @@ export const submitSocialContentBrief = async (id: string, options?: Parameters<
 
 
 export const getSubmitSocialContentBriefMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitSocialContentBrief>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof submitSocialContentBrief>>, TError,{id: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitSocialContentBrief>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitSocialContentBrief>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext> => {
 
 const mutationKey = ['submitSocialContentBrief'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -11969,10 +12289,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitSocialContentBrief>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitSocialContentBrief>>, {id: string;data: BodyType<SubmitSocialOperationBody>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  submitSocialContentBrief(id,requestOptions)
+          return  submitSocialContentBrief(id,data,requestOptions)
         }
 
 
@@ -11983,18 +12303,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type SubmitSocialContentBriefMutationResult = NonNullable<Awaited<ReturnType<typeof submitSocialContentBrief>>>
-
+    export type SubmitSocialContentBriefMutationBody = BodyType<SubmitSocialOperationBody>
     export type SubmitSocialContentBriefMutationError = ErrorType<void>
 
     /**
  * @summary Move a DRAFT brief to IN_REVIEW
  */
 export const useSubmitSocialContentBrief = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitSocialContentBrief>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitSocialContentBrief>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof submitSocialContentBrief>>,
         TError,
-        {id: string},
+        {id: string;data: BodyType<SubmitSocialOperationBody>},
         TContext
       > => {
       return useMutation(getSubmitSocialContentBriefMutationOptions(options));
@@ -12070,4 +12390,680 @@ export const useReviewSocialContentBrief = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getReviewSocialContentBriefMutationOptions(options));
+    }
+
+export const getVerifySocialAccountUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/accounts/${id}/verify`
+}
+
+/**
+ * @summary Verify an account through the explicitly enabled provider adapter
+ */
+export const verifySocialAccount = async (id: string,
+    submitSocialOperationBody: SubmitSocialOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialAccountVerificationResult> => {
+
+  return customFetch<SocialAccountVerificationResult>(getVerifySocialAccountUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitSocialOperationBody)
+  }
+);}
+
+
+
+
+
+export const getVerifySocialAccountMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifySocialAccount>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifySocialAccount>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext> => {
+
+const mutationKey = ['verifySocialAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifySocialAccount>>, {id: string;data: BodyType<SubmitSocialOperationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  verifySocialAccount(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifySocialAccountMutationResult = NonNullable<Awaited<ReturnType<typeof verifySocialAccount>>>
+    export type VerifySocialAccountMutationBody = BodyType<SubmitSocialOperationBody>
+    export type VerifySocialAccountMutationError = ErrorType<void>
+
+    /**
+ * @summary Verify an account through the explicitly enabled provider adapter
+ */
+export const useVerifySocialAccount = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifySocialAccount>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifySocialAccount>>,
+        TError,
+        {id: string;data: BodyType<SubmitSocialOperationBody>},
+        TContext
+      > => {
+      return useMutation(getVerifySocialAccountMutationOptions(options));
+    }
+
+export const getListSocialPublicationsUrl = (params?: ListSocialPublicationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/publications?${stringifiedParams}` : `/api/social/publications`
+}
+
+/**
+ * @summary List publication intents in the selected tenant scope
+ */
+export const listSocialPublications = async (params?: ListSocialPublicationsParams, options?: Parameters<typeof customFetch>[1]): Promise<SocialPublicationListResponse> => {
+
+  return customFetch<SocialPublicationListResponse>(getListSocialPublicationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialPublicationsQueryKey = (params?: ListSocialPublicationsParams,) => {
+    return [
+    `/api/social/publications`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSocialPublicationsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialPublications>>, TError = ErrorType<void>>(params?: ListSocialPublicationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialPublications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialPublicationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialPublications>>> = ({ signal }) => listSocialPublications(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialPublications>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialPublicationsQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialPublications>>>
+export type ListSocialPublicationsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List publication intents in the selected tenant scope
+ */
+
+export function useListSocialPublications<TData = Awaited<ReturnType<typeof listSocialPublications>>, TError = ErrorType<void>>(
+ params?: ListSocialPublicationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialPublications>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialPublicationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSocialPublicationUrl = () => {
+
+
+
+
+  return `/api/social/publications`
+}
+
+/**
+ * @summary Create a draft publication intent from an approved brief and verified account
+ */
+export const createSocialPublication = async (createSocialPublicationBody: CreateSocialPublicationBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialPublication> => {
+
+  return customFetch<SocialPublication>(getCreateSocialPublicationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSocialPublicationBody)
+  }
+);}
+
+
+
+
+
+export const getCreateSocialPublicationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialPublication>>, TError,{data: BodyType<CreateSocialPublicationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSocialPublication>>, TError,{data: BodyType<CreateSocialPublicationBody>}, TContext> => {
+
+const mutationKey = ['createSocialPublication'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSocialPublication>>, {data: BodyType<CreateSocialPublicationBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSocialPublication(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSocialPublicationMutationResult = NonNullable<Awaited<ReturnType<typeof createSocialPublication>>>
+    export type CreateSocialPublicationMutationBody = BodyType<CreateSocialPublicationBody>
+    export type CreateSocialPublicationMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a draft publication intent from an approved brief and verified account
+ */
+export const useCreateSocialPublication = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialPublication>>, TError,{data: BodyType<CreateSocialPublicationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSocialPublication>>,
+        TError,
+        {data: BodyType<CreateSocialPublicationBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSocialPublicationMutationOptions(options));
+    }
+
+export const getSubmitSocialPublicationUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/publications/${id}/submit`
+}
+
+/**
+ * @summary Submit a draft publication intent for maker-checker review
+ */
+export const submitSocialPublication = async (id: string,
+    submitSocialOperationBody: SubmitSocialOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialPublication> => {
+
+  return customFetch<SocialPublication>(getSubmitSocialPublicationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitSocialOperationBody)
+  }
+);}
+
+
+
+
+
+export const getSubmitSocialPublicationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitSocialPublication>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof submitSocialPublication>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext> => {
+
+const mutationKey = ['submitSocialPublication'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof submitSocialPublication>>, {id: string;data: BodyType<SubmitSocialOperationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  submitSocialPublication(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SubmitSocialPublicationMutationResult = NonNullable<Awaited<ReturnType<typeof submitSocialPublication>>>
+    export type SubmitSocialPublicationMutationBody = BodyType<SubmitSocialOperationBody>
+    export type SubmitSocialPublicationMutationError = ErrorType<void>
+
+    /**
+ * @summary Submit a draft publication intent for maker-checker review
+ */
+export const useSubmitSocialPublication = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitSocialPublication>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof submitSocialPublication>>,
+        TError,
+        {id: string;data: BodyType<SubmitSocialOperationBody>},
+        TContext
+      > => {
+      return useMutation(getSubmitSocialPublicationMutationOptions(options));
+    }
+
+export const getReviewSocialPublicationUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/publications/${id}/review`
+}
+
+/**
+ * @summary Approve or reject a publication intent using maker-checker
+ */
+export const reviewSocialPublication = async (id: string,
+    reviewSocialContentBriefBody: ReviewSocialContentBriefBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialContentReviewResult> => {
+
+  return customFetch<SocialContentReviewResult>(getReviewSocialPublicationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewSocialContentBriefBody)
+  }
+);}
+
+
+
+
+
+export const getReviewSocialPublicationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewSocialPublication>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewSocialPublication>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext> => {
+
+const mutationKey = ['reviewSocialPublication'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewSocialPublication>>, {id: string;data: BodyType<ReviewSocialContentBriefBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewSocialPublication(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewSocialPublicationMutationResult = NonNullable<Awaited<ReturnType<typeof reviewSocialPublication>>>
+    export type ReviewSocialPublicationMutationBody = BodyType<ReviewSocialContentBriefBody>
+    export type ReviewSocialPublicationMutationError = ErrorType<void>
+
+    /**
+ * @summary Approve or reject a publication intent using maker-checker
+ */
+export const useReviewSocialPublication = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewSocialPublication>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewSocialPublication>>,
+        TError,
+        {id: string;data: BodyType<ReviewSocialContentBriefBody>},
+        TContext
+      > => {
+      return useMutation(getReviewSocialPublicationMutationOptions(options));
+    }
+
+export const getListSocialPublicationAttemptsUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/publications/${id}/attempts`
+}
+
+/**
+ * @summary List immutable worker attempts for a publication
+ */
+export const listSocialPublicationAttempts = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ListSocialPublicationAttempts200> => {
+
+  return customFetch<ListSocialPublicationAttempts200>(getListSocialPublicationAttemptsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialPublicationAttemptsQueryKey = (id: string,) => {
+    return [
+    `/api/social/publications/${id}/attempts`
+    ] as const;
+    }
+
+
+export const getListSocialPublicationAttemptsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialPublicationAttempts>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialPublicationAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialPublicationAttemptsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialPublicationAttempts>>> = ({ signal }) => listSocialPublicationAttempts(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialPublicationAttempts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialPublicationAttemptsQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialPublicationAttempts>>>
+export type ListSocialPublicationAttemptsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List immutable worker attempts for a publication
+ */
+
+export function useListSocialPublicationAttempts<TData = Awaited<ReturnType<typeof listSocialPublicationAttempts>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialPublicationAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialPublicationAttemptsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCancelSocialPublicationUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/publications/${id}/cancel`
+}
+
+/**
+ * @summary Cancel a publication that has not started executing
+ */
+export const cancelSocialPublication = async (id: string,
+    submitSocialOperationBody: SubmitSocialOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialPublication> => {
+
+  return customFetch<SocialPublication>(getCancelSocialPublicationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitSocialOperationBody)
+  }
+);}
+
+
+
+
+
+export const getCancelSocialPublicationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSocialPublication>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelSocialPublication>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext> => {
+
+const mutationKey = ['cancelSocialPublication'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelSocialPublication>>, {id: string;data: BodyType<SubmitSocialOperationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  cancelSocialPublication(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelSocialPublicationMutationResult = NonNullable<Awaited<ReturnType<typeof cancelSocialPublication>>>
+    export type CancelSocialPublicationMutationBody = BodyType<SubmitSocialOperationBody>
+    export type CancelSocialPublicationMutationError = ErrorType<void>
+
+    /**
+ * @summary Cancel a publication that has not started executing
+ */
+export const useCancelSocialPublication = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSocialPublication>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelSocialPublication>>,
+        TError,
+        {id: string;data: BodyType<SubmitSocialOperationBody>},
+        TContext
+      > => {
+      return useMutation(getCancelSocialPublicationMutationOptions(options));
+    }
+
+export const getListSocialPerformanceUrl = (params?: ListSocialPerformanceParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/performance?${stringifiedParams}` : `/api/social/performance`
+}
+
+/**
+ * @summary List latest receipt-backed performance snapshots
+ */
+export const listSocialPerformance = async (params?: ListSocialPerformanceParams, options?: Parameters<typeof customFetch>[1]): Promise<SocialPerformanceResponse> => {
+
+  return customFetch<SocialPerformanceResponse>(getListSocialPerformanceUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialPerformanceQueryKey = (params?: ListSocialPerformanceParams,) => {
+    return [
+    `/api/social/performance`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSocialPerformanceQueryOptions = <TData = Awaited<ReturnType<typeof listSocialPerformance>>, TError = ErrorType<void>>(params?: ListSocialPerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialPerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialPerformanceQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialPerformance>>> = ({ signal }) => listSocialPerformance(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialPerformance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialPerformanceQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialPerformance>>>
+export type ListSocialPerformanceQueryError = ErrorType<void>
+
+
+/**
+ * @summary List latest receipt-backed performance snapshots
+ */
+
+export function useListSocialPerformance<TData = Awaited<ReturnType<typeof listSocialPerformance>>, TError = ErrorType<void>>(
+ params?: ListSocialPerformanceParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialPerformance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialPerformanceQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestSocialPerformanceSyncUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/performance/${id}/sync`
+}
+
+/**
+ * @summary Queue a bounded performance refresh for a published item
+ */
+export const requestSocialPerformanceSync = async (id: string,
+    submitSocialOperationBody: SubmitSocialOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialPerformanceSyncResult> => {
+
+  return customFetch<SocialPerformanceSyncResult>(getRequestSocialPerformanceSyncUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitSocialOperationBody)
+  }
+);}
+
+
+
+
+
+export const getRequestSocialPerformanceSyncMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestSocialPerformanceSync>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestSocialPerformanceSync>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext> => {
+
+const mutationKey = ['requestSocialPerformanceSync'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestSocialPerformanceSync>>, {id: string;data: BodyType<SubmitSocialOperationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  requestSocialPerformanceSync(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestSocialPerformanceSyncMutationResult = NonNullable<Awaited<ReturnType<typeof requestSocialPerformanceSync>>>
+    export type RequestSocialPerformanceSyncMutationBody = BodyType<SubmitSocialOperationBody>
+    export type RequestSocialPerformanceSyncMutationError = ErrorType<void>
+
+    /**
+ * @summary Queue a bounded performance refresh for a published item
+ */
+export const useRequestSocialPerformanceSync = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestSocialPerformanceSync>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestSocialPerformanceSync>>,
+        TError,
+        {id: string;data: BodyType<SubmitSocialOperationBody>},
+        TContext
+      > => {
+      return useMutation(getRequestSocialPerformanceSyncMutationOptions(options));
     }

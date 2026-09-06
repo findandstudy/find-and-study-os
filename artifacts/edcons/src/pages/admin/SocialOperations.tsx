@@ -4,6 +4,10 @@ import { customFetch } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useI18n } from "@/hooks/use-i18n";
 import { useToast } from "@/hooks/use-toast";
+import {
+  uploadSocialMediaFile,
+  type SocialMediaAsset,
+} from "@/lib/uploadSocialMediaFile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
   CalendarDays,
@@ -28,10 +33,13 @@ import {
   FileText,
   Link2,
   Loader2,
+  Paperclip,
   Plus,
   Send,
   Settings,
   ShieldCheck,
+  Trash2,
+  Upload,
   Users,
 } from "lucide-react";
 
@@ -41,6 +49,12 @@ type SocialContext = {
   reason?: string | null;
   publishingEnabled: boolean;
   publicationGate?: { reason: string | null; allowedProviders: string[] };
+  performanceGate?: {
+    enabled: boolean;
+    workerEnabled: boolean;
+    reason: string | null;
+    allowedProviders: string[];
+  };
   providerConnectionGate?: {
     enabled: boolean;
     reason: string | null;
@@ -56,6 +70,7 @@ type SocialBrief = {
   content_kind: string;
   channels: string[];
   locales: string[];
+  media_refs: Array<{ kind: "image" | "video"; ref: string }>;
   status: "DRAFT" | "IN_REVIEW" | "APPROVED" | "REJECTED" | "ARCHIVED";
   scheduled_for: string | null;
   created_by_legacy_user_id: number;
@@ -70,6 +85,15 @@ type SocialOverview = {
   publicationCounts: Array<{ status: string; count: number | string }>;
   briefs: SocialBrief[];
   publishingEnabled: boolean;
+  workerHealth: Array<{
+    kind: "publication" | "performance";
+    expected: boolean;
+    status: "DISABLED" | "READY" | "RELEASE_MISMATCH" | "STALE";
+    activeWorkers: number;
+    currentReleaseWorkers: number;
+    lastSeenAt: string | null;
+    reason: string | null;
+  }>;
 };
 
 type SocialAccount = {
@@ -126,6 +150,12 @@ type SocialPerformanceItem = {
 type SocialPerformanceResponse = {
   data: SocialPerformanceItem[];
   performanceWorkerEnabled: boolean;
+  performanceGate?: {
+    enabled: boolean;
+    workerEnabled: boolean;
+    reason: string | null;
+    allowedProviders: string[];
+  };
   providerConnectionGate: {
     enabled: boolean;
     reason: string | null;
@@ -225,6 +255,10 @@ export default function SocialOperations() {
   const [briefOpen, setBriefOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [publicationOpen, setPublicationOpen] = useState(false);
+  const [briefMediaAssets, setBriefMediaAssets] = useState<SocialMediaAsset[]>(
+    [],
+  );
+  const [mediaUploading, setMediaUploading] = useState(false);
   const [briefForm, setBriefForm] = useState({
     title: "",
     objective: "",
@@ -322,6 +356,7 @@ export default function SocialOperations() {
           channels: briefForm.channels,
           campaignKey: briefForm.campaignKey.trim() || undefined,
           caption: briefForm.caption || undefined,
+          mediaAssetIds: briefMediaAssets.map((asset) => asset.id),
           scheduledFor: briefForm.scheduledFor
             ? new Date(briefForm.scheduledFor).toISOString()
             : undefined,
@@ -335,6 +370,7 @@ export default function SocialOperations() {
       }),
     onSuccess: async () => {
       setBriefOpen(false);
+      setBriefMediaAssets([]);
       setBriefForm((current) => ({
         ...current,
         title: "",
@@ -358,6 +394,41 @@ export default function SocialOperations() {
         variant: "destructive",
       }),
   });
+
+  const uploadBriefMedia = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const available = 10 - briefMediaAssets.length;
+    if (files.length > available) {
+      toast({
+        title: tr ? "En fazla 10 medya dosyası" : "Maximum 10 media files",
+        variant: "destructive",
+      });
+      return;
+    }
+    setMediaUploading(true);
+    const uploaded = [...briefMediaAssets];
+    try {
+      for (const file of Array.from(files)) {
+        const asset = await uploadSocialMediaFile(
+          file,
+          requestKey("social-media-register"),
+        );
+        uploaded.push(asset);
+        setBriefMediaAssets([...uploaded]);
+      }
+      toast({
+        title: tr ? "Medya güvenle eklendi" : "Media attached securely",
+      });
+    } catch (error) {
+      toast({
+        title: tr ? "Medya yüklenemedi" : "Media upload failed",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setMediaUploading(false);
+    }
+  };
 
   const createAccount = useMutation({
     mutationFn: () =>
@@ -623,6 +694,22 @@ export default function SocialOperations() {
   const canManage =
     context.data?.mode === "manage" && hasPermission("social.manage");
   const canApprove = hasPermission("social.approve");
+  const briefMediaValid = useMemo(() => {
+    const videos = briefMediaAssets.filter(
+      (asset) => asset.media_kind === "video",
+    ).length;
+    const images = briefMediaAssets.length - videos;
+    if (["REEL", "VIDEO"].includes(briefForm.contentKind))
+      return videos === 1 && images === 0;
+    if (briefForm.contentKind === "STORY")
+      return (
+        briefMediaAssets.length > 0 &&
+        (videos === 0 || briefMediaAssets.length === 1)
+      );
+    if (briefForm.contentKind === "AD_CREATIVE")
+      return briefMediaAssets.length > 0;
+    return true;
+  }, [briefForm.contentKind, briefMediaAssets]);
 
   if (context.isLoading)
     return (
@@ -744,6 +831,85 @@ export default function SocialOperations() {
         </span>
       </div>
 
+      {enabled && (
+        <div className="grid gap-3 md:grid-cols-2">
+          {(overview.data?.workerHealth ?? []).map((worker) => {
+            const ready = worker.status === "READY";
+            const disabled = worker.status === "DISABLED";
+            return (
+              <Card
+                key={worker.kind}
+                className={
+                  ready
+                    ? "border-emerald-200 dark:border-emerald-900"
+                    : disabled
+                      ? "border-border"
+                      : "border-amber-300 dark:border-amber-900"
+                }
+              >
+                <CardContent className="flex items-start justify-between gap-4 p-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div
+                      className={`rounded-xl p-2.5 ${
+                        ready
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          : disabled
+                            ? "bg-muted text-muted-foreground"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                      }`}
+                    >
+                      <Activity className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        {worker.kind === "publication"
+                          ? tr
+                            ? "Yayın worker'ı"
+                            : "Publication worker"
+                          : tr
+                            ? "Performans worker'ı"
+                            : "Performance worker"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {disabled
+                          ? tr
+                            ? `Güvenlik kapısında kapalı (${worker.reason ?? "DISABLED"}).`
+                            : `Disabled by safety gate (${worker.reason ?? "DISABLED"}).`
+                          : ready
+                            ? tr
+                              ? `${worker.currentReleaseWorkers} güncel release worker'ı canlı.`
+                              : `${worker.currentReleaseWorkers} current-release worker(s) are live.`
+                            : tr
+                              ? "Worker bekleniyor fakat güncel release heartbeat'i alınamıyor."
+                              : "Worker is expected but no current-release heartbeat is available."}
+                      </p>
+                      {!disabled && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {tr ? "Son sinyal" : "Last signal"}:{" "}
+                          {date(worker.lastSeenAt)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={
+                      ready
+                        ? "border-emerald-300 text-emerald-700 dark:text-emerald-300"
+                        : disabled
+                          ? "text-muted-foreground"
+                          : "border-amber-300 text-amber-700 dark:text-amber-300"
+                    }
+                  >
+                    {worker.status}
+                  </Badge>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       <Tabs defaultValue="calendar" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl bg-muted/60 p-1">
           <TabsTrigger value="calendar">
@@ -860,6 +1026,12 @@ export default function SocialOperations() {
                             <Badge variant="outline">
                               {brief.content_kind}
                             </Badge>
+                            {brief.media_refs.length > 0 && (
+                              <Badge variant="outline">
+                                <Paperclip className="mr-1 size-3" />
+                                {brief.media_refs.length}
+                              </Badge>
+                            )}
                           </div>
                           <p className="mt-2 text-xs text-muted-foreground">
                             {brief.channels.join(" · ")} ·{" "}
@@ -1511,6 +1683,74 @@ export default function SocialOperations() {
                 ))}
               </div>
             </div>
+            <div className="sm:col-span-2">
+              <Label>{tr ? "Medya dosyaları" : "Media files"}</Label>
+              <div className="mt-2 rounded-xl border border-dashed p-4">
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-muted/60 px-4 py-3 text-sm font-medium hover:bg-muted">
+                  {mediaUploading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Upload className="size-4" />
+                  )}
+                  {mediaUploading
+                    ? tr
+                      ? "Yükleniyor…"
+                      : "Uploading…"
+                    : tr
+                      ? "Görsel veya MP4 seç"
+                      : "Choose images or MP4"}
+                  <input
+                    className="sr-only"
+                    type="file"
+                    multiple
+                    disabled={mediaUploading || briefMediaAssets.length >= 10}
+                    accept="image/jpeg,image/png,image/webp,video/mp4"
+                    onChange={(event) => {
+                      void uploadBriefMedia(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {tr
+                    ? "En fazla 10 dosya. Görseller 15 MB, MP4 videolar 25 MB. Reel ve video için tek MP4 zorunludur."
+                    : "Up to 10 files. Images 15 MB, MP4 videos 25 MB. Reels and videos require exactly one MP4."}
+                </p>
+                {briefMediaAssets.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {briefMediaAssets.map((asset) => (
+                      <div
+                        key={asset.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {asset.original_file_name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {asset.media_kind} ·{" "}
+                            {(asset.size_bytes / 1024 / 1024).toFixed(1)} MB
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          aria-label={tr ? "Medyayı kaldır" : "Remove media"}
+                          onClick={() =>
+                            setBriefMediaAssets((current) =>
+                              current.filter((item) => item.id !== asset.id),
+                            )
+                          }
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
             <div>
               <Label>{tr ? "Planlanan zaman" : "Scheduled time"}</Label>
               <Input
@@ -1579,10 +1819,12 @@ export default function SocialOperations() {
             <Button
               disabled={
                 createBrief.isPending ||
+                mediaUploading ||
                 !briefForm.title ||
                 !briefForm.objective ||
                 !briefForm.audience ||
-                briefForm.channels.length === 0
+                briefForm.channels.length === 0 ||
+                !briefMediaValid
               }
               onClick={() => createBrief.mutate()}
             >

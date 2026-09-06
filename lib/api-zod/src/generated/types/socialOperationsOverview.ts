@@ -9,11 +9,23 @@ import type { SocialContentBrief } from './socialContentBrief';
 import type { SocialOperationsOverviewAccountCountsItem } from './socialOperationsOverviewAccountCountsItem';
 import type { SocialOperationsOverviewBriefCountsItem } from './socialOperationsOverviewBriefCountsItem';
 import type { SocialOperationsOverviewPublicationCountsItem } from './socialOperationsOverviewPublicationCountsItem';
+import type { SocialPerformanceGate } from './socialPerformanceGate';
+import type { SocialProviderConnectionGate } from './socialProviderConnectionGate';
+import type { SocialPublicationGate } from './socialPublicationGate';
+import type { SocialWorkerHealth } from './socialWorkerHealth';
 
 export interface SocialOperationsOverview {
   briefCounts: SocialOperationsOverviewBriefCountsItem[];
   accountCounts: SocialOperationsOverviewAccountCountsItem[];
   publicationCounts: SocialOperationsOverviewPublicationCountsItem[];
   briefs: SocialContentBrief[];
-  publishingEnabled: false;
+  publishingEnabled: boolean;
+  publicationGate: SocialPublicationGate;
+  performanceGate: SocialPerformanceGate;
+  providerConnectionGate: SocialProviderConnectionGate;
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
+  workerHealth: SocialWorkerHealth[];
 }

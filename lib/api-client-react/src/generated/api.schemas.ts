@@ -3265,6 +3265,92 @@ export interface UpdatePortalProgramMappingBody {
   programOverrides: UpdatePortalProgramMappingBodyProgramOverrides;
 }
 
+export type OperationsWorkItemSource = typeof OperationsWorkItemSource[keyof typeof OperationsWorkItemSource];
+
+
+export const OperationsWorkItemSource = {
+  task: 'task',
+  application: 'application',
+  document: 'document',
+  portal: 'portal',
+  offer: 'offer',
+} as const;
+
+export type OperationsWorkItemSeverity = typeof OperationsWorkItemSeverity[keyof typeof OperationsWorkItemSeverity];
+
+
+export const OperationsWorkItemSeverity = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface OperationsWorkItem {
+  id: string;
+  source: OperationsWorkItemSource;
+  severity: OperationsWorkItemSeverity;
+  reasonCode: string;
+  identity: string;
+  state: string;
+  nextAction: string;
+  owner: string;
+  dueAt: string | null;
+  blocker: string;
+  lastActivityAt: string | null;
+  href: string;
+  applicationId?: number;
+  score: number;
+  isMine: boolean;
+}
+
+export interface OperationsWorkSummary {
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  critical: number;
+  /** @minimum 0 */
+  high: number;
+  /** @minimum 0 */
+  medium: number;
+  /** @minimum 0 */
+  low: number;
+  /** @minimum 0 */
+  mine: number;
+  /** @minimum 0 */
+  tasks: number;
+  /** @minimum 0 */
+  applications: number;
+  /** @minimum 0 */
+  documents: number;
+  /** @minimum 0 */
+  portal: number;
+  /** @minimum 0 */
+  offers: number;
+}
+
+export type OperationsWorkResponseMeta = {
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  limit: number;
+  /** @minimum 0 */
+  total: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+export interface OperationsWorkResponse {
+  /** @minimum 1 */
+  schemaVersion: number;
+  asOf: string;
+  generatedAt: string;
+  items: OperationsWorkItem[];
+  summary: OperationsWorkSummary;
+  meta: OperationsWorkResponseMeta;
+}
+
 export type SocialOperationsContextMode = typeof SocialOperationsContextMode[keyof typeof SocialOperationsContextMode];
 
 
@@ -3274,13 +3360,65 @@ export const SocialOperationsContextMode = {
   manage: 'manage',
 } as const;
 
+export interface SocialProviderConnectionGate {
+  enabled: boolean;
+  connectivityEnabled: boolean;
+  allowedProviders: string[];
+  /** @nullable */
+  reason: string | null;
+}
+
+export type SocialPublicationGate = SocialProviderConnectionGate & {
+  workerEnabled: boolean;
+  providerPublishingEnabled: boolean;
+};
+
+export type SocialPerformanceGate = SocialProviderConnectionGate & {
+  workerEnabled: boolean;
+};
+
 export interface SocialOperationsContext {
   enabled: boolean;
   mode: SocialOperationsContextMode;
   reason?: string | null;
   tenantId?: string;
   organizationId?: string;
-  publishingEnabled: false;
+  publishingEnabled: boolean;
+  publicationGate: SocialPublicationGate;
+  performanceGate: SocialPerformanceGate;
+  providerConnectionGate: SocialProviderConnectionGate;
+}
+
+export type SocialWorkerHealthKind = typeof SocialWorkerHealthKind[keyof typeof SocialWorkerHealthKind];
+
+
+export const SocialWorkerHealthKind = {
+  publication: 'publication',
+  performance: 'performance',
+} as const;
+
+export type SocialWorkerHealthStatus = typeof SocialWorkerHealthStatus[keyof typeof SocialWorkerHealthStatus];
+
+
+export const SocialWorkerHealthStatus = {
+  DISABLED: 'DISABLED',
+  READY: 'READY',
+  RELEASE_MISMATCH: 'RELEASE_MISMATCH',
+  STALE: 'STALE',
+} as const;
+
+export interface SocialWorkerHealth {
+  kind: SocialWorkerHealthKind;
+  expected: boolean;
+  status: SocialWorkerHealthStatus;
+  /** @minimum 0 */
+  activeWorkers: number;
+  /** @minimum 0 */
+  currentReleaseWorkers: number;
+  /** @nullable */
+  lastSeenAt: string | null;
+  /** @nullable */
+  reason: string | null;
 }
 
 export type SocialAccountStatus = typeof SocialAccountStatus[keyof typeof SocialAccountStatus];
@@ -3343,6 +3481,20 @@ export const SocialContentBriefStatus = {
   ARCHIVED: 'ARCHIVED',
 } as const;
 
+export type SocialMediaRefKind = typeof SocialMediaRefKind[keyof typeof SocialMediaRefKind];
+
+
+export const SocialMediaRefKind = {
+  image: 'image',
+  video: 'video',
+} as const;
+
+export interface SocialMediaRef {
+  kind: SocialMediaRefKind;
+  /** @pattern ^/objects/social-media/assets/ */
+  ref: string;
+}
+
 export interface SocialContentBrief {
   id: string;
   title: string;
@@ -3353,6 +3505,8 @@ export interface SocialContentBrief {
   channels: SocialContentBriefChannelsItem[];
   campaign_key?: string | null;
   caption?: string | null;
+  /** @maxItems 10 */
+  media_refs: SocialMediaRef[];
   utm?: SocialContentBriefUtm;
   scheduled_for?: string | null;
   status: SocialContentBriefStatus;
@@ -3384,10 +3538,24 @@ export interface SocialOperationsOverview {
   accountCounts: SocialOperationsOverviewAccountCountsItem[];
   publicationCounts: SocialOperationsOverviewPublicationCountsItem[];
   briefs: SocialContentBrief[];
-  publishingEnabled: false;
+  publishingEnabled: boolean;
+  publicationGate: SocialPublicationGate;
+  performanceGate: SocialPerformanceGate;
+  providerConnectionGate: SocialProviderConnectionGate;
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
+  workerHealth: SocialWorkerHealth[];
 }
 
 export interface CreateSocialAccountBody {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
+  requestKey: string;
   /**
      * @minLength 2
      * @maxLength 64
@@ -3452,6 +3620,12 @@ export type CreateSocialContentBriefBodyUtm = {
 
 export interface CreateSocialContentBriefBody {
   /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
+  requestKey: string;
+  /**
      * @minLength 1
      * @maxLength 240
      */
@@ -3481,8 +3655,312 @@ export interface CreateSocialContentBriefBody {
   campaignKey?: string;
   /** @maxLength 10000 */
   caption?: string;
+  /** @maxItems 10 */
+  mediaAssetIds?: string[];
   scheduledFor?: string;
   utm?: CreateSocialContentBriefBodyUtm;
+}
+
+export type SocialMediaAssetMediaKind = typeof SocialMediaAssetMediaKind[keyof typeof SocialMediaAssetMediaKind];
+
+
+export const SocialMediaAssetMediaKind = {
+  image: 'image',
+  video: 'video',
+} as const;
+
+export type SocialMediaAssetMimeType = typeof SocialMediaAssetMimeType[keyof typeof SocialMediaAssetMimeType];
+
+
+export const SocialMediaAssetMimeType = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'video/mp4': 'video/mp4',
+} as const;
+
+export interface SocialMediaAsset {
+  id: string;
+  /** @pattern ^/objects/social-media/assets/ */
+  object_path: string;
+  media_kind: SocialMediaAssetMediaKind;
+  mime_type: SocialMediaAssetMimeType;
+  /**
+     * @minimum 1
+     * @maximum 26214400
+     */
+  size_bytes: number;
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  original_file_name: string;
+  created_at: string;
+}
+
+export type SocialMediaUploadRequestContentType = typeof SocialMediaUploadRequestContentType[keyof typeof SocialMediaUploadRequestContentType];
+
+
+export const SocialMediaUploadRequestContentType = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'video/mp4': 'video/mp4',
+} as const;
+
+export interface SocialMediaUploadRequest {
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  name: string;
+  /**
+     * @minimum 1
+     * @maximum 26214400
+     */
+  size: number;
+  contentType: SocialMediaUploadRequestContentType;
+}
+
+export type SocialMediaUploadTargetMetadata = {
+  name: string;
+  size: number;
+  contentType: string;
+};
+
+export interface SocialMediaUploadTarget {
+  uploadURL: string;
+  /** @pattern ^/objects/social-media/staging/ */
+  objectPath: string;
+  metadata: SocialMediaUploadTargetMetadata;
+}
+
+export type RegisterSocialMediaAssetBodyMimeType = typeof RegisterSocialMediaAssetBodyMimeType[keyof typeof RegisterSocialMediaAssetBodyMimeType];
+
+
+export const RegisterSocialMediaAssetBodyMimeType = {
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'video/mp4': 'video/mp4',
+} as const;
+
+export interface RegisterSocialMediaAssetBody {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
+  requestKey: string;
+  /** @pattern ^/objects/social-media/staging/ */
+  objectPath: string;
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  originalFileName: string;
+  mimeType: RegisterSocialMediaAssetBodyMimeType;
+  /**
+     * @minimum 1
+     * @maximum 26214400
+     */
+  sizeBytes: number;
+}
+
+export type SocialAccountVerificationResultOutcome = typeof SocialAccountVerificationResultOutcome[keyof typeof SocialAccountVerificationResultOutcome];
+
+
+export const SocialAccountVerificationResultOutcome = {
+  VERIFIED: 'VERIFIED',
+  RETRYABLE_FAILURE: 'RETRYABLE_FAILURE',
+  REAUTH_REQUIRED: 'REAUTH_REQUIRED',
+} as const;
+
+export interface SocialAccountVerificationResult {
+  id: string;
+  status: string;
+  outcome: SocialAccountVerificationResultOutcome;
+  errorCode?: string | null;
+  replay?: boolean;
+}
+
+export type SocialPublicationStatus = typeof SocialPublicationStatus[keyof typeof SocialPublicationStatus];
+
+
+export const SocialPublicationStatus = {
+  DRAFT: 'DRAFT',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  QUEUED: 'QUEUED',
+  RUNNING: 'RUNNING',
+  PUBLISHED: 'PUBLISHED',
+  FAILED: 'FAILED',
+  DEAD_LETTER: 'DEAD_LETTER',
+  CANCELED: 'CANCELED',
+} as const;
+
+export interface CreateSocialPublicationBody {
+  briefId: string;
+  accountId: string;
+  scheduledFor: string;
+  /**
+     * @minimum 1
+     * @maximum 12
+     */
+  maxAttempts?: number;
+  /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
+  requestKey: string;
+}
+
+export type SocialPublicationContentKind = typeof SocialPublicationContentKind[keyof typeof SocialPublicationContentKind];
+
+
+export const SocialPublicationContentKind = {
+  POST: 'POST',
+  STORY: 'STORY',
+  REEL: 'REEL',
+  VIDEO: 'VIDEO',
+  ARTICLE: 'ARTICLE',
+  AD_CREATIVE: 'AD_CREATIVE',
+} as const;
+
+export interface SocialPublication {
+  id: string;
+  brief_id: string;
+  account_id: string;
+  title?: string;
+  content_kind?: SocialPublicationContentKind;
+  provider?: string;
+  account_name?: string;
+  scheduled_for: string;
+  status: SocialPublicationStatus;
+  /** @minimum 0 */
+  attempt_count: number;
+  /**
+     * @minimum 1
+     * @maximum 12
+     */
+  max_attempts: number;
+  next_attempt_at?: string | null;
+  last_error_code?: string | null;
+  published_at?: string | null;
+  created_by_legacy_user_id?: number;
+  approved_by_legacy_user_id?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  replay?: boolean;
+}
+
+export interface SocialPublicationListResponse {
+  data: SocialPublication[];
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  limit: number;
+}
+
+export type SocialPublicationAttemptOutcome = typeof SocialPublicationAttemptOutcome[keyof typeof SocialPublicationAttemptOutcome];
+
+
+export const SocialPublicationAttemptOutcome = {
+  PUBLISHED: 'PUBLISHED',
+  RETRY: 'RETRY',
+  FAILED: 'FAILED',
+  DEAD_LETTER: 'DEAD_LETTER',
+  CANCELED: 'CANCELED',
+} as const;
+
+export interface SocialPublicationAttempt {
+  /**
+     * @minimum 1
+     * @maximum 12
+     */
+  attempt_number: number;
+  worker_id: string;
+  runtime_release_id: string;
+  outcome: SocialPublicationAttemptOutcome;
+  error_code?: string | null;
+  started_at: string;
+  completed_at: string;
+  created_at: string;
+}
+
+export interface SocialMetrics {
+  /** @minimum 0 */
+  impressions?: number;
+  /** @minimum 0 */
+  reach?: number;
+  /** @minimum 0 */
+  views?: number;
+  /** @minimum 0 */
+  engagements?: number;
+  /** @minimum 0 */
+  reactions?: number;
+  /** @minimum 0 */
+  comments?: number;
+  /** @minimum 0 */
+  shares?: number;
+  /** @minimum 0 */
+  saves?: number;
+  /** @minimum 0 */
+  clicks?: number;
+  /** @minimum 0 */
+  linkClicks?: number;
+  /** @minimum 0 */
+  videoViews?: number;
+  /** @minimum 0 */
+  watchTimeSeconds?: number;
+  /** @minimum 0 */
+  followersGained?: number;
+  /** @minimum 0 */
+  spendMinor?: number;
+  /** @minimum 0 */
+  conversions?: number;
+  /** @minimum 0 */
+  leads?: number;
+}
+
+export interface SocialPerformanceItem {
+  publication_id: string;
+  title: string;
+  provider: string;
+  account_name: string;
+  published_at: string;
+  sync_status?: string | null;
+  next_sync_at?: string | null;
+  last_success_at?: string | null;
+  last_error_code?: string | null;
+  consecutive_failure_count?: number | null;
+  metrics?: SocialMetrics | null;
+  observed_at?: string | null;
+}
+
+export interface SocialPerformanceResponse {
+  data: SocialPerformanceItem[];
+  providerConnectionGate: SocialProviderConnectionGate;
+  performanceGate: SocialPerformanceGate;
+  performanceWorkerEnabled: boolean;
+}
+
+export type SocialPerformanceSyncResultStatus = typeof SocialPerformanceSyncResultStatus[keyof typeof SocialPerformanceSyncResultStatus];
+
+
+export const SocialPerformanceSyncResultStatus = {
+  PENDING: 'PENDING',
+  ACTIVE: 'ACTIVE',
+} as const;
+
+export interface SocialPerformanceSyncResult {
+  publicationId: string;
+  status: SocialPerformanceSyncResultStatus;
+  nextSyncAt: string;
+  replay?: boolean;
 }
 
 export type ReviewSocialContentBriefBodyDecision = typeof ReviewSocialContentBriefBodyDecision[keyof typeof ReviewSocialContentBriefBodyDecision];
@@ -3500,6 +3978,15 @@ export interface ReviewSocialContentBriefBody {
   /**
      * @minLength 8
      * @maxLength 160
+     */
+  requestKey: string;
+}
+
+export interface SubmitSocialOperationBody {
+  /**
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
      */
   requestKey: string;
 }
@@ -4019,6 +4506,75 @@ season?: ReportingSeasonParameter;
 branchId?: ReportingBranchIdParameter;
 };
 
+export type GetOperationsWorkItemsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * @maxLength 120
+ */
+search?: string;
+severity?: GetOperationsWorkItemsSeverity;
+source?: GetOperationsWorkItemsSource;
+scope?: GetOperationsWorkItemsScope;
+/**
+ * @maxLength 1024
+ */
+cursor?: string;
+};
+
+export type GetOperationsWorkItemsSeverity = typeof GetOperationsWorkItemsSeverity[keyof typeof GetOperationsWorkItemsSeverity];
+
+
+export const GetOperationsWorkItemsSeverity = {
+  critical: 'critical',
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export type GetOperationsWorkItemsSource = typeof GetOperationsWorkItemsSource[keyof typeof GetOperationsWorkItemsSource];
+
+
+export const GetOperationsWorkItemsSource = {
+  task: 'task',
+  application: 'application',
+  document: 'document',
+  portal: 'portal',
+  offer: 'offer',
+} as const;
+
+export type GetOperationsWorkItemsScope = typeof GetOperationsWorkItemsScope[keyof typeof GetOperationsWorkItemsScope];
+
+
+export const GetOperationsWorkItemsScope = {
+  all: 'all',
+  mine: 'mine',
+} as const;
+
 export type ListSocialAccounts200 = {
   data: SocialAccount[];
+};
+
+export type ListSocialPublicationsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+status?: SocialPublicationStatus;
+};
+
+export type ListSocialPublicationAttempts200 = {
+  data: SocialPublicationAttempt[];
+};
+
+export type ListSocialPerformanceParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
 };

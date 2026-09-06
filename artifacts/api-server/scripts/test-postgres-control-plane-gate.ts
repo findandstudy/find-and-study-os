@@ -1664,7 +1664,7 @@ async function verify() {
     const migrationCount = await migrator.query(
       "SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations",
     );
-    assert.equal(migrationCount.rows[0].count, 101);
+    assert.equal(migrationCount.rows[0].count, 103);
     await verifyAtomicDdlRollback(migrator);
     await migrator.query(
       `INSERT INTO public.branches (id, name) VALUES

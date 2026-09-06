@@ -18,6 +18,9 @@ export type SocialProviderConnectionGate = {
   allowedProviders: string[];
   reason: string | null;
 };
+export type SocialPerformanceGate = SocialProviderConnectionGate & {
+  workerEnabled: boolean;
+};
 
 const PROVIDER_RE = /^[a-z][a-z0-9._-]{1,63}$/;
 const SAFE_RUNTIME_ID_RE = /^[A-Za-z0-9._:-]{1,96}$/;
@@ -169,6 +172,25 @@ export function resolveSocialPublicationGate(input: {
   };
 }
 
+export function resolveSocialPerformanceGate(input: {
+  workerEnabled?: string;
+  connectivityEnabled?: string;
+  allowLiveIntegrations?: string;
+  providerAllowlist?: string;
+}): SocialPerformanceGate {
+  const workerEnabled = explicitTrue(input.workerEnabled);
+  const connection = resolveSocialProviderConnectionGate(input);
+  if (!workerEnabled) {
+    return {
+      ...connection,
+      enabled: false,
+      workerEnabled,
+      reason: "SOCIAL_PERFORMANCE_WORKER_DISABLED",
+    };
+  }
+  return { ...connection, workerEnabled };
+}
+
 export function socialPerformanceIntervalMs(value?: string): number {
   const raw = value?.trim() || "21600";
   if (!/^\d+$/.test(raw))
@@ -227,6 +249,40 @@ export function normalizeSocialErrorCode(value: string): string {
   if (!SAFE_ERROR_CODE_RE.test(normalized))
     throw new Error("SOCIAL_ERROR_CODE_INVALID");
   return normalized;
+}
+
+export function socialWorkerFailureCode(error: unknown): string {
+  const candidates = [
+    error instanceof Error ? error.message : "",
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : "",
+  ];
+  for (const candidate of candidates) {
+    const normalized = candidate.trim().toUpperCase();
+    if (SAFE_ERROR_CODE_RE.test(normalized)) return normalized;
+  }
+  return "SOCIAL_WORKER_INFRASTRUCTURE_ERROR";
+}
+
+export function socialWorkerRetryDelayMs(consecutiveFailures: number): number {
+  if (
+    !Number.isSafeInteger(consecutiveFailures) ||
+    consecutiveFailures < 1 ||
+    consecutiveFailures > 12
+  )
+    throw new Error("SOCIAL_WORKER_FAILURE_COUNT_INVALID");
+  return Math.min(30_000, 1_000 * 2 ** (consecutiveFailures - 1));
+}
+
+export function socialWorkerHeartbeatIntervalMs(value?: string): number {
+  const raw = value?.trim() || "30";
+  if (!/^\d+$/.test(raw))
+    throw new Error("SOCIAL_WORKER_HEARTBEAT_INTERVAL_INVALID");
+  const seconds = Number(raw);
+  if (!Number.isSafeInteger(seconds) || seconds < 10 || seconds > 120)
+    throw new Error("SOCIAL_WORKER_HEARTBEAT_INTERVAL_INVALID");
+  return seconds * 1000;
 }
 
 export function socialRetryDelayMs(attemptNumber: number): number {

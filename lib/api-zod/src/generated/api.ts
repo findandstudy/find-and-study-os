@@ -4982,6 +4982,100 @@ export const GetReportingDataQualityResponse = zod.object({
 
 
 /**
+ * @summary Get the server-side, cursor-paginated work and exception queue
+ */
+export const getOperationsWorkItemsQueryLimitDefault = 50;
+export const getOperationsWorkItemsQueryLimitMax = 100;
+
+export const getOperationsWorkItemsQuerySearchMax = 120;
+
+export const getOperationsWorkItemsQueryScopeDefault = `all`;
+export const getOperationsWorkItemsQueryCursorMax = 1024;
+
+
+
+export const GetOperationsWorkItemsQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(getOperationsWorkItemsQueryLimitMax).default(getOperationsWorkItemsQueryLimitDefault),
+  "search": zod.coerce.string().max(getOperationsWorkItemsQuerySearchMax).optional(),
+  "severity": zod.enum(['critical', 'high', 'medium', 'low']).optional(),
+  "source": zod.enum(['task', 'application', 'document', 'portal', 'offer']).optional(),
+  "scope": zod.enum(['all', 'mine']).default(getOperationsWorkItemsQueryScopeDefault),
+  "cursor": zod.coerce.string().max(getOperationsWorkItemsQueryCursorMax).optional()
+})
+
+
+export const getOperationsWorkItemsResponseSummaryTotalMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryCriticalMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryHighMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryMediumMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryLowMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryMineMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryTasksMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryApplicationsMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryDocumentsMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryPortalMin = 0;
+
+export const getOperationsWorkItemsResponseSummaryOffersMin = 0;
+
+export const getOperationsWorkItemsResponseMetaLimitMax = 100;
+
+export const getOperationsWorkItemsResponseMetaTotalMin = 0;
+
+
+
+export const GetOperationsWorkItemsResponse = zod.object({
+  "schemaVersion": zod.number().int().min(1),
+  "asOf": zod.date(),
+  "generatedAt": zod.date(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "source": zod.enum(['task', 'application', 'document', 'portal', 'offer']),
+  "severity": zod.enum(['critical', 'high', 'medium', 'low']),
+  "reasonCode": zod.string(),
+  "identity": zod.string(),
+  "state": zod.string(),
+  "nextAction": zod.string(),
+  "owner": zod.string(),
+  "dueAt": zod.string().nullable(),
+  "blocker": zod.string(),
+  "lastActivityAt": zod.string().nullable(),
+  "href": zod.string(),
+  "applicationId": zod.number().int().optional(),
+  "score": zod.number().int(),
+  "isMine": zod.boolean()
+})),
+  "summary": zod.object({
+  "total": zod.number().int().min(getOperationsWorkItemsResponseSummaryTotalMin),
+  "critical": zod.number().int().min(getOperationsWorkItemsResponseSummaryCriticalMin),
+  "high": zod.number().int().min(getOperationsWorkItemsResponseSummaryHighMin),
+  "medium": zod.number().int().min(getOperationsWorkItemsResponseSummaryMediumMin),
+  "low": zod.number().int().min(getOperationsWorkItemsResponseSummaryLowMin),
+  "mine": zod.number().int().min(getOperationsWorkItemsResponseSummaryMineMin),
+  "tasks": zod.number().int().min(getOperationsWorkItemsResponseSummaryTasksMin),
+  "applications": zod.number().int().min(getOperationsWorkItemsResponseSummaryApplicationsMin),
+  "documents": zod.number().int().min(getOperationsWorkItemsResponseSummaryDocumentsMin),
+  "portal": zod.number().int().min(getOperationsWorkItemsResponseSummaryPortalMin),
+  "offers": zod.number().int().min(getOperationsWorkItemsResponseSummaryOffersMin)
+}),
+  "meta": zod.object({
+  "limit": zod.number().int().min(1).max(getOperationsWorkItemsResponseMetaLimitMax),
+  "total": zod.number().int().min(getOperationsWorkItemsResponseMetaTotalMin),
+  "hasMore": zod.boolean(),
+  "nextCursor": zod.string().nullable()
+})
+})
+
+
+/**
  * @summary Resolve the current social-operations scope and rollout mode
  */
 export const GetSocialOperationsContextResponse = zod.object({
@@ -4990,13 +5084,46 @@ export const GetSocialOperationsContextResponse = zod.object({
   "reason": zod.string().nullish(),
   "tenantId": zod.string().uuid().optional(),
   "organizationId": zod.string().uuid().optional(),
-  "publishingEnabled": zod.literal(false)
+  "publishingEnabled": zod.boolean(),
+  "publicationGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}).and(zod.object({
+  "workerEnabled": zod.boolean(),
+  "providerPublishingEnabled": zod.boolean()
+})),
+  "performanceGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}).and(zod.object({
+  "workerEnabled": zod.boolean()
+})),
+  "providerConnectionGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+})
 })
 
 
 /**
- * @summary Get content, account and publication-intent counts
+ * @summary Get content, account, publication and release-bound worker health
  */
+export const getSocialOperationsOverviewResponseBriefsItemMediaRefsItemRefRegExp = new RegExp('^/objects/social-media/assets');
+export const getSocialOperationsOverviewResponseBriefsItemMediaRefsMax = 10;
+
+
+export const getSocialOperationsOverviewResponseWorkerHealthItemActiveWorkersMin = 0;
+
+export const getSocialOperationsOverviewResponseWorkerHealthItemCurrentReleaseWorkersMin = 0;
+
+export const getSocialOperationsOverviewResponseWorkerHealthMin = 2;
+export const getSocialOperationsOverviewResponseWorkerHealthMax = 2;
 
 
 
@@ -5023,6 +5150,10 @@ export const GetSocialOperationsOverviewResponse = zod.object({
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'linkedin', 'youtube', 'tiktok', 'x', 'blog'])),
   "campaign_key": zod.string().nullish(),
   "caption": zod.string().nullish(),
+  "media_refs": zod.array(zod.object({
+  "kind": zod.enum(['image', 'video']),
+  "ref": zod.string().regex(getSocialOperationsOverviewResponseBriefsItemMediaRefsItemRefRegExp)
+})).max(getSocialOperationsOverviewResponseBriefsItemMediaRefsMax),
   "utm": zod.record(zod.string(), zod.string()).optional(),
   "scheduled_for": zod.date().nullish(),
   "status": zod.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED']),
@@ -5032,7 +5163,39 @@ export const GetSocialOperationsOverviewResponse = zod.object({
   "created_at": zod.date().optional(),
   "updated_at": zod.date().optional()
 })),
-  "publishingEnabled": zod.literal(false)
+  "publishingEnabled": zod.boolean(),
+  "publicationGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}).and(zod.object({
+  "workerEnabled": zod.boolean(),
+  "providerPublishingEnabled": zod.boolean()
+})),
+  "performanceGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}).and(zod.object({
+  "workerEnabled": zod.boolean()
+})),
+  "providerConnectionGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}),
+  "workerHealth": zod.array(zod.object({
+  "kind": zod.enum(['publication', 'performance']),
+  "expected": zod.boolean(),
+  "status": zod.enum(['DISABLED', 'READY', 'RELEASE_MISMATCH', 'STALE']),
+  "activeWorkers": zod.number().int().min(getSocialOperationsOverviewResponseWorkerHealthItemActiveWorkersMin),
+  "currentReleaseWorkers": zod.number().int().min(getSocialOperationsOverviewResponseWorkerHealthItemCurrentReleaseWorkersMin),
+  "lastSeenAt": zod.date().nullable(),
+  "reason": zod.string().nullable()
+})).min(getSocialOperationsOverviewResponseWorkerHealthMin).max(getSocialOperationsOverviewResponseWorkerHealthMax)
 })
 
 
@@ -5056,6 +5219,11 @@ export const ListSocialAccountsResponse = zod.object({
 /**
  * @summary Register a social account reference without storing its raw external identifier
  */
+export const createSocialAccountBodyRequestKeyMin = 8;
+export const createSocialAccountBodyRequestKeyMax = 160;
+
+
+export const createSocialAccountBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
 export const createSocialAccountBodyProviderMin = 2;
 export const createSocialAccountBodyProviderMax = 64;
 
@@ -5071,6 +5239,7 @@ export const createSocialAccountBodyExternalAccountRefMax = 512;
 
 
 export const CreateSocialAccountBody = zod.object({
+  "requestKey": zod.string().min(createSocialAccountBodyRequestKeyMin).max(createSocialAccountBodyRequestKeyMax).regex(createSocialAccountBodyRequestKeyRegExp),
   "provider": zod.string().min(createSocialAccountBodyProviderMin).max(createSocialAccountBodyProviderMax),
   "accountKey": zod.string().min(createSocialAccountBodyAccountKeyMin).max(createSocialAccountBodyAccountKeyMax),
   "displayName": zod.string().min(1).max(createSocialAccountBodyDisplayNameMax),
@@ -5091,8 +5260,93 @@ export const CreateSocialAccountResponse = zod.object({
 
 
 /**
+ * @summary Request an uploader-bound temporary social media upload URL
+ */
+export const requestSocialMediaUploadBodyNameMax = 240;
+
+export const requestSocialMediaUploadBodySizeMax = 26214400;
+
+
+
+export const RequestSocialMediaUploadBody = zod.object({
+  "name": zod.string().min(1).max(requestSocialMediaUploadBodyNameMax),
+  "size": zod.number().int().min(1).max(requestSocialMediaUploadBodySizeMax),
+  "contentType": zod.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4'])
+})
+
+export const requestSocialMediaUploadResponseObjectPathRegExp = new RegExp('^/objects/social-media/staging');
+
+
+export const RequestSocialMediaUploadResponse = zod.object({
+  "uploadURL": zod.string(),
+  "objectPath": zod.string().regex(requestSocialMediaUploadResponseObjectPathRegExp),
+  "metadata": zod.object({
+  "name": zod.string(),
+  "size": zod.number().int(),
+  "contentType": zod.string()
+})
+})
+
+
+/**
+ * @summary Verify uploaded bytes and register an immutable media asset
+ */
+export const registerSocialMediaAssetBodyRequestKeyMin = 8;
+export const registerSocialMediaAssetBodyRequestKeyMax = 160;
+
+
+export const registerSocialMediaAssetBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+export const registerSocialMediaAssetBodyObjectPathRegExp = new RegExp('^/objects/social-media/staging');
+export const registerSocialMediaAssetBodyOriginalFileNameMax = 240;
+
+export const registerSocialMediaAssetBodySizeBytesMax = 26214400;
+
+
+
+export const RegisterSocialMediaAssetBody = zod.object({
+  "requestKey": zod.string().min(registerSocialMediaAssetBodyRequestKeyMin).max(registerSocialMediaAssetBodyRequestKeyMax).regex(registerSocialMediaAssetBodyRequestKeyRegExp),
+  "objectPath": zod.string().regex(registerSocialMediaAssetBodyObjectPathRegExp),
+  "originalFileName": zod.string().min(1).max(registerSocialMediaAssetBodyOriginalFileNameMax),
+  "mimeType": zod.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4']),
+  "sizeBytes": zod.number().int().min(1).max(registerSocialMediaAssetBodySizeBytesMax)
+})
+
+export const registerSocialMediaAssetResponseObjectPathRegExp = new RegExp('^/objects/social-media/assets');
+export const registerSocialMediaAssetResponseSizeBytesMax = 26214400;
+
+export const registerSocialMediaAssetResponseOriginalFileNameMax = 240;
+
+
+
+export const RegisterSocialMediaAssetResponse = zod.object({
+  "id": zod.string().uuid(),
+  "object_path": zod.string().regex(registerSocialMediaAssetResponseObjectPathRegExp),
+  "media_kind": zod.enum(['image', 'video']),
+  "mime_type": zod.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4']),
+  "size_bytes": zod.number().int().min(1).max(registerSocialMediaAssetResponseSizeBytesMax),
+  "original_file_name": zod.string().min(1).max(registerSocialMediaAssetResponseOriginalFileNameMax),
+  "created_at": zod.date()
+})
+
+
+/**
+ * @summary Stream a tenant-authorized private social media asset
+ */
+export const GetSocialMediaAssetContentParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const GetSocialMediaAssetContentResponse = zod.unknown()
+
+
+/**
  * @summary Create a social content brief in DRAFT state
  */
+export const createSocialContentBriefBodyRequestKeyMin = 8;
+export const createSocialContentBriefBodyRequestKeyMax = 160;
+
+
+export const createSocialContentBriefBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
 export const createSocialContentBriefBodyTitleMax = 240;
 
 export const createSocialContentBriefBodyObjectiveMax = 2000;
@@ -5107,6 +5361,8 @@ export const createSocialContentBriefBodyCampaignKeyMax = 96;
 
 export const createSocialContentBriefBodyCaptionMax = 10000;
 
+export const createSocialContentBriefBodyMediaAssetIdsMax = 10;
+
 export const createSocialContentBriefBodyUtmSourceMax = 128;
 
 export const createSocialContentBriefBodyUtmMediumMax = 128;
@@ -5120,6 +5376,7 @@ export const createSocialContentBriefBodyUtmContentMax = 128;
 
 
 export const CreateSocialContentBriefBody = zod.object({
+  "requestKey": zod.string().min(createSocialContentBriefBodyRequestKeyMin).max(createSocialContentBriefBodyRequestKeyMax).regex(createSocialContentBriefBodyRequestKeyRegExp),
   "title": zod.string().min(1).max(createSocialContentBriefBodyTitleMax),
   "objective": zod.string().min(1).max(createSocialContentBriefBodyObjectiveMax),
   "audience": zod.string().min(1).max(createSocialContentBriefBodyAudienceMax),
@@ -5128,6 +5385,7 @@ export const CreateSocialContentBriefBody = zod.object({
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'linkedin', 'youtube', 'tiktok', 'x', 'blog'])).min(1).max(createSocialContentBriefBodyChannelsMax),
   "campaignKey": zod.string().max(createSocialContentBriefBodyCampaignKeyMax).optional(),
   "caption": zod.string().max(createSocialContentBriefBodyCaptionMax).optional(),
+  "mediaAssetIds": zod.array(zod.string().uuid()).max(createSocialContentBriefBodyMediaAssetIdsMax).optional(),
   "scheduledFor": zod.date().optional(),
   "utm": zod.object({
   "source": zod.string().max(createSocialContentBriefBodyUtmSourceMax).optional(),
@@ -5137,6 +5395,9 @@ export const CreateSocialContentBriefBody = zod.object({
   "content": zod.string().max(createSocialContentBriefBodyUtmContentMax).optional()
 }).optional()
 })
+
+export const createSocialContentBriefResponseMediaRefsItemRefRegExp = new RegExp('^/objects/social-media/assets');
+export const createSocialContentBriefResponseMediaRefsMax = 10;
 
 
 
@@ -5151,6 +5412,10 @@ export const CreateSocialContentBriefResponse = zod.object({
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'linkedin', 'youtube', 'tiktok', 'x', 'blog'])),
   "campaign_key": zod.string().nullish(),
   "caption": zod.string().nullish(),
+  "media_refs": zod.array(zod.object({
+  "kind": zod.enum(['image', 'video']),
+  "ref": zod.string().regex(createSocialContentBriefResponseMediaRefsItemRefRegExp)
+})).max(createSocialContentBriefResponseMediaRefsMax),
   "utm": zod.record(zod.string(), zod.string()).optional(),
   "scheduled_for": zod.date().nullish(),
   "status": zod.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED']),
@@ -5169,6 +5434,20 @@ export const SubmitSocialContentBriefParams = zod.object({
   "id": zod.coerce.string().uuid()
 })
 
+export const submitSocialContentBriefBodyRequestKeyMin = 8;
+export const submitSocialContentBriefBodyRequestKeyMax = 160;
+
+
+export const submitSocialContentBriefBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+
+
+export const SubmitSocialContentBriefBody = zod.object({
+  "requestKey": zod.string().min(submitSocialContentBriefBodyRequestKeyMin).max(submitSocialContentBriefBodyRequestKeyMax).regex(submitSocialContentBriefBodyRequestKeyRegExp)
+})
+
+export const submitSocialContentBriefResponseMediaRefsItemRefRegExp = new RegExp('^/objects/social-media/assets');
+export const submitSocialContentBriefResponseMediaRefsMax = 10;
+
 
 
 
@@ -5182,6 +5461,10 @@ export const SubmitSocialContentBriefResponse = zod.object({
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'linkedin', 'youtube', 'tiktok', 'x', 'blog'])),
   "campaign_key": zod.string().nullish(),
   "caption": zod.string().nullish(),
+  "media_refs": zod.array(zod.object({
+  "kind": zod.enum(['image', 'video']),
+  "ref": zod.string().regex(submitSocialContentBriefResponseMediaRefsItemRefRegExp)
+})).max(submitSocialContentBriefResponseMediaRefsMax),
   "utm": zod.record(zod.string(), zod.string()).optional(),
   "scheduled_for": zod.date().nullish(),
   "status": zod.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'ARCHIVED']),
@@ -5216,4 +5499,395 @@ export const ReviewSocialContentBriefBody = zod.object({
 export const ReviewSocialContentBriefResponse = zod.object({
   "replay": zod.boolean(),
   "decision": zod.enum(['APPROVE', 'REJECT'])
+})
+
+
+/**
+ * @summary Verify an account through the explicitly enabled provider adapter
+ */
+export const VerifySocialAccountParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const verifySocialAccountBodyRequestKeyMin = 8;
+export const verifySocialAccountBodyRequestKeyMax = 160;
+
+
+export const verifySocialAccountBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+
+
+export const VerifySocialAccountBody = zod.object({
+  "requestKey": zod.string().min(verifySocialAccountBodyRequestKeyMin).max(verifySocialAccountBodyRequestKeyMax).regex(verifySocialAccountBodyRequestKeyRegExp)
+})
+
+export const VerifySocialAccountResponse = zod.object({
+  "id": zod.string().uuid(),
+  "status": zod.string(),
+  "outcome": zod.enum(['VERIFIED', 'RETRYABLE_FAILURE', 'REAUTH_REQUIRED']),
+  "errorCode": zod.string().nullish(),
+  "replay": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List publication intents in the selected tenant scope
+ */
+export const listSocialPublicationsQueryLimitDefault = 50;
+export const listSocialPublicationsQueryLimitMax = 100;
+
+
+
+export const ListSocialPublicationsQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(listSocialPublicationsQueryLimitMax).default(listSocialPublicationsQueryLimitDefault),
+  "status": zod.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'QUEUED', 'RUNNING', 'PUBLISHED', 'FAILED', 'DEAD_LETTER', 'CANCELED']).optional()
+})
+
+export const listSocialPublicationsResponseDataItemAttemptCountMin = 0;
+
+export const listSocialPublicationsResponseDataItemMaxAttemptsMax = 12;
+
+export const listSocialPublicationsResponseLimitMax = 100;
+
+
+
+export const ListSocialPublicationsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "brief_id": zod.string().uuid(),
+  "account_id": zod.string().uuid(),
+  "title": zod.string().optional(),
+  "content_kind": zod.enum(['POST', 'STORY', 'REEL', 'VIDEO', 'ARTICLE', 'AD_CREATIVE']).optional(),
+  "provider": zod.string().optional(),
+  "account_name": zod.string().optional(),
+  "scheduled_for": zod.date(),
+  "status": zod.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'QUEUED', 'RUNNING', 'PUBLISHED', 'FAILED', 'DEAD_LETTER', 'CANCELED']),
+  "attempt_count": zod.number().int().min(listSocialPublicationsResponseDataItemAttemptCountMin),
+  "max_attempts": zod.number().int().min(1).max(listSocialPublicationsResponseDataItemMaxAttemptsMax),
+  "next_attempt_at": zod.date().nullish(),
+  "last_error_code": zod.string().nullish(),
+  "published_at": zod.date().nullish(),
+  "created_by_legacy_user_id": zod.number().int().optional(),
+  "approved_by_legacy_user_id": zod.number().int().nullish(),
+  "created_at": zod.date().optional(),
+  "updated_at": zod.date().optional(),
+  "replay": zod.boolean().optional()
+})),
+  "limit": zod.number().int().min(1).max(listSocialPublicationsResponseLimitMax)
+})
+
+
+/**
+ * @summary Create a draft publication intent from an approved brief and verified account
+ */
+export const createSocialPublicationBodyMaxAttemptsDefault = 5;
+export const createSocialPublicationBodyMaxAttemptsMax = 12;
+
+export const createSocialPublicationBodyRequestKeyMin = 8;
+export const createSocialPublicationBodyRequestKeyMax = 160;
+
+
+export const createSocialPublicationBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+
+
+export const CreateSocialPublicationBody = zod.object({
+  "briefId": zod.string().uuid(),
+  "accountId": zod.string().uuid(),
+  "scheduledFor": zod.date(),
+  "maxAttempts": zod.number().int().min(1).max(createSocialPublicationBodyMaxAttemptsMax).default(createSocialPublicationBodyMaxAttemptsDefault),
+  "requestKey": zod.string().min(createSocialPublicationBodyRequestKeyMin).max(createSocialPublicationBodyRequestKeyMax).regex(createSocialPublicationBodyRequestKeyRegExp)
+})
+
+export const createSocialPublicationResponseAttemptCountMin = 0;
+
+export const createSocialPublicationResponseMaxAttemptsMax = 12;
+
+
+
+export const CreateSocialPublicationResponse = zod.object({
+  "id": zod.string().uuid(),
+  "brief_id": zod.string().uuid(),
+  "account_id": zod.string().uuid(),
+  "title": zod.string().optional(),
+  "content_kind": zod.enum(['POST', 'STORY', 'REEL', 'VIDEO', 'ARTICLE', 'AD_CREATIVE']).optional(),
+  "provider": zod.string().optional(),
+  "account_name": zod.string().optional(),
+  "scheduled_for": zod.date(),
+  "status": zod.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'QUEUED', 'RUNNING', 'PUBLISHED', 'FAILED', 'DEAD_LETTER', 'CANCELED']),
+  "attempt_count": zod.number().int().min(createSocialPublicationResponseAttemptCountMin),
+  "max_attempts": zod.number().int().min(1).max(createSocialPublicationResponseMaxAttemptsMax),
+  "next_attempt_at": zod.date().nullish(),
+  "last_error_code": zod.string().nullish(),
+  "published_at": zod.date().nullish(),
+  "created_by_legacy_user_id": zod.number().int().optional(),
+  "approved_by_legacy_user_id": zod.number().int().nullish(),
+  "created_at": zod.date().optional(),
+  "updated_at": zod.date().optional(),
+  "replay": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Submit a draft publication intent for maker-checker review
+ */
+export const SubmitSocialPublicationParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const submitSocialPublicationBodyRequestKeyMin = 8;
+export const submitSocialPublicationBodyRequestKeyMax = 160;
+
+
+export const submitSocialPublicationBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+
+
+export const SubmitSocialPublicationBody = zod.object({
+  "requestKey": zod.string().min(submitSocialPublicationBodyRequestKeyMin).max(submitSocialPublicationBodyRequestKeyMax).regex(submitSocialPublicationBodyRequestKeyRegExp)
+})
+
+export const submitSocialPublicationResponseAttemptCountMin = 0;
+
+export const submitSocialPublicationResponseMaxAttemptsMax = 12;
+
+
+
+export const SubmitSocialPublicationResponse = zod.object({
+  "id": zod.string().uuid(),
+  "brief_id": zod.string().uuid(),
+  "account_id": zod.string().uuid(),
+  "title": zod.string().optional(),
+  "content_kind": zod.enum(['POST', 'STORY', 'REEL', 'VIDEO', 'ARTICLE', 'AD_CREATIVE']).optional(),
+  "provider": zod.string().optional(),
+  "account_name": zod.string().optional(),
+  "scheduled_for": zod.date(),
+  "status": zod.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'QUEUED', 'RUNNING', 'PUBLISHED', 'FAILED', 'DEAD_LETTER', 'CANCELED']),
+  "attempt_count": zod.number().int().min(submitSocialPublicationResponseAttemptCountMin),
+  "max_attempts": zod.number().int().min(1).max(submitSocialPublicationResponseMaxAttemptsMax),
+  "next_attempt_at": zod.date().nullish(),
+  "last_error_code": zod.string().nullish(),
+  "published_at": zod.date().nullish(),
+  "created_by_legacy_user_id": zod.number().int().optional(),
+  "approved_by_legacy_user_id": zod.number().int().nullish(),
+  "created_at": zod.date().optional(),
+  "updated_at": zod.date().optional(),
+  "replay": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Approve or reject a publication intent using maker-checker
+ */
+export const ReviewSocialPublicationParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const reviewSocialPublicationBodyReasonMax = 2000;
+
+export const reviewSocialPublicationBodyRequestKeyMin = 8;
+export const reviewSocialPublicationBodyRequestKeyMax = 160;
+
+
+
+export const ReviewSocialPublicationBody = zod.object({
+  "decision": zod.enum(['APPROVE', 'REJECT']),
+  "reason": zod.string().max(reviewSocialPublicationBodyReasonMax).optional(),
+  "requestKey": zod.string().min(reviewSocialPublicationBodyRequestKeyMin).max(reviewSocialPublicationBodyRequestKeyMax)
+})
+
+export const ReviewSocialPublicationResponse = zod.object({
+  "replay": zod.boolean(),
+  "decision": zod.enum(['APPROVE', 'REJECT'])
+})
+
+
+/**
+ * @summary List immutable worker attempts for a publication
+ */
+export const ListSocialPublicationAttemptsParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const listSocialPublicationAttemptsResponseDataItemAttemptNumberMax = 12;
+
+
+
+export const ListSocialPublicationAttemptsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "attempt_number": zod.number().int().min(1).max(listSocialPublicationAttemptsResponseDataItemAttemptNumberMax),
+  "worker_id": zod.string(),
+  "runtime_release_id": zod.string(),
+  "outcome": zod.enum(['PUBLISHED', 'RETRY', 'FAILED', 'DEAD_LETTER', 'CANCELED']),
+  "error_code": zod.string().nullish(),
+  "started_at": zod.date(),
+  "completed_at": zod.date(),
+  "created_at": zod.date()
+}))
+})
+
+
+/**
+ * @summary Cancel a publication that has not started executing
+ */
+export const CancelSocialPublicationParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const cancelSocialPublicationBodyRequestKeyMin = 8;
+export const cancelSocialPublicationBodyRequestKeyMax = 160;
+
+
+export const cancelSocialPublicationBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+
+
+export const CancelSocialPublicationBody = zod.object({
+  "requestKey": zod.string().min(cancelSocialPublicationBodyRequestKeyMin).max(cancelSocialPublicationBodyRequestKeyMax).regex(cancelSocialPublicationBodyRequestKeyRegExp)
+})
+
+export const cancelSocialPublicationResponseAttemptCountMin = 0;
+
+export const cancelSocialPublicationResponseMaxAttemptsMax = 12;
+
+
+
+export const CancelSocialPublicationResponse = zod.object({
+  "id": zod.string().uuid(),
+  "brief_id": zod.string().uuid(),
+  "account_id": zod.string().uuid(),
+  "title": zod.string().optional(),
+  "content_kind": zod.enum(['POST', 'STORY', 'REEL', 'VIDEO', 'ARTICLE', 'AD_CREATIVE']).optional(),
+  "provider": zod.string().optional(),
+  "account_name": zod.string().optional(),
+  "scheduled_for": zod.date(),
+  "status": zod.enum(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'QUEUED', 'RUNNING', 'PUBLISHED', 'FAILED', 'DEAD_LETTER', 'CANCELED']),
+  "attempt_count": zod.number().int().min(cancelSocialPublicationResponseAttemptCountMin),
+  "max_attempts": zod.number().int().min(1).max(cancelSocialPublicationResponseMaxAttemptsMax),
+  "next_attempt_at": zod.date().nullish(),
+  "last_error_code": zod.string().nullish(),
+  "published_at": zod.date().nullish(),
+  "created_by_legacy_user_id": zod.number().int().optional(),
+  "approved_by_legacy_user_id": zod.number().int().nullish(),
+  "created_at": zod.date().optional(),
+  "updated_at": zod.date().optional(),
+  "replay": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List latest receipt-backed performance snapshots
+ */
+export const listSocialPerformanceQueryLimitDefault = 100;
+export const listSocialPerformanceQueryLimitMax = 200;
+
+
+
+export const ListSocialPerformanceQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(listSocialPerformanceQueryLimitMax).default(listSocialPerformanceQueryLimitDefault)
+})
+
+export const listSocialPerformanceResponseDataItemMetricsOneImpressionsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneReachMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneViewsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneEngagementsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneReactionsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneCommentsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneSharesMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneSavesMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneClicksMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneLinkClicksMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneVideoViewsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneWatchTimeSecondsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneFollowersGainedMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneSpendMinorMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneConversionsMin = 0;
+
+export const listSocialPerformanceResponseDataItemMetricsOneLeadsMin = 0;
+
+
+
+export const ListSocialPerformanceResponse = zod.object({
+  "data": zod.array(zod.object({
+  "publication_id": zod.string().uuid(),
+  "title": zod.string(),
+  "provider": zod.string(),
+  "account_name": zod.string(),
+  "published_at": zod.date(),
+  "sync_status": zod.string().nullish(),
+  "next_sync_at": zod.date().nullish(),
+  "last_success_at": zod.date().nullish(),
+  "last_error_code": zod.string().nullish(),
+  "consecutive_failure_count": zod.number().int().nullish(),
+  "metrics": zod.object({
+  "impressions": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneImpressionsMin).optional(),
+  "reach": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneReachMin).optional(),
+  "views": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneViewsMin).optional(),
+  "engagements": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneEngagementsMin).optional(),
+  "reactions": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneReactionsMin).optional(),
+  "comments": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneCommentsMin).optional(),
+  "shares": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneSharesMin).optional(),
+  "saves": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneSavesMin).optional(),
+  "clicks": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneClicksMin).optional(),
+  "linkClicks": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneLinkClicksMin).optional(),
+  "videoViews": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneVideoViewsMin).optional(),
+  "watchTimeSeconds": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneWatchTimeSecondsMin).optional(),
+  "followersGained": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneFollowersGainedMin).optional(),
+  "spendMinor": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneSpendMinorMin).optional(),
+  "conversions": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneConversionsMin).optional(),
+  "leads": zod.number().min(listSocialPerformanceResponseDataItemMetricsOneLeadsMin).optional()
+}).nullish(),
+  "observed_at": zod.date().nullish()
+})),
+  "providerConnectionGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}),
+  "performanceGate": zod.object({
+  "enabled": zod.boolean(),
+  "connectivityEnabled": zod.boolean(),
+  "allowedProviders": zod.array(zod.string()),
+  "reason": zod.string().nullable()
+}).and(zod.object({
+  "workerEnabled": zod.boolean()
+})),
+  "performanceWorkerEnabled": zod.boolean()
+})
+
+
+/**
+ * @summary Queue a bounded performance refresh for a published item
+ */
+export const RequestSocialPerformanceSyncParams = zod.object({
+  "id": zod.coerce.string().uuid()
+})
+
+export const requestSocialPerformanceSyncBodyRequestKeyMin = 8;
+export const requestSocialPerformanceSyncBodyRequestKeyMax = 160;
+
+
+export const requestSocialPerformanceSyncBodyRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]+$');
+
+
+export const RequestSocialPerformanceSyncBody = zod.object({
+  "requestKey": zod.string().min(requestSocialPerformanceSyncBodyRequestKeyMin).max(requestSocialPerformanceSyncBodyRequestKeyMax).regex(requestSocialPerformanceSyncBodyRequestKeyRegExp)
+})
+
+export const RequestSocialPerformanceSyncResponse = zod.object({
+  "publicationId": zod.string().uuid(),
+  "status": zod.enum(['PENDING', 'ACTIVE']),
+  "nextSyncAt": zod.date(),
+  "replay": zod.boolean().optional()
 })

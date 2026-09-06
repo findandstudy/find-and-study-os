@@ -1,9 +1,12 @@
 import {
   normalizeSocialRuntimeId,
-  resolveSocialProviderConnectionGate,
+  resolveSocialPerformanceGate,
   socialPerformanceIntervalMs,
   socialPerformanceMaxAgeDays,
+  socialWorkerFailureCode,
+  socialWorkerRetryDelayMs,
 } from "../lib/socialOperationsContract";
+import { pool } from "@workspace/db";
 import { withSocialOperationsContext } from "../lib/socialOperationsStore";
 import {
   claimSocialPerformance,
@@ -15,12 +18,15 @@ import {
   fetchSocialPerformance,
   socialPublisherFailureFromThrown,
 } from "../lib/socialPublisherAdapter";
+import {
+  createSocialWorkerHeartbeatState,
+  isSocialWorkerHeartbeatDue,
+  recordSocialWorkerHeartbeat,
+  scheduleNextSocialWorkerHeartbeat,
+} from "../lib/socialWorkerRuntime";
 
-const enabled =
-  process.env.SOCIAL_PERFORMANCE_WORKER_ENABLED?.trim().toLowerCase() ===
-  "true";
-if (!enabled) throw new Error("SOCIAL_PERFORMANCE_WORKER_DISABLED");
-const gate = resolveSocialProviderConnectionGate({
+const gate = resolveSocialPerformanceGate({
+  workerEnabled: process.env.SOCIAL_PERFORMANCE_WORKER_ENABLED,
   connectivityEnabled: process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED,
   allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
   providerAllowlist: process.env.SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST,
@@ -46,6 +52,11 @@ const workerId = normalizeSocialRuntimeId(
 const runtimeReleaseId = normalizeSocialRuntimeId(
   process.env.RELEASE_ID ?? process.env.GIT_COMMIT ?? "",
 );
+const heartbeat = createSocialWorkerHeartbeatState({
+  workerKind: "performance",
+  workerId,
+  runtimeReleaseId,
+});
 let stopping = false;
 process.on("SIGTERM", () => {
   stopping = true;
@@ -55,34 +66,79 @@ process.on("SIGINT", () => {
 });
 
 async function delay(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+  const deadline = Date.now() + milliseconds;
+  while (!stopping && Date.now() < deadline) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(250, deadline - Date.now())),
+    );
+  }
 }
 
+let consecutiveInfrastructureFailures = 0;
 while (!stopping) {
-  const claim = await withSocialOperationsContext(
-    legacyUserId,
-    "manage",
-    (client, context) => claimSocialPerformance(client, context, workerId),
-  );
-  if (!claim) {
-    await delay(5_000);
-    continue;
+  try {
+    const heartbeatObservedAt = new Date();
+    const heartbeatDue = isSocialWorkerHeartbeatDue(
+      heartbeat,
+      heartbeatObservedAt,
+    );
+    const claim = await withSocialOperationsContext(
+      legacyUserId,
+      "manage",
+      async (client, context) => {
+        if (heartbeatDue)
+          await recordSocialWorkerHeartbeat(
+            client,
+            context,
+            heartbeat,
+            heartbeatObservedAt,
+          );
+        return claimSocialPerformance(client, context, workerId);
+      },
+    );
+    if (heartbeatDue)
+      scheduleNextSocialWorkerHeartbeat(
+        heartbeat,
+        process.env.SOCIAL_WORKER_HEARTBEAT_INTERVAL_SECONDS,
+        heartbeatObservedAt,
+      );
+    consecutiveInfrastructureFailures = 0;
+    if (!claim) {
+      await delay(5_000);
+      continue;
+    }
+    const result = await fetchSocialPerformance({
+      idempotencyKey: socialPerformanceIdempotencyKey(claim),
+      publicationId: claim.publicationId,
+      provider: claim.provider,
+      accountKey: claim.accountKey,
+      integrationKey: claim.integrationKey,
+    }).catch(socialPublisherFailureFromThrown);
+    await withSocialOperationsContext(
+      legacyUserId,
+      "manage",
+      (client, context) =>
+        completeSocialPerformance(
+          client,
+          context,
+          claim,
+          workerId,
+          runtimeReleaseId,
+          result,
+        ),
+    );
+  } catch (error) {
+    consecutiveInfrastructureFailures = Math.min(
+      12,
+      consecutiveInfrastructureFailures + 1,
+    );
+    const retryInMs = socialWorkerRetryDelayMs(
+      consecutiveInfrastructureFailures,
+    );
+    console.error(
+      `[social-performance-worker] tick_failed code=${socialWorkerFailureCode(error)} retryInMs=${retryInMs}`,
+    );
+    await delay(retryInMs);
   }
-  const result = await fetchSocialPerformance({
-    idempotencyKey: socialPerformanceIdempotencyKey(claim),
-    publicationId: claim.publicationId,
-    provider: claim.provider,
-    accountKey: claim.accountKey,
-    integrationKey: claim.integrationKey,
-  }).catch(socialPublisherFailureFromThrown);
-  await withSocialOperationsContext(legacyUserId, "manage", (client, context) =>
-    completeSocialPerformance(
-      client,
-      context,
-      claim,
-      workerId,
-      runtimeReleaseId,
-      result,
-    ),
-  );
 }
+await pool.end();

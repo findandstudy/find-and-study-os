@@ -803,6 +803,15 @@
       "note": "Managed provider access is HTTPS allowlisted and response-bounded, but no external provider pilot is authorized."
     },
     {
+      "path": "artifacts/api-server/src/lib/socialWorkerRuntime.ts",
+      "ownership": "tenant_owned",
+      "enforcement": "db_enforced",
+      "risk": "high",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Release-bound worker heartbeats contain operational metadata only and are tenant/organization scoped by FORCE RLS."
+    },
+    {
       "path": "artifacts/api-server/src/lib/stageFinance.ts",
       "ownership": "tenant_owned",
       "enforcement": "quarantine_required",

@@ -1,6 +1,13 @@
 import { Router, type IRouter, type Response } from "express";
 import { z } from "zod";
+import * as nodePath from "node:path";
 import { requireAuth, requirePermission, logAudit } from "../lib/auth";
+import { callerOwnsObject, recordObjectOwner } from "../lib/objectAuthz";
+import {
+  ObjectNotFoundError,
+  ObjectStorageService,
+} from "../lib/objectStorage";
+import { checkAndIncrementRateLimit } from "../lib/pgRateLimiter";
 import {
   appendSocialOperationReceipt,
   findSocialOperationReplay,
@@ -10,12 +17,20 @@ import {
   withSocialOperationsContext,
 } from "../lib/socialOperationsStore";
 import {
+  resolveSocialPerformanceGate,
   resolveSocialProviderConnectionGate,
   resolveSocialPublicationGate,
 } from "../lib/socialOperationsContract";
 import { verifySocialAccount } from "../lib/socialPublisherAdapter";
+import {
+  assertSocialContentMedia,
+  SOCIAL_MEDIA_MAX_ASSETS,
+  validateSocialMediaBuffer,
+  validateSocialMediaMetadata,
+} from "../lib/socialMediaAssets";
 
 const router: IRouter = Router();
+const objectStorage = new ObjectStorageService();
 const uuidSchema = z.string().uuid();
 const requestKeySchema = z
   .string()
@@ -63,6 +78,7 @@ const briefBodySchema = z
       .regex(/^[A-Za-z0-9._:-]+$/)
       .optional(),
     caption: z.string().max(10_000).optional(),
+    mediaAssetIds: z.array(uuidSchema).max(SOCIAL_MEDIA_MAX_ASSETS).default([]),
     scheduledFor: z.string().datetime({ offset: true }).optional(),
     utm: z
       .object({
@@ -74,6 +90,52 @@ const briefBodySchema = z
       })
       .strict()
       .optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.mediaAssetIds).size !== value.mediaAssetIds.length)
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mediaAssetIds"],
+        message: "Duplicate media assets are not allowed",
+      });
+  });
+const socialMediaUploadBodySchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(240)
+      .refine(
+        (value) =>
+          nodePath.basename(value) === value &&
+          !/[\u0000-\u001f\u007f]/.test(value),
+      ),
+    size: z.number().int().positive(),
+    contentType: z.string().trim().min(1).max(96),
+  })
+  .strict();
+const socialMediaRegistrationBodySchema = z
+  .object({
+    requestKey: requestKeySchema,
+    objectPath: z
+      .string()
+      .regex(
+        /^\/objects\/social-media\/staging\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
+    originalFileName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(240)
+      .refine(
+        (value) =>
+          nodePath.basename(value) === value &&
+          !/[\u0000-\u001f\u007f]/.test(value),
+      ),
+    mimeType: z.string().trim().min(1).max(96),
+    sizeBytes: z.number().int().positive(),
   })
   .strict();
 const reviewBodySchema = z
@@ -137,6 +199,15 @@ function providerConnectionGate() {
   });
 }
 
+function performanceGate() {
+  return resolveSocialPerformanceGate({
+    workerEnabled: process.env.SOCIAL_PERFORMANCE_WORKER_ENABLED,
+    connectivityEnabled: process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED,
+    allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
+    providerAllowlist: process.env.SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST,
+  });
+}
+
 async function bestEffortAudit(
   ...args: Parameters<typeof logAudit>
 ): Promise<void> {
@@ -157,7 +228,16 @@ function failureStatus(error: unknown): number {
   )
     return 503;
   if (code.includes("READ_ONLY")) return 403;
+  if (code.includes("MEDIA_NOT_OWNED")) return 403;
   if (code.includes("NOT_FOUND")) return 404;
+  if (
+    code.includes("SOCIAL_MEDIA_") &&
+    (code.includes("INVALID") ||
+      code.includes("MISMATCH") ||
+      code.includes("REQUIRED") ||
+      code.includes("LIMIT_EXCEEDED"))
+  )
+    return 400;
   if (
     code.includes("CONFLICT") ||
     code.includes("MAKER_CHECKER") ||
@@ -190,6 +270,7 @@ router.get(
         ...config,
         publishingEnabled: false,
         publicationGate: publicationGate(),
+        performanceGate: performanceGate(),
         providerConnectionGate: providerConnectionGate(),
       });
       return;
@@ -207,6 +288,7 @@ router.get(
         organizationId: context.organizationId,
         publishingEnabled: publicationGate().enabled,
         publicationGate: publicationGate(),
+        performanceGate: performanceGate(),
         providerConnectionGate: providerConnectionGate(),
       });
     } catch (error) {
@@ -225,24 +307,80 @@ router.get(
         req.user!.id,
         "read",
         async (client, context) => {
-          const [briefs, accounts, intents, recent] = await Promise.all([
-            client.query(
-              `SELECT status, count(*)::int AS count FROM social_content_briefs WHERE tenant_id=$1 AND organization_id=$2 GROUP BY status`,
-              [context.tenantId, context.organizationId],
-            ),
-            client.query(
-              `SELECT status, count(*)::int AS count FROM social_accounts WHERE tenant_id=$1 AND organization_id=$2 GROUP BY status`,
-              [context.tenantId, context.organizationId],
-            ),
-            client.query(
-              `SELECT status, count(*)::int AS count FROM social_publication_intents WHERE tenant_id=$1 AND organization_id=$2 GROUP BY status`,
-              [context.tenantId, context.organizationId],
-            ),
-            client.query(
-              `SELECT id,title,content_kind,channels,locales,status,scheduled_for,created_by_legacy_user_id,reviewed_by_legacy_user_id,created_at,updated_at FROM social_content_briefs WHERE tenant_id=$1 AND organization_id=$2 ORDER BY scheduled_for ASC NULLS LAST, created_at DESC LIMIT 100`,
-              [context.tenantId, context.organizationId],
-            ),
-          ]);
+          const [briefs, accounts, intents, recent, workers] =
+            await Promise.all([
+              client.query(
+                `SELECT status, count(*)::int AS count FROM social_content_briefs WHERE tenant_id=$1 AND organization_id=$2 GROUP BY status`,
+                [context.tenantId, context.organizationId],
+              ),
+              client.query(
+                `SELECT status, count(*)::int AS count FROM social_accounts WHERE tenant_id=$1 AND organization_id=$2 GROUP BY status`,
+                [context.tenantId, context.organizationId],
+              ),
+              client.query(
+                `SELECT status, count(*)::int AS count FROM social_publication_intents WHERE tenant_id=$1 AND organization_id=$2 GROUP BY status`,
+                [context.tenantId, context.organizationId],
+              ),
+              client.query(
+                `SELECT id,title,content_kind,channels,locales,media_refs,status,scheduled_for,created_by_legacy_user_id,reviewed_by_legacy_user_id,created_at,updated_at FROM social_content_briefs WHERE tenant_id=$1 AND organization_id=$2 ORDER BY scheduled_for ASC NULLS LAST, created_at DESC LIMIT 100`,
+                [context.tenantId, context.organizationId],
+              ),
+              client.query<{
+                worker_kind: "publication" | "performance";
+                active_workers: number;
+                current_release_workers: number;
+                last_seen_at: Date | null;
+              }>(
+                `SELECT worker_kind,
+                      count(*) FILTER (WHERE last_seen_at>=now()-interval '90 seconds')::int AS active_workers,
+                      count(*) FILTER (
+                        WHERE last_seen_at>=now()-interval '90 seconds'
+                          AND runtime_release_id=$3
+                      )::int AS current_release_workers,
+                      max(last_seen_at) AS last_seen_at
+               FROM social_worker_heartbeats
+               WHERE tenant_id=$1 AND organization_id=$2
+               GROUP BY worker_kind`,
+                [
+                  context.tenantId,
+                  context.organizationId,
+                  (
+                    process.env.RELEASE_ID ??
+                    process.env.GIT_COMMIT ??
+                    ""
+                  ).trim(),
+                ],
+              ),
+            ]);
+          const heartbeatByKind = new Map(
+            workers.rows.map((row) => [row.worker_kind, row]),
+          );
+          const workerHealth = (
+            [
+              ["publication", publicationGate()],
+              ["performance", performanceGate()],
+            ] as const
+          ).map(([kind, gate]) => {
+            const heartbeat = heartbeatByKind.get(kind);
+            const activeWorkers = heartbeat?.active_workers ?? 0;
+            const currentReleaseWorkers =
+              heartbeat?.current_release_workers ?? 0;
+            return {
+              kind,
+              expected: gate.enabled,
+              status: !gate.enabled
+                ? "DISABLED"
+                : currentReleaseWorkers > 0
+                  ? "READY"
+                  : activeWorkers > 0
+                    ? "RELEASE_MISMATCH"
+                    : "STALE",
+              activeWorkers,
+              currentReleaseWorkers,
+              lastSeenAt: heartbeat?.last_seen_at ?? null,
+              reason: gate.reason,
+            };
+          });
           return {
             briefCounts: briefs.rows,
             accountCounts: accounts.rows,
@@ -250,7 +388,9 @@ router.get(
             briefs: recent.rows,
             publishingEnabled: publicationGate().enabled,
             publicationGate: publicationGate(),
+            performanceGate: performanceGate(),
             providerConnectionGate: providerConnectionGate(),
+            workerHealth,
           };
         },
       );
@@ -580,6 +720,251 @@ router.post(
 );
 
 router.post(
+  "/social/media/uploads/request-url",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const parsed = socialMediaUploadBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "SOCIAL_MEDIA_UPLOAD_INVALID" });
+      return;
+    }
+    try {
+      validateSocialMediaMetadata({
+        fileName: parsed.data.name,
+        mimeType: parsed.data.contentType,
+        sizeBytes: parsed.data.size,
+      });
+      const allowed = await checkAndIncrementRateLimit(
+        `social-media-upload:${req.user!.id}`,
+        30,
+        15 * 60 * 1000,
+      );
+      if (!allowed) {
+        res.status(429).json({ error: "SOCIAL_MEDIA_UPLOAD_RATE_LIMITED" });
+        return;
+      }
+      const uploadURL = await objectStorage.getObjectEntityUploadURL(
+        "social-media/staging",
+      );
+      const objectPath = objectStorage.normalizeObjectEntityPath(uploadURL);
+      if (!(await recordObjectOwner(objectPath, req.user!.id))) {
+        res.status(503).json({ error: "SOCIAL_MEDIA_UPLOAD_AUTH_UNAVAILABLE" });
+        return;
+      }
+      res.setHeader("Cache-Control", "private, no-store");
+      res.json({
+        uploadURL,
+        objectPath,
+        metadata: {
+          name: parsed.data.name,
+          size: parsed.data.size,
+          contentType: parsed.data.contentType.toLowerCase(),
+        },
+      });
+    } catch (error) {
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  "/social/media",
+  requireAuth,
+  requirePermission("social.manage"),
+  async (req, res) => {
+    const parsed = socialMediaRegistrationBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "SOCIAL_MEDIA_REGISTRATION_INVALID" });
+      return;
+    }
+    const payload = parsed.data;
+    try {
+      const initial = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => ({
+          replay: await findSocialOperationReplay(
+            client,
+            context,
+            payload.requestKey,
+            payload,
+          ),
+          tenantId: context.tenantId,
+          organizationId: context.organizationId,
+        }),
+      );
+      if (initial.replay) {
+        res.json(initial.replay);
+        return;
+      }
+      if (!(await callerOwnsObject(req.user!.id, payload.objectPath)))
+        throw new Error("SOCIAL_MEDIA_NOT_OWNED");
+      const source = await objectStorage.getObjectEntityFile(
+        payload.objectPath,
+      );
+      const [storedMetadata] = await source.getMetadata();
+      const storedSize = Number(storedMetadata.size);
+      const storedMimeType = String(storedMetadata.contentType ?? "")
+        .trim()
+        .toLowerCase();
+      if (
+        storedSize !== payload.sizeBytes ||
+        storedMimeType !== payload.mimeType.trim().toLowerCase()
+      )
+        throw new Error("SOCIAL_MEDIA_METADATA_MISMATCH");
+      const [buffer] = await source.download();
+      if (buffer.byteLength !== storedSize)
+        throw new Error("SOCIAL_MEDIA_SIZE_MISMATCH");
+      const verified = await validateSocialMediaBuffer({
+        fileName: payload.originalFileName,
+        mimeType: storedMimeType,
+        buffer,
+      });
+      const objectPath = await objectStorage.uploadContentAddressedBuffer({
+        subdir: `social-media/assets/${initial.tenantId}/${initial.organizationId}`,
+        contentSha256: verified.sha256,
+        buffer,
+        contentType: verified.mimeType,
+        extension: verified.permanentExtension,
+      });
+      const asset = await withSocialOperationsContext(
+        req.user!.id,
+        "manage",
+        async (client, context) => {
+          const replay = await findSocialOperationReplay(
+            client,
+            context,
+            payload.requestKey,
+            payload,
+          );
+          if (replay) return replay;
+          const id = nextSocialId();
+          const result = await client.query<{
+            id: string;
+            object_path: string;
+            media_kind: "image" | "video";
+            mime_type: string;
+            size_bytes: number;
+            original_file_name: string;
+            created_at: Date;
+          }>(
+            `WITH inserted AS (
+               INSERT INTO social_media_assets
+                 (id,tenant_id,organization_id,object_path,content_sha256,media_kind,
+                  mime_type,size_bytes,original_file_name,created_by_legacy_user_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+               ON CONFLICT (tenant_id,organization_id,content_sha256) DO NOTHING
+               RETURNING id,object_path,media_kind,mime_type,size_bytes,original_file_name,created_at
+             )
+             SELECT id,object_path,media_kind,mime_type,size_bytes::integer AS size_bytes,
+                    original_file_name,created_at FROM inserted
+             UNION ALL
+             SELECT id,object_path,media_kind,mime_type,size_bytes::integer AS size_bytes,
+                    original_file_name,created_at
+             FROM social_media_assets
+             WHERE tenant_id=$2 AND organization_id=$3 AND content_sha256=$5
+             LIMIT 1`,
+            [
+              id,
+              context.tenantId,
+              context.organizationId,
+              objectPath,
+              verified.sha256,
+              verified.kind,
+              verified.mimeType,
+              verified.sizeBytes,
+              payload.originalFileName,
+              context.legacyUserId,
+            ],
+          );
+          if (result.rowCount !== 1)
+            throw new Error("SOCIAL_MEDIA_REGISTRATION_FAILED");
+          const answer = result.rows[0];
+          await appendSocialOperationReceipt(client, context, {
+            operation: "REGISTER_SOCIAL_MEDIA_ASSET",
+            entityType: "social_media_asset",
+            entityId: answer.id,
+            requestKey: payload.requestKey,
+            payload,
+            result: answer,
+          });
+          return answer;
+        },
+      );
+      await source.delete({ ignoreNotFound: true }).catch(() => {
+        console.error("[social-media] staging_object_cleanup_failed");
+      });
+      await bestEffortAudit(
+        req.user!.id,
+        "register_social_media_asset",
+        "social_media_asset",
+        undefined,
+        { socialMediaAssetId: asset.id, mediaKind: asset.media_kind },
+        req.ip,
+      );
+      res.status(201).json(asset);
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError) {
+        res.status(404).json({ error: "SOCIAL_MEDIA_UPLOAD_NOT_FOUND" });
+        return;
+      }
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.get(
+  "/social/media/:id/content",
+  requireAuth,
+  requirePermission("social.view"),
+  async (req, res) => {
+    const id = uuidSchema.safeParse(req.params.id);
+    if (!id.success) {
+      res.status(400).json({ error: "SOCIAL_MEDIA_ASSET_ID_INVALID" });
+      return;
+    }
+    try {
+      const asset = await withSocialOperationsContext(
+        req.user!.id,
+        "read",
+        async (client, context) => {
+          const result = await client.query<{
+            object_path: string;
+            mime_type: string;
+            original_file_name: string;
+          }>(
+            `SELECT object_path,mime_type,original_file_name
+             FROM social_media_assets
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (result.rowCount !== 1)
+            throw new Error("SOCIAL_MEDIA_ASSET_NOT_FOUND");
+          return result.rows[0];
+        },
+      );
+      const object = await objectStorage.getObjectEntityFile(asset.object_path);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename*=UTF-8''${encodeURIComponent(asset.original_file_name)}`,
+      );
+      await objectStorage.streamObjectToResponse(req, res, object, {
+        contentType: asset.mime_type,
+        cacheControl: "private, no-store",
+      });
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError) {
+        res.status(404).json({ error: "SOCIAL_MEDIA_ASSET_NOT_FOUND" });
+        return;
+      }
+      sendFailure(res, error);
+    }
+  },
+);
+
+router.post(
   "/social/briefs",
   requireAuth,
   requirePermission("social.manage"),
@@ -604,12 +989,35 @@ router.post(
             parsed.data,
           );
           if (replay) return replay;
+          const uniqueAssetIds = parsed.data.mediaAssetIds;
+          const assets = uniqueAssetIds.length
+            ? await client.query<{
+                id: string;
+                media_kind: "image" | "video";
+                object_path: string;
+              }>(
+                `SELECT id,media_kind,object_path
+                 FROM social_media_assets
+                 WHERE tenant_id=$1 AND organization_id=$2 AND id=ANY($3::uuid[])`,
+                [context.tenantId, context.organizationId, uniqueAssetIds],
+              )
+            : { rows: [], rowCount: 0 };
+          if (assets.rowCount !== uniqueAssetIds.length)
+            throw new Error("SOCIAL_MEDIA_ASSET_NOT_FOUND");
+          const assetById = new Map(
+            assets.rows.map((asset) => [asset.id, asset]),
+          );
+          const mediaRefs = uniqueAssetIds.map((assetId) => {
+            const asset = assetById.get(assetId)!;
+            return { kind: asset.media_kind, ref: asset.object_path };
+          });
+          assertSocialContentMedia(parsed.data.contentKind, mediaRefs);
           const id = nextSocialId();
           const created = (
             await client.query(
               `
-      INSERT INTO social_content_briefs (id,tenant_id,organization_id,title,objective,audience,content_kind,locales,channels,campaign_key,caption,utm,scheduled_for,created_by_legacy_user_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14)
+      INSERT INTO social_content_briefs (id,tenant_id,organization_id,title,objective,audience,content_kind,locales,channels,campaign_key,caption,media_refs,utm,scheduled_for,created_by_legacy_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15)
       RETURNING *
     `,
               [
@@ -624,6 +1032,7 @@ router.post(
                 parsed.data.channels,
                 parsed.data.campaignKey ?? null,
                 parsed.data.caption ?? null,
+                JSON.stringify(mediaRefs),
                 JSON.stringify(parsed.data.utm ?? {}),
                 parsed.data.scheduledFor
                   ? new Date(parsed.data.scheduledFor)
@@ -682,6 +1091,21 @@ router.post(
             payload,
           );
           if (replay) return replay;
+          const current = await client.query<{
+            content_kind: string;
+            media_refs: Array<{ kind: "image" | "video"; ref: string }>;
+          }>(
+            `SELECT content_kind,media_refs FROM social_content_briefs
+             WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 AND status='DRAFT'
+             FOR UPDATE`,
+            [context.tenantId, context.organizationId, id.data],
+          );
+          if (current.rowCount !== 1)
+            throw new Error("SOCIAL_BRIEF_NOT_FOUND_OR_CONFLICT");
+          assertSocialContentMedia(
+            current.rows[0].content_kind,
+            current.rows[0].media_refs,
+          );
           const result = await client.query(
             `UPDATE social_content_briefs SET status='IN_REVIEW',updated_at=now() WHERE tenant_id=$1 AND organization_id=$2 AND id=$3 AND status='DRAFT' RETURNING *`,
             [context.tenantId, context.organizationId, id.data],
@@ -910,8 +1334,11 @@ router.post(
           const source = await client.query<{
             brief_status: string;
             account_status: string;
+            content_kind: string;
+            media_refs: Array<{ kind: "image" | "video"; ref: string }>;
           }>(
-            `SELECT brief.status AS brief_status,account.status AS account_status
+            `SELECT brief.status AS brief_status,account.status AS account_status,
+                    brief.content_kind,brief.media_refs
              FROM social_content_briefs brief
              JOIN social_accounts account ON account.tenant_id=brief.tenant_id
                AND account.organization_id=brief.organization_id AND account.id=$4
@@ -930,6 +1357,10 @@ router.post(
             throw new Error("SOCIAL_PUBLICATION_BRIEF_NOT_APPROVED");
           if (source.rows[0].account_status !== "VERIFIED")
             throw new Error("SOCIAL_PUBLICATION_ACCOUNT_NOT_VERIFIED");
+          assertSocialContentMedia(
+            source.rows[0].content_kind,
+            source.rows[0].media_refs,
+          );
           const id = nextSocialId();
           const created = (
             await client.query(
@@ -1309,9 +1740,8 @@ router.get(
       res.json({
         data: rows,
         providerConnectionGate: providerConnectionGate(),
-        performanceWorkerEnabled:
-          process.env.SOCIAL_PERFORMANCE_WORKER_ENABLED?.trim().toLowerCase() ===
-          "true",
+        performanceGate: performanceGate(),
+        performanceWorkerEnabled: performanceGate().workerEnabled,
       });
     } catch (error) {
       sendFailure(res, error);
