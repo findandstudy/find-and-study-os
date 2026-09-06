@@ -767,6 +767,15 @@
       "externalPilot": "quarantine"
     },
     {
+      "path": "artifacts/api-server/src/lib/socialCreativeQueue.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "critical",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Creative generation claims are tenant, organization, provider and integration isolated with approval, lease and attempt receipts; all external generation remains default-off."
+    },
+    {
       "path": "artifacts/api-server/src/lib/socialOperationsStore.ts",
       "ownership": "tenant_owned",
       "enforcement": "db_enforced",
