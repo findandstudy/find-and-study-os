@@ -225,7 +225,7 @@ jobs:
           PG_GATE_MIGRATOR_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
         run: pnpm --filter @workspace/api-server run test:postgres-control-plane-gate -- setup
 
-      - name: Apply all 105 migrations to the dynamic disposable database
+      - name: Apply all 107 migrations to the dynamic disposable database
         env:
           ALLOW_REVIEWED_MIGRATIONS: "true"
           DATABASE_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
@@ -302,7 +302,7 @@ jobs:
           PG_DISPOSABLE_ADMIN_URL: postgresql://postgres@127.0.0.1:5433/postgres
         run: node lib/db/prepare-disposable-migration-database.mjs
 
-      - name: Apply all 105 migrations to a fresh database
+      - name: Apply all 107 migrations to a fresh database
         env:
           ALLOW_REVIEWED_MIGRATIONS: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
@@ -340,7 +340,7 @@ jobs:
           PG_GATE_MIGRATOR_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
         run: pnpm --filter @workspace/api-server run test:postgres-control-plane-gate -- setup
 
-      - name: Prove production 66/66 to canonical 105/105 adoption
+      - name: Prove production 66/66 to canonical 107/107 adoption
         env:
           ALLOW_DISPOSABLE_PREFIX_ADOPTION: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
@@ -392,6 +392,13 @@ jobs:
           DATABASE_URL: postgresql://fas_social_executor@127.0.0.1:5433/fasos_apply_local
           SOCIAL_TEST_ADMIN_DATABASE_URL: postgresql://postgres@127.0.0.1:5433/fasos_apply_local
         run: pnpm --filter @workspace/api-server run test:postgres-social-publication
+
+      - name: Run approval-gated social advertising PostgreSQL checks
+        env:
+          ALLOW_DISPOSABLE_SOCIAL_ADVERTISING_TEST: "true"
+          DATABASE_URL: postgresql://fas_social_executor@127.0.0.1:5433/fasos_apply_local
+          SOCIAL_AD_TEST_ADMIN_DATABASE_URL: postgresql://postgres@127.0.0.1:5433/fasos_apply_local
+        run: pnpm --filter @workspace/api-server run test:postgres-social-advertising
 
       - name: Reset the disposable database after foundation fixtures
         env:

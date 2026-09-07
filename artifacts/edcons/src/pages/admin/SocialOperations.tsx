@@ -43,7 +43,9 @@ import {
   Upload,
   Users,
   WandSparkles,
+  WalletCards,
 } from "lucide-react";
+import SocialAdvertisingPanel from "./SocialAdvertisingPanel";
 
 type SocialContext = {
   enabled: boolean;
@@ -63,6 +65,15 @@ type SocialContext = {
     generationEnabled: boolean;
     reason: string | null;
     allowedProviders: string[];
+  };
+  advertisingGate?: {
+    enabled: boolean;
+    workerEnabled: boolean;
+    connectivityEnabled: boolean;
+    providerAdvertisingEnabled: boolean;
+    reason: string | null;
+    allowedProviders: string[];
+    maximumCampaignBudgetMinor: number | null;
   };
   providerConnectionGate?: {
     enabled: boolean;
@@ -96,7 +107,7 @@ type SocialOverview = {
   briefs: SocialBrief[];
   publishingEnabled: boolean;
   workerHealth: Array<{
-    kind: "publication" | "performance" | "creative";
+    kind: "publication" | "performance" | "creative" | "advertising";
     expected: boolean;
     status: "DISABLED" | "READY" | "RELEASE_MISMATCH" | "STALE";
     activeWorkers: number;
@@ -1087,9 +1098,13 @@ export default function SocialOperations() {
                             ? tr
                               ? "Performans worker'ı"
                               : "Performance worker"
-                            : tr
-                              ? "AI üretim worker'ı"
-                              : "AI creative worker"}
+                            : worker.kind === "creative"
+                              ? tr
+                                ? "AI üretim worker'ı"
+                                : "AI creative worker"
+                              : tr
+                                ? "Reklam worker'ı"
+                                : "Advertising worker"}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {disabled
@@ -1160,6 +1175,10 @@ export default function SocialOperations() {
           <TabsTrigger value="attribution">
             <Target className="mr-2 size-4" />
             {tr ? "CRM katkısı" : "CRM attribution"}
+          </TabsTrigger>
+          <TabsTrigger value="advertising">
+            <WalletCards className="mr-2 size-4" />
+            {tr ? "Reklam yönetimi" : "Advertising"}
           </TabsTrigger>
         </TabsList>
 
@@ -2071,6 +2090,17 @@ export default function SocialOperations() {
               </span>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="advertising">
+          <SocialAdvertisingPanel
+            tr={tr}
+            canManage={canManage}
+            canApprove={canApprove}
+            userId={user?.id ?? 0}
+            accounts={accounts.data?.data ?? []}
+            briefs={overview.data?.briefs ?? []}
+          />
         </TabsContent>
       </Tabs>
 

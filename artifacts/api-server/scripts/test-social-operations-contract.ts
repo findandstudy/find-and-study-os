@@ -4,12 +4,16 @@ import { Readable } from "node:stream";
 import test from "node:test";
 
 import {
+  assertSocialAdvertisingBudget,
   assertSocialCreativeOutputCompatible,
   assertSocialProviderAllowed,
   nextSocialId,
+  normalizeSocialAdCountryCodes,
+  normalizeSocialAdDestinationUrl,
   normalizeSocialErrorCode,
   resolveSocialOperationsConfiguration,
   resolveSocialAttributionWindow,
+  resolveSocialAdvertisingGate,
   resolveSocialCreativeGate,
   resolveSocialPerformanceGate,
   resolveSocialProviderConnectionGate,
@@ -183,6 +187,79 @@ test("creative generation is separately gated and content-kind compatible", () =
   assert.throws(
     () => assertSocialCreativeOutputCompatible("ARTICLE", "VIDEO"),
     /SOCIAL_CREATIVE_OUTPUT_INCOMPATIBLE/,
+  );
+});
+
+test("advertising requires independent provider, worker, allowlist and budget gates", () => {
+  assert.equal(
+    resolveSocialAdvertisingGate({
+      workerEnabled: "true",
+      connectivityEnabled: "true",
+      providerAdvertisingEnabled: "true",
+      allowLiveIntegrations: "false",
+      providerAllowlist: "meta",
+      maximumCampaignBudgetMinor: "100000",
+    }).reason,
+    "LIVE_INTEGRATIONS_DISABLED",
+  );
+  assert.equal(
+    resolveSocialAdvertisingGate({
+      workerEnabled: "true",
+      connectivityEnabled: "true",
+      providerAdvertisingEnabled: "true",
+      allowLiveIntegrations: "true",
+      providerAllowlist: "meta",
+      maximumCampaignBudgetMinor: "not-a-number",
+    }).reason,
+    "SOCIAL_AD_BUDGET_LIMIT_INVALID",
+  );
+  const enabled = resolveSocialAdvertisingGate({
+    workerEnabled: "true",
+    connectivityEnabled: "true",
+    providerAdvertisingEnabled: "true",
+    allowLiveIntegrations: "true",
+    providerAllowlist: "meta",
+    maximumCampaignBudgetMinor: "100000",
+  });
+  assert.equal(enabled.enabled, true);
+  assert.doesNotThrow(() =>
+    assertSocialAdvertisingBudget({
+      dailyBudgetMinor: 1000,
+      lifetimeBudgetMinor: 10000,
+      maximumCampaignBudgetMinor: enabled.maximumCampaignBudgetMinor,
+    }),
+  );
+  assert.throws(
+    () =>
+      assertSocialAdvertisingBudget({
+        dailyBudgetMinor: 1000,
+        lifetimeBudgetMinor: 100001,
+        maximumCampaignBudgetMinor: enabled.maximumCampaignBudgetMinor,
+      }),
+    /SOCIAL_AD_BUDGET_LIMIT_EXCEEDED/,
+  );
+});
+
+test("advertising destination and coarse targeting exclude local or ambiguous inputs", () => {
+  assert.equal(
+    normalizeSocialAdDestinationUrl("https://FindAndStudy.com/programs?q=1"),
+    "https://findandstudy.com/programs?q=1",
+  );
+  assert.deepEqual(normalizeSocialAdCountryCodes(["tr", "DE", "tr"]), [
+    "DE",
+    "TR",
+  ]);
+  assert.throws(
+    () => normalizeSocialAdDestinationUrl("http://127.0.0.1/callback"),
+    /SOCIAL_AD_DESTINATION_INVALID/,
+  );
+  assert.throws(
+    () => normalizeSocialAdDestinationUrl("https://user:pass@example.com/"),
+    /SOCIAL_AD_DESTINATION_INVALID/,
+  );
+  assert.throws(
+    () => normalizeSocialAdCountryCodes(["TUR"]),
+    /SOCIAL_AD_COUNTRY_CODES_INVALID/,
   );
 });
 

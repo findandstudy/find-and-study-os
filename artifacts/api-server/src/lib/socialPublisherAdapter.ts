@@ -1,7 +1,9 @@
 import { z } from "zod";
 import {
+  assertSocialAdvertisingBudget,
   assertSocialProviderAllowed,
   normalizeSocialErrorCode,
+  resolveSocialAdvertisingGate,
   resolveSocialProviderConnectionGate,
   resolveSocialPublicationGate,
 } from "./socialOperationsContract";
@@ -73,6 +75,35 @@ export type SocialPerformanceResult =
       metrics: SocialMetrics;
     }
   | SocialPublisherFailure;
+export type SocialAdOperationJob = {
+  operationId: string;
+  campaignId: string;
+  operationType: "CREATE" | "PAUSE" | "RESUME" | "UPDATE_BUDGET" | "END";
+  provider: string;
+  accountKey: string;
+  integrationKey: string;
+  name: string;
+  objective: string;
+  destinationUrl: string;
+  countryCodes: string[];
+  languageCodes: string[];
+  ageMin: number;
+  ageMax: number;
+  currencyCode: string;
+  dailyBudgetMinor: number | null;
+  lifetimeBudgetMinor: number | null;
+  startsAt: string;
+  endsAt: string;
+  expectedProviderCampaignRefHash: string | null;
+};
+export type SocialAdOperationResult =
+  | {
+      ok: true;
+      providerReceipt: string;
+      providerCampaignRef: string;
+      state: "PAUSED" | "ACTIVE" | "COMPLETED";
+    }
+  | SocialPublisherFailure;
 
 export function socialPublisherFailureFromThrown(
   error: unknown,
@@ -106,6 +137,13 @@ const performanceResponseSchema = z
     receiptId: z.string().min(8).max(512),
     observedAt: z.string().datetime({ offset: true }),
     metrics: socialMetricsSchema,
+  })
+  .strict();
+const adOperationResponseSchema = z
+  .object({
+    receiptId: z.string().min(8).max(512),
+    campaignId: z.string().min(1).max(512),
+    state: z.enum(["PAUSED", "ACTIVE", "COMPLETED"]),
   })
   .strict();
 
@@ -335,6 +373,41 @@ export async function fetchSocialPerformance(input: {
         providerReceipt: response.data.receiptId,
         observedAt: response.data.observedAt,
         metrics: response.data.metrics,
+      }
+    : response;
+}
+
+export async function executeSocialAdOperation(
+  job: SocialAdOperationJob,
+): Promise<SocialAdOperationResult> {
+  const gate = resolveSocialAdvertisingGate({
+    workerEnabled: process.env.SOCIAL_AD_WORKER_ENABLED,
+    connectivityEnabled: process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED,
+    providerAdvertisingEnabled: process.env.SOCIAL_PROVIDER_ADVERTISING_ENABLED,
+    allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
+    providerAllowlist: process.env.SOCIAL_AD_PROVIDER_ALLOWLIST,
+    maximumCampaignBudgetMinor: process.env.SOCIAL_AD_MAX_CAMPAIGN_BUDGET_MINOR,
+  });
+  assertSocialProviderAllowed(gate, job.provider);
+  if (job.operationType === "CREATE" || job.operationType === "UPDATE_BUDGET") {
+    assertSocialAdvertisingBudget({
+      dailyBudgetMinor: job.dailyBudgetMinor ?? 0,
+      lifetimeBudgetMinor: job.lifetimeBudgetMinor ?? 0,
+      maximumCampaignBudgetMinor: gate.maximumCampaignBudgetMinor,
+    });
+  }
+  const response = await providerPost({
+    path: "v1/ads/campaigns/mutate",
+    idempotencyKey: job.operationId,
+    body: job,
+    schema: adOperationResponseSchema,
+  });
+  return response.ok
+    ? {
+        ok: true,
+        providerReceipt: response.data.receiptId,
+        providerCampaignRef: response.data.campaignId,
+        state: response.data.state,
       }
     : response;
 }

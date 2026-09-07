@@ -9,6 +9,12 @@ const originalEnvironment = {
     process.env.SOCIAL_PUBLICATION_WORKER_ENABLED,
   SOCIAL_PROVIDER_PUBLISHING_ENABLED:
     process.env.SOCIAL_PROVIDER_PUBLISHING_ENABLED,
+  SOCIAL_AD_WORKER_ENABLED: process.env.SOCIAL_AD_WORKER_ENABLED,
+  SOCIAL_PROVIDER_ADVERTISING_ENABLED:
+    process.env.SOCIAL_PROVIDER_ADVERTISING_ENABLED,
+  SOCIAL_AD_PROVIDER_ALLOWLIST: process.env.SOCIAL_AD_PROVIDER_ALLOWLIST,
+  SOCIAL_AD_MAX_CAMPAIGN_BUDGET_MINOR:
+    process.env.SOCIAL_AD_MAX_CAMPAIGN_BUDGET_MINOR,
   SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST:
     process.env.SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST,
   SOCIAL_PUBLISHER_BASE_URL: process.env.SOCIAL_PUBLISHER_BASE_URL,
@@ -29,6 +35,10 @@ test("managed social provider adapter is allowlisted, bounded and schema-strict"
   process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED = "true";
   process.env.SOCIAL_PUBLICATION_WORKER_ENABLED = "true";
   process.env.SOCIAL_PROVIDER_PUBLISHING_ENABLED = "true";
+  process.env.SOCIAL_AD_WORKER_ENABLED = "true";
+  process.env.SOCIAL_PROVIDER_ADVERTISING_ENABLED = "true";
+  process.env.SOCIAL_AD_PROVIDER_ALLOWLIST = "meta";
+  process.env.SOCIAL_AD_MAX_CAMPAIGN_BUDGET_MINOR = "100000";
   process.env.SOCIAL_PUBLICATION_PROVIDER_ALLOWLIST = "meta";
   process.env.SOCIAL_PUBLISHER_BASE_URL = "https://publisher.example.test/";
   process.env.SOCIAL_PUBLISHER_ALLOWED_HOST = "publisher.example.test";
@@ -54,10 +64,16 @@ test("managed social provider adapter is allowlisted, bounded and schema-strict"
               ? { impressions: -1 }
               : { impressions: 200, clicks: 12, leads: 2 },
           }
-        : {
-            receiptId: "publication-receipt-0001",
-            postId: "provider-post-123",
-          };
+        : url.endsWith("/v1/ads/campaigns/mutate")
+          ? {
+              receiptId: "advertising-receipt-0001",
+              campaignId: "provider-campaign-123",
+              state: "PAUSED",
+            }
+          : {
+              receiptId: "publication-receipt-0001",
+              postId: "provider-post-123",
+            };
     return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -66,6 +82,7 @@ test("managed social provider adapter is allowlisted, bounded and schema-strict"
 
   const {
     fetchSocialPerformance,
+    executeSocialAdOperation,
     publishSocialJob,
     socialPublisherFailureFromThrown,
     verifySocialAccount,
@@ -113,7 +130,33 @@ test("managed social provider adapter is allowlisted, bounded and schema-strict"
     integrationKey: "meta_ads",
   });
   assert.equal(performance.ok, true);
-  assert.equal(calls.length, 3);
+  const advertising = await executeSocialAdOperation({
+    operationId: "0199a200-0000-7000-8000-000000000010",
+    campaignId: "0199a200-0000-7000-8000-000000000011",
+    operationType: "CREATE",
+    provider: "meta",
+    accountKey: "meta:ads:test",
+    integrationKey: "meta_ads",
+    name: "Safe campaign",
+    objective: "LEADS",
+    destinationUrl: "https://findandstudy.com/programs",
+    countryCodes: ["TR"],
+    languageCodes: ["tr"],
+    ageMin: 18,
+    ageMax: 45,
+    currencyCode: "USD",
+    dailyBudgetMinor: 1000,
+    lifetimeBudgetMinor: 10000,
+    startsAt: new Date(Date.now() + 3_600_000).toISOString(),
+    endsAt: new Date(Date.now() + 86_400_000).toISOString(),
+  });
+  assert.deepEqual(advertising, {
+    ok: true,
+    providerReceipt: "advertising-receipt-0001",
+    providerCampaignRef: "provider-campaign-123",
+    state: "PAUSED",
+  });
+  assert.equal(calls.length, 4);
   for (const call of calls) {
     assert.equal(new URL(call.url).hostname, "publisher.example.test");
     assert.equal(call.init?.redirect, "error");

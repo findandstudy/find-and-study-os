@@ -10,7 +10,8 @@ export type SocialWorkerHealthKind = typeof SocialWorkerHealthKind[keyof typeof 
 
 
 export const SocialWorkerHealthKind = {
-  publication: 'publication',
-  performance: 'performance',
-  creative: 'creative',
+  publication: "publication",
+  performance: "performance",
+  creative: "creative",
+  advertising: "advertising",
 } as const;

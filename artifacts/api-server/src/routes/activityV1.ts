@@ -6,7 +6,10 @@ import { validate, getValidated } from "../middlewares/validate";
 import { requireAuth, requireRole, requireAgentStaffPermission } from "../lib/auth";
 import { STAFF_ROLES, ADMIN_ROLES } from "../lib/roles";
 import { getAgentVisibleIds } from "../lib/agentVisibility";
-import { normalizeActivitySession } from "../lib/activityNormalize";
+import {
+  isValidActivityReportRange,
+  normalizeActivitySession,
+} from "../lib/activityNormalize";
 
 const router: IRouter = Router();
 
@@ -120,8 +123,10 @@ router.get(
     const fallbackBounds = getRangeBounds(range);
     const from = rawFrom ? new Date(rawFrom) : fallbackBounds.from;
     const to = rawTo ? new Date(rawTo) : fallbackBounds.to;
-    if (from >= to) {
-      res.status(400).json({ error: "from must be before to" });
+    if (!isValidActivityReportRange(from, to)) {
+      res
+        .status(400)
+        .json({ error: "activity range must be valid and at most 366 days" });
       return;
     }
     const periodSeconds = Math.max(0, (to.getTime() - from.getTime()) / 1000);

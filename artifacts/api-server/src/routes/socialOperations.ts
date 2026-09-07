@@ -19,6 +19,7 @@ import {
 import {
   assertSocialCreativeOutputCompatible,
   resolveSocialAttributionWindow,
+  resolveSocialAdvertisingGate,
   resolveSocialCreativeGate,
   resolveSocialPerformanceGate,
   resolveSocialProviderConnectionGate,
@@ -303,19 +304,31 @@ function creativeGate() {
   });
 }
 
+function advertisingGate() {
+  return resolveSocialAdvertisingGate({
+    workerEnabled: process.env.SOCIAL_AD_WORKER_ENABLED,
+    connectivityEnabled: process.env.SOCIAL_PROVIDER_CONNECTIVITY_ENABLED,
+    providerAdvertisingEnabled: process.env.SOCIAL_PROVIDER_ADVERTISING_ENABLED,
+    allowLiveIntegrations: process.env.ALLOW_LIVE_INTEGRATIONS,
+    providerAllowlist: process.env.SOCIAL_AD_PROVIDER_ALLOWLIST,
+    maximumCampaignBudgetMinor: process.env.SOCIAL_AD_MAX_CAMPAIGN_BUDGET_MINOR,
+  });
+}
+
 async function bestEffortAudit(
   ...args: Parameters<typeof logAudit>
 ): Promise<void> {
   try {
     await logAudit(...args);
-  } catch (error) {
-    console.error("[social-operations-audit-projection]", error);
+  } catch {
+    console.error("[social-operations-audit-projection] failed");
   }
 }
 
 function failureStatus(error: unknown): number {
   const code =
     error instanceof Error ? error.message : "SOCIAL_OPERATIONS_FAILED";
+  if (!/^SOCIAL_[A-Z0-9_]{2,96}$/.test(code)) return 500;
   if (
     code.includes("DISABLED") ||
     code.includes("CONFIGURATION") ||
@@ -351,8 +364,9 @@ function sendFailure(res: Response, error: unknown): void {
   const code =
     error instanceof Error ? error.message : "SOCIAL_OPERATIONS_FAILED";
   const status = failureStatus(error);
-  if (status === 500) console.error("[social-operations]", error);
-  res.status(status).json({ error: code, code });
+  if (status === 500) console.error("[social-operations] request failed");
+  const publicCode = status === 500 ? "SOCIAL_OPERATIONS_FAILED" : code;
+  res.status(status).json({ error: publicCode, code: publicCode });
 }
 
 router.get(
@@ -369,6 +383,7 @@ router.get(
         publicationGate: publicationGate(),
         performanceGate: performanceGate(),
         creativeGate: creativeGate(),
+        advertisingGate: advertisingGate(),
         providerConnectionGate: providerConnectionGate(),
       });
       return;
@@ -388,6 +403,7 @@ router.get(
         publicationGate: publicationGate(),
         performanceGate: performanceGate(),
         creativeGate: creativeGate(),
+        advertisingGate: advertisingGate(),
         providerConnectionGate: providerConnectionGate(),
       });
     } catch (error) {
@@ -425,7 +441,11 @@ router.get(
                 [context.tenantId, context.organizationId],
               ),
               client.query<{
-                worker_kind: "publication" | "performance" | "creative";
+                worker_kind:
+                  | "publication"
+                  | "performance"
+                  | "creative"
+                  | "advertising";
                 active_workers: number;
                 current_release_workers: number;
                 last_seen_at: Date | null;
@@ -459,6 +479,7 @@ router.get(
               ["publication", publicationGate()],
               ["performance", performanceGate()],
               ["creative", creativeGate()],
+              ["advertising", advertisingGate()],
             ] as const
           ).map(([kind, gate]) => {
             const heartbeat = heartbeatByKind.get(kind);
@@ -490,6 +511,7 @@ router.get(
             publicationGate: publicationGate(),
             performanceGate: performanceGate(),
             creativeGate: creativeGate(),
+            advertisingGate: advertisingGate(),
             providerConnectionGate: providerConnectionGate(),
             workerHealth,
           };

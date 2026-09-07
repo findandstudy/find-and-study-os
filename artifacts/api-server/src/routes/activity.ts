@@ -21,6 +21,8 @@ import {
   clampSessionMetrics,
   normalizeActivitySession,
   MAX_HEARTBEAT_DELTA_SECONDS,
+  MAX_TRACKED_SESSION_SECONDS,
+  isValidActivityReportRange,
 } from "../lib/activityNormalize";
 import {
   loadBrandedPdfSettings,
@@ -94,6 +96,35 @@ function capSessionWallClock<T extends {
 const router: IRouter = Router();
 
 const STALE_HEARTBEAT_SECONDS = 120;
+const activitySessionIdSchema = z.coerce.number().int().positive();
+const activityRouteSchema = z.string().trim().min(1).max(512).regex(/^\/[^\u0000-\u001f\u007f?#]*$/);
+const heartbeatBodySchema = z.object({
+  sessionId: activitySessionIdSchema,
+  status: z.enum(["active", "idle"]).default("active"),
+  route: activityRouteSchema.optional(),
+});
+const pageVisitBodySchema = z.object({
+  sessionId: activitySessionIdSchema,
+  route: activityRouteSchema,
+  moduleName: z.string().trim().min(1).max(100).optional(),
+});
+const pageLeaveBodySchema = z.object({
+  visitId: z.coerce.number().int().positive(),
+  activeDuration: z.coerce.number().finite().nonnegative().max(MAX_TRACKED_SESSION_SECONDS).default(0),
+  idleDuration: z.coerce.number().finite().nonnegative().max(MAX_TRACKED_SESSION_SECONDS).default(0),
+});
+const activityEventBodySchema = z.object({
+  sessionId: activitySessionIdSchema.nullish(),
+  eventType: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9._:-]*$/i),
+  route: activityRouteSchema.optional(),
+  metadata: z.record(z.string(), z.unknown())
+    .refine((value) => Buffer.byteLength(JSON.stringify(value), "utf8") <= 8_192)
+    .optional(),
+});
+const sessionEndBodySchema = z.object({
+  sessionId: activitySessionIdSchema.nullish(),
+  reason: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9._:-]*$/i).default("manual_logout"),
+});
 
 async function closeStaleSession(sessionId: number, reason: string) {
   const [session] = await db.select().from(userSessionsTable).where(eq(userSessionsTable.id, sessionId));
@@ -122,13 +153,28 @@ async function cleanupStaleSessions() {
     .where(and(
       eq(userSessionsTable.isActive, true),
       lte(userSessionsTable.lastSeenAt, threshold)
-    ));
+    ))
+    .orderBy(userSessionsTable.lastSeenAt)
+    .limit(500);
   for (const s of stale) {
     await closeStaleSession(s.id, "stale_heartbeat");
   }
 }
 
-setInterval(cleanupStaleSessions, 60000);
+export function startActivityStaleSessionCleanup(): () => void {
+  let running = false;
+  const run = () => {
+    if (running) return;
+    running = true;
+    void cleanupStaleSessions()
+      .catch(() => console.error("[activity] stale-session cleanup failed"))
+      .finally(() => { running = false; });
+  };
+  run();
+  const timer = setInterval(run, 60_000);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
 
 router.post("/activity/session/start", requireAuth, async (req, res): Promise<void> => {
   const userId = req.user!.id;
@@ -158,11 +204,9 @@ router.post("/activity/session/start", requireAuth, async (req, res): Promise<vo
   res.json({ sessionId: session.id });
 });
 
-router.post("/activity/heartbeat", requireAuth, async (req, res): Promise<void> => {
+router.post("/activity/heartbeat", requireAuth, validate({ body: heartbeatBodySchema }), async (req, res): Promise<void> => {
   const userId = req.user!.id;
-  const { sessionId, status, route } = req.body;
-
-  if (!sessionId) { res.status(400).json({ error: "sessionId required" }); return; }
+  const { sessionId, status, route } = getValidated<{ body: typeof heartbeatBodySchema }>(req).body;
 
   const now = new Date();
   const presenceStatus = status === "idle" ? "idle" : "active";
@@ -204,10 +248,18 @@ router.post("/activity/heartbeat", requireAuth, async (req, res): Promise<void> 
   res.json({ ok: true });
 });
 
-router.post("/activity/page-visit", requireAuth, async (req, res): Promise<void> => {
+router.post("/activity/page-visit", requireAuth, validate({ body: pageVisitBodySchema }), async (req, res): Promise<void> => {
   const userId = req.user!.id;
-  const { sessionId, route, moduleName } = req.body;
-  if (!sessionId || !route) { res.status(400).json({ error: "sessionId and route required" }); return; }
+  const { sessionId, route, moduleName } = getValidated<{ body: typeof pageVisitBodySchema }>(req).body;
+
+  const [ownedSession] = await db.select({ id: userSessionsTable.id }).from(userSessionsTable)
+    .where(and(
+      eq(userSessionsTable.id, sessionId),
+      eq(userSessionsTable.userId, userId),
+      eq(userSessionsTable.isActive, true),
+    ))
+    .limit(1);
+  if (!ownedSession) { res.status(409).json({ error: "Activity session is no longer active" }); return; }
 
   const [visit] = await db.insert(userPageVisitsTable).values({
     userId, sessionId, route, moduleName: moduleName || deriveModuleName(route),
@@ -216,26 +268,44 @@ router.post("/activity/page-visit", requireAuth, async (req, res): Promise<void>
   res.json({ visitId: visit.id });
 });
 
-router.post("/activity/page-leave", requireAuth, async (req, res): Promise<void> => {
+router.post("/activity/page-leave", requireAuth, validate({ body: pageLeaveBodySchema }), async (req, res): Promise<void> => {
   const userId = req.user!.id;
-  const { visitId, activeDuration = 0, idleDuration = 0 } = req.body;
-  if (!visitId) { res.status(400).json({ error: "visitId required" }); return; }
+  const { visitId, activeDuration, idleDuration } = getValidated<{ body: typeof pageLeaveBodySchema }>(req).body;
 
   const now = new Date();
+  const [visit] = await db.select({ enteredAt: userPageVisitsTable.enteredAt }).from(userPageVisitsTable)
+    .where(and(eq(userPageVisitsTable.id, visitId), eq(userPageVisitsTable.userId, userId)))
+    .limit(1);
+  if (!visit) { res.status(404).json({ error: "Activity page visit not found" }); return; }
+  const wallClockSeconds = Math.max(0, Math.min(
+    MAX_TRACKED_SESSION_SECONDS,
+    Math.floor((now.getTime() - visit.enteredAt.getTime()) / 1_000),
+  ));
+  const boundedActive = Math.min(Math.round(activeDuration), wallClockSeconds);
+  const boundedIdle = Math.min(Math.round(idleDuration), Math.max(0, wallClockSeconds - boundedActive));
   await db.update(userPageVisitsTable).set({
     leftAt: now,
-    activeDurationSeconds: Math.round(activeDuration),
-    idleDurationSeconds: Math.round(idleDuration),
-    totalDurationSeconds: Math.round(activeDuration + idleDuration),
+    activeDurationSeconds: boundedActive,
+    idleDurationSeconds: boundedIdle,
+    totalDurationSeconds: boundedActive + boundedIdle,
   }).where(and(eq(userPageVisitsTable.id, visitId), eq(userPageVisitsTable.userId, userId)));
 
   res.json({ ok: true });
 });
 
-router.post("/activity/event", requireAuth, async (req, res): Promise<void> => {
+router.post("/activity/event", requireAuth, validate({ body: activityEventBodySchema }), async (req, res): Promise<void> => {
   const userId = req.user!.id;
-  const { sessionId, eventType, route, metadata } = req.body;
-  if (!eventType) { res.status(400).json({ error: "eventType required" }); return; }
+  const { sessionId, eventType, route, metadata } = getValidated<{ body: typeof activityEventBodySchema }>(req).body;
+  if (sessionId) {
+    const [ownedSession] = await db.select({ id: userSessionsTable.id }).from(userSessionsTable)
+      .where(and(
+        eq(userSessionsTable.id, sessionId),
+        eq(userSessionsTable.userId, userId),
+        eq(userSessionsTable.isActive, true),
+      ))
+      .limit(1);
+    if (!ownedSession) { res.status(409).json({ error: "Activity session is no longer active" }); return; }
+  }
 
   await db.insert(userActivityEventsTable).values({
     userId, sessionId, eventType, route, metadata: metadata || {},
@@ -243,9 +313,9 @@ router.post("/activity/event", requireAuth, async (req, res): Promise<void> => {
   res.json({ ok: true });
 });
 
-router.post("/activity/session/end", requireAuth, async (req, res): Promise<void> => {
+router.post("/activity/session/end", requireAuth, validate({ body: sessionEndBodySchema }), async (req, res): Promise<void> => {
   const userId = req.user!.id;
-  const { sessionId, reason = "manual_logout" } = req.body;
+  const { sessionId, reason } = getValidated<{ body: typeof sessionEndBodySchema }>(req).body;
 
   if (sessionId) {
     const [session] = await db.select().from(userSessionsTable)
@@ -298,12 +368,19 @@ router.get("/activity/presence", requireAuth, requireRole(...ADMIN_ROLES), valid
   res.json({ data: presences });
 });
 
-router.get("/activity/analytics", requireAuth, requireRole(...ADMIN_ROLES), async (req, res): Promise<void> => {
-  const { from, to, userId: targetUserId } = req.query as Record<string, string>;
+const analyticsQuerySchema = z.object({
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+  userId: z.coerce.number().int().positive().optional(),
+});
+type AnalyticsSchemas = { query: typeof analyticsQuerySchema };
+
+router.get("/activity/analytics", requireAuth, requireRole(...ADMIN_ROLES), validate({ query: analyticsQuerySchema }), async (req, res): Promise<void> => {
+  const { from, to, userId: targetUserId } = getValidated<AnalyticsSchemas>(req).query;
 
   const dateFrom = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
   const dateTo = to ? new Date(to) : new Date();
-  if (!Number.isFinite(dateFrom.getTime()) || !Number.isFinite(dateTo.getTime()) || dateFrom >= dateTo) {
+  if (!isValidActivityReportRange(dateFrom, dateTo)) {
     res.status(400).json({ error: "Invalid activity date range" });
     return;
   }
@@ -314,7 +391,7 @@ router.get("/activity/analytics", requireAuth, requireRole(...ADMIN_ROLES), asyn
     // Internal team only — exclude agent roles (Job H).
     inArray(usersTable.role, STAFF_ROLES),
   ];
-  if (targetUserId) conditions.push(eq(userSessionsTable.userId, parseInt(targetUserId)));
+  if (targetUserId) conditions.push(eq(userSessionsTable.userId, targetUserId));
 
   const sessionRows = await db.select({
     id: userSessionsTable.id,
@@ -409,9 +486,19 @@ router.get("/activity/analytics", requireAuth, requireRole(...ADMIN_ROLES), asyn
   res.json({ data, totals });
 });
 
-router.get("/activity/user/:userId", requireAuth, requireRole(...ADMIN_ROLES), async (req, res): Promise<void> => {
+const activityUserQuerySchema = z.object({
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
+});
+type ActivityUserSchemas = { query: typeof activityUserQuerySchema };
+
+router.get("/activity/user/:userId", requireAuth, requireRole(...ADMIN_ROLES), validate({ query: activityUserQuerySchema }), async (req, res): Promise<void> => {
   const targetUserId = parseInt(String(req.params.userId), 10);
-  const { from, to } = req.query as Record<string, string>;
+  if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+  const { from, to } = getValidated<ActivityUserSchemas>(req).query;
 
   // Internal team only — reject agent-role targets (Job H).
   const [targetRoleRow] = await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, targetUserId));
@@ -419,7 +506,7 @@ router.get("/activity/user/:userId", requireAuth, requireRole(...ADMIN_ROLES), a
 
   const dateFrom = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
   const dateTo = to ? new Date(to) : new Date();
-  if (!Number.isFinite(dateFrom.getTime()) || !Number.isFinite(dateTo.getTime()) || dateFrom >= dateTo) {
+  if (!isValidActivityReportRange(dateFrom, dateTo)) {
     res.status(400).json({ error: "Invalid activity date range" });
     return;
   }
@@ -493,8 +580,8 @@ router.get("/activity/user/:userId", requireAuth, requireRole(...ADMIN_ROLES), a
 });
 
 const modulesQuerySchema = z.object({
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
   userId: z.coerce.number().int().positive().optional(),
 });
 type ModulesSchemas = { query: typeof modulesQuerySchema };
@@ -503,6 +590,10 @@ router.get("/activity/modules", requireAuth, requireRole(...ADMIN_ROLES), valida
   const { from, to, userId: targetUserId } = getValidated<ModulesSchemas>(req).query;
   const dateFrom = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
   const dateTo = to ? new Date(to) : new Date();
+  if (!isValidActivityReportRange(dateFrom, dateTo)) {
+    res.status(400).json({ error: "Invalid activity date range" });
+    return;
+  }
 
   // Internal team only — exclude agent roles (Job H).
   const moduleConditions = [gte(userPageVisitsTable.enteredAt, dateFrom), lte(userPageVisitsTable.enteredAt, dateTo), inArray(usersTable.role, STAFF_ROLES)];
@@ -536,8 +627,8 @@ router.get("/activity/modules", requireAuth, requireRole(...ADMIN_ROLES), valida
 
 const pdfReportQuerySchema = z.object({
   userId: z.coerce.number().int().positive(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
   locale: z.string().max(10).optional(),
 });
 type PdfReportSchemas = { query: typeof pdfReportQuerySchema };
@@ -548,8 +639,8 @@ router.get("/activity/report/pdf", requireAuth, requireRole(...ADMIN_ROLES), val
 
   const dateFrom = from ? new Date(from) : new Date(new Date().setHours(0, 0, 0, 0));
   const dateTo = to ? new Date(to) : new Date();
-  if (isNaN(dateFrom.getTime()) || isNaN(dateTo.getTime())) {
-    res.status(400).json({ error: "Invalid from/to date" });
+  if (!isValidActivityReportRange(dateFrom, dateTo)) {
+    res.status(400).json({ error: "Invalid activity date range" });
     return;
   }
 

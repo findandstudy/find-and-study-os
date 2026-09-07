@@ -4079,6 +4079,161 @@ paths:
         "403": { description: social.view permission required }
         "503": { description: Social operations scope is unavailable or disabled }
 
+  /social/ad-campaigns:
+    get:
+      operationId: listSocialAdCampaigns
+      tags: [social]
+      summary: List approval-gated advertising campaigns without provider identifiers
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: Scoped campaigns and the fail-closed advertising gate
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SocialAdCampaignListResponse" }
+        "400": { description: Invalid result limit }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+        "503": { description: Social operations scope is unavailable }
+    post:
+      operationId: createSocialAdCampaign
+      tags: [social]
+      summary: Create an approval-pending campaign that providers must provision paused
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSocialAdCampaignBody" }
+      responses:
+        "201":
+          description: Campaign and its CREATE operation recorded without provider traffic
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialAdCampaign" }
+        "400":
+          { description: "Invalid targeting, schedule, destination or budget" }
+        "401": { description: Authentication required }
+        "403": { description: social.manage permission required }
+        "409":
+          {
+            description: "Account, creative, integration or idempotency conflict",
+          }
+        "429": { description: Campaign creation rate limit exceeded }
+
+  /social/ad-campaigns/{id}/actions:
+    post:
+      operationId: createSocialAdCampaignAction
+      tags: [social]
+      summary: Request a maker-checker-approved pause, resume, budget update or end
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSocialAdActionBody" }
+      responses:
+        "201":
+          description: Action recorded without provider traffic
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SocialAdOperation" }
+        "400": { description: Invalid action or budget }
+        "401": { description: Authentication required }
+        "403": { description: social.manage permission required }
+        "404": { description: Campaign not found }
+        "409": { description: Campaign state or in-flight operation conflict }
+
+  /social/ad-operations/{id}/review:
+    post:
+      operationId: reviewSocialAdOperation
+      tags: [social]
+      summary: Independently approve or reject an advertising operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/ReviewSocialContentBriefBody" }
+      responses:
+        "200":
+          description: Append-only review recorded; an approval makes the operation worker-eligible
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SocialAdOperationReviewResult" }
+        "400": { description: Invalid review or missing rejection reason }
+        "401": { description: Authentication required }
+        "403": { description: social.approve permission required }
+        "409":
+          {
+            description: "Maker-checker, campaign state or idempotency conflict",
+          }
+
+  /social/ad-operations/{id}/cancel:
+    post:
+      operationId: cancelSocialAdOperation
+      tags: [social]
+      summary: Cancel an advertising operation before execution starts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubmitSocialOperationBody" }
+      responses:
+        "200": { description: Operation canceled without provider traffic }
+        "400": { description: Invalid operation id }
+        "401": { description: Authentication required }
+        "403": { description: social.manage permission required }
+        "404": { description: Operation not found }
+        "409": { description: Operation has already started or completed }
+
+  /social/ad-operations/{id}/attempts:
+    get:
+      operationId: listSocialAdOperationAttempts
+      tags: [social]
+      summary: List redacted provider execution attempts for an advertising operation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Redacted, append-only attempt evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    maxItems: 50
+                    items:
+                      { $ref: "#/components/schemas/SocialAdOperationAttempt" }
+        "400": { description: Invalid operation id }
+        "401": { description: Authentication required }
+        "403": { description: social.view permission required }
+
   /social/accounts:
     get:
       operationId: listSocialAccounts
@@ -9027,6 +9182,7 @@ components:
           publicationGate,
           performanceGate,
           creativeGate,
+          advertisingGate,
           providerConnectionGate,
         ]
       properties:
@@ -9040,6 +9196,7 @@ components:
         publicationGate: { $ref: "#/components/schemas/SocialPublicationGate" }
         performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
         creativeGate: { $ref: "#/components/schemas/SocialCreativeGate" }
+        advertisingGate: { $ref: "#/components/schemas/SocialAdvertisingGate" }
         providerConnectionGate:
           { $ref: "#/components/schemas/SocialProviderConnectionGate" }
 
@@ -9084,6 +9241,30 @@ components:
           items: { type: string }
         reason: { type: [string, "null"] }
 
+    SocialAdvertisingGate:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          enabled,
+          workerEnabled,
+          connectivityEnabled,
+          providerAdvertisingEnabled,
+          allowedProviders,
+          maximumCampaignBudgetMinor,
+          reason,
+        ]
+      properties:
+        enabled: { type: boolean }
+        workerEnabled: { type: boolean }
+        connectivityEnabled: { type: boolean }
+        providerAdvertisingEnabled: { type: boolean }
+        allowedProviders:
+          type: array
+          items: { type: string }
+        maximumCampaignBudgetMinor: { type: [integer, "null"], minimum: 100 }
+        reason: { type: [string, "null"] }
+
     SocialWorkerHealth:
       type: object
       required:
@@ -9097,7 +9278,11 @@ components:
           reason,
         ]
       properties:
-        kind: { type: string, enum: [publication, performance, creative] }
+        kind:
+          {
+            type: string,
+            enum: [publication, performance, creative, advertising],
+          }
         expected: { type: boolean }
         status:
           { type: string, enum: [DISABLED, READY, RELEASE_MISMATCH, STALE] }
@@ -9197,6 +9382,7 @@ components:
           publicationGate,
           performanceGate,
           creativeGate,
+          advertisingGate,
           providerConnectionGate,
           workerHealth,
         ]
@@ -9233,13 +9419,218 @@ components:
         publicationGate: { $ref: "#/components/schemas/SocialPublicationGate" }
         performanceGate: { $ref: "#/components/schemas/SocialPerformanceGate" }
         creativeGate: { $ref: "#/components/schemas/SocialCreativeGate" }
+        advertisingGate: { $ref: "#/components/schemas/SocialAdvertisingGate" }
         providerConnectionGate:
           { $ref: "#/components/schemas/SocialProviderConnectionGate" }
         workerHealth:
           type: array
-          minItems: 3
-          maxItems: 3
+          minItems: 4
+          maxItems: 4
           items: { $ref: "#/components/schemas/SocialWorkerHealth" }
+
+    SocialAdCampaign:
+      type: object
+      additionalProperties: true
+      required:
+        [
+          id,
+          account_id,
+          brief_id,
+          provider,
+          name,
+          objective,
+          destination_url,
+          country_codes,
+          language_codes,
+          age_min,
+          age_max,
+          currency_code,
+          current_daily_budget_minor,
+          current_lifetime_budget_minor,
+          starts_at,
+          ends_at,
+          status,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        brief_id: { type: string, format: uuid }
+        account_name: { type: string }
+        provider: { type: string }
+        name: { type: string }
+        objective:
+          {
+            type: string,
+            enum: [AWARENESS, TRAFFIC, LEADS, CONVERSIONS, VIDEO_VIEWS],
+          }
+        destination_url: { type: string, format: uri }
+        country_codes:
+          {
+            type: array,
+            minItems: 1,
+            maxItems: 25,
+            items: { type: string, pattern: "^[A-Z]{2}$" },
+          }
+        language_codes: { type: array, maxItems: 20, items: { type: string } }
+        age_min: { type: integer, minimum: 18, maximum: 65 }
+        age_max: { type: integer, minimum: 18, maximum: 65 }
+        currency_code: { type: string, pattern: "^[A-Z]{3}$" }
+        current_daily_budget_minor: { type: integer, minimum: 1 }
+        current_lifetime_budget_minor: { type: integer, minimum: 1 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        status:
+          {
+            type: string,
+            enum:
+              [
+                PENDING_APPROVAL,
+                APPROVED,
+                PROVISIONING,
+                PAUSED,
+                ACTIVE,
+                COMPLETED,
+                REJECTED,
+                FAILED,
+                CANCELED,
+              ],
+          }
+        last_error_code: { type: [string, "null"] }
+        latest_operation_id: { type: string, format: uuid }
+        latest_operation_type:
+          { type: string, enum: [CREATE, PAUSE, RESUME, UPDATE_BUDGET, END] }
+        latest_operation_status: { type: string }
+        latest_operation_creator: { type: integer }
+
+    SocialAdCampaignListResponse:
+      type: object
+      additionalProperties: false
+      required: [data, advertisingGate]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SocialAdCampaign" }
+        advertisingGate: { $ref: "#/components/schemas/SocialAdvertisingGate" }
+
+    CreateSocialAdCampaignBody:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          requestKey,
+          accountId,
+          briefId,
+          name,
+          objective,
+          destinationUrl,
+          countryCodes,
+          languageCodes,
+          ageMin,
+          ageMax,
+          currencyCode,
+          dailyBudgetMinor,
+          lifetimeBudgetMinor,
+          startsAt,
+          endsAt,
+        ]
+      properties:
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
+        accountId: { type: string, format: uuid }
+        briefId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 160 }
+        objective:
+          {
+            type: string,
+            enum: [AWARENESS, TRAFFIC, LEADS, CONVERSIONS, VIDEO_VIEWS],
+          }
+        destinationUrl: { type: string, format: uri, maxLength: 2048 }
+        countryCodes:
+          { type: array, minItems: 1, maxItems: 25, items: { type: string } }
+        languageCodes: { type: array, maxItems: 20, items: { type: string } }
+        ageMin: { type: integer, minimum: 18, maximum: 65 }
+        ageMax: { type: integer, minimum: 18, maximum: 65 }
+        currencyCode: { type: string, pattern: "^[A-Z]{3}$" }
+        dailyBudgetMinor: { type: integer, minimum: 1, maximum: 1000000000000 }
+        lifetimeBudgetMinor:
+          { type: integer, minimum: 1, maximum: 1000000000000 }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        maxAttempts: { type: integer, minimum: 1, maximum: 8, default: 5 }
+
+    CreateSocialAdActionBody:
+      type: object
+      additionalProperties: false
+      required: [requestKey, action]
+      properties:
+        requestKey:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 160,
+            pattern: "^[A-Za-z0-9._:-]+$",
+          }
+        action: { type: string, enum: [PAUSE, RESUME, UPDATE_BUDGET, END] }
+        dailyBudgetMinor: { type: integer, minimum: 1, maximum: 1000000000000 }
+        lifetimeBudgetMinor:
+          { type: integer, minimum: 1, maximum: 1000000000000 }
+        maxAttempts: { type: integer, minimum: 1, maximum: 8, default: 5 }
+
+    SocialAdOperation:
+      type: object
+      additionalProperties: true
+      required: [id, campaign_id, operation_type, status]
+      properties:
+        id: { type: string, format: uuid }
+        campaign_id: { type: string, format: uuid }
+        operation_type:
+          { type: string, enum: [CREATE, PAUSE, RESUME, UPDATE_BUDGET, END] }
+        status: { type: string }
+
+    SocialAdOperationReviewResult:
+      type: object
+      additionalProperties: false
+      required: [id, campaignId, operationType, status, replay]
+      properties:
+        id: { type: string, format: uuid }
+        campaignId: { type: string, format: uuid }
+        operationType:
+          { type: string, enum: [CREATE, PAUSE, RESUME, UPDATE_BUDGET, END] }
+        status: { type: string, enum: [APPROVED, REJECTED] }
+        replay: { type: boolean }
+
+    SocialAdOperationAttempt:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          attempt_number,
+          worker_id,
+          runtime_release_id,
+          outcome,
+          started_at,
+          completed_at,
+          created_at,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        attempt_number: { type: integer, minimum: 1, maximum: 8 }
+        worker_id: { type: string }
+        runtime_release_id: { type: string }
+        outcome:
+          { type: string, enum: [APPLIED, RETRY, DEAD_LETTER, LEASE_EXPIRED] }
+        provider_state:
+          { type: [string, "null"], enum: [PAUSED, ACTIVE, COMPLETED, null] }
+        error_code: { type: [string, "null"] }
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
 
     CreateSocialAccountBody:
       type: object

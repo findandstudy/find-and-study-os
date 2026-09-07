@@ -39,7 +39,7 @@ try {
   const ledger = await client.query(
     "SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations",
   );
-  assert.equal(ledger.rows[0]?.count, 105);
+  assert.equal(ledger.rows[0]?.count, 107);
 
   const indexResult = await client.query<{ count: number }>(
     `
@@ -56,10 +56,17 @@ try {
         "documents_operations_review_idx",
         "portal_lifecycle_observations_submission_latest_idx",
         "application_stage_documents_offer_expiry_idx",
+        "user_sessions_activity_user_started_idx",
+        "user_sessions_activity_overlap_idx",
+        "user_sessions_activity_active_last_seen_idx",
+        "user_page_visits_user_entered_idx",
+        "user_page_visits_module_entered_idx",
+        "user_activity_events_user_created_idx",
+        "user_presence_status_last_active_idx",
       ],
     ],
   );
-  assert.equal(indexResult.rows[0]?.count, 6);
+  assert.equal(indexResult.rows[0]?.count, 13);
 
   const actorResult = await client.query<{ id: number; role: string }>(`
     SELECT id, role
@@ -134,7 +141,7 @@ try {
 
   await client.query("COMMIT");
   console.log(
-    `[operations-read-model] PASS ledger=105 indexes=6 visible=${first.summary.total} page=${first.items.length}`,
+    `[operations-read-model] PASS ledger=107 indexes=13 visible=${first.summary.total} page=${first.items.length}`,
   );
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);

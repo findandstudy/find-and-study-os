@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const cleanupScriptUrl = new URL("../../../lib/db/cleanup-data.mjs", import.meta.url);
+const cleanupScriptUrl = new URL(
+  "../../../lib/db/cleanup-data.mjs",
+  import.meta.url,
+);
+const cleanupScriptPath = fileURLToPath(cleanupScriptUrl);
 const cleanupScriptSource = readFileSync(cleanupScriptUrl, "utf8");
 const runtimeCleanupSource = readFileSync(
   new URL("../src/lib/dataCleanup.ts", import.meta.url),
@@ -41,7 +46,7 @@ test("manual cleanup requires the exact destructive cleanup flag before DB acces
     if (value === undefined) delete env.ALLOW_DESTRUCTIVE_DATA_CLEANUP;
     else env.ALLOW_DESTRUCTIVE_DATA_CLEANUP = value;
 
-    const result = spawnSync(process.execPath, [cleanupScriptUrl.pathname], {
+    const result = spawnSync(process.execPath, [cleanupScriptPath], {
       env,
       encoding: "utf8",
     });
@@ -50,7 +55,7 @@ test("manual cleanup requires the exact destructive cleanup flag before DB acces
     assert.doesNotMatch(result.stderr, /DATABASE_URL not set/);
   }
 
-  const allowed = spawnSync(process.execPath, [cleanupScriptUrl.pathname], {
+  const allowed = spawnSync(process.execPath, [cleanupScriptPath], {
     env: {
       ...process.env,
       ALLOW_DESTRUCTIVE_DATA_CLEANUP: "true",

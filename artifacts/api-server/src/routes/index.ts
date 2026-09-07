@@ -71,6 +71,7 @@ import agentApplicationsRouter from "./agentApplications";
 import institutionAdmissionsRouter from "./institutionAdmissions";
 import reportingRouter from "./reporting";
 import socialOperationsRouter from "./socialOperations";
+import socialAdvertisingRouter from "./socialAdvertising";
 import operationsRouter from "./operations";
 import { tokenScopeGuard } from "../middlewares/tokenScopeGuard";
 import { studentEmailVerificationGate } from "../middlewares/studentEmailVerificationGate";
@@ -211,6 +212,7 @@ router.use(tokenScopeGuard);
 router.use(institutionAdmissionsRouter);
 router.use(reportingRouter);
 router.use(socialOperationsRouter);
+router.use(socialAdvertisingRouter);
 router.use(operationsRouter);
 
 router.use(healthRouter);

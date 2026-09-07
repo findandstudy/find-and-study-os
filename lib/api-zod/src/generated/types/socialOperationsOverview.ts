@@ -5,15 +5,16 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
-import type { SocialContentBrief } from './socialContentBrief';
-import type { SocialCreativeGate } from './socialCreativeGate';
-import type { SocialOperationsOverviewAccountCountsItem } from './socialOperationsOverviewAccountCountsItem';
-import type { SocialOperationsOverviewBriefCountsItem } from './socialOperationsOverviewBriefCountsItem';
-import type { SocialOperationsOverviewPublicationCountsItem } from './socialOperationsOverviewPublicationCountsItem';
-import type { SocialPerformanceGate } from './socialPerformanceGate';
-import type { SocialProviderConnectionGate } from './socialProviderConnectionGate';
-import type { SocialPublicationGate } from './socialPublicationGate';
-import type { SocialWorkerHealth } from './socialWorkerHealth';
+import type { SocialAdvertisingGate } from "./socialAdvertisingGate";
+import type { SocialContentBrief } from "./socialContentBrief";
+import type { SocialCreativeGate } from "./socialCreativeGate";
+import type { SocialOperationsOverviewAccountCountsItem } from "./socialOperationsOverviewAccountCountsItem";
+import type { SocialOperationsOverviewBriefCountsItem } from "./socialOperationsOverviewBriefCountsItem";
+import type { SocialOperationsOverviewPublicationCountsItem } from "./socialOperationsOverviewPublicationCountsItem";
+import type { SocialPerformanceGate } from "./socialPerformanceGate";
+import type { SocialProviderConnectionGate } from "./socialProviderConnectionGate";
+import type { SocialPublicationGate } from "./socialPublicationGate";
+import type { SocialWorkerHealth } from "./socialWorkerHealth";
 
 export interface SocialOperationsOverview {
   briefCounts: SocialOperationsOverviewBriefCountsItem[];
@@ -24,10 +25,11 @@ export interface SocialOperationsOverview {
   publicationGate: SocialPublicationGate;
   performanceGate: SocialPerformanceGate;
   creativeGate: SocialCreativeGate;
+  advertisingGate: SocialAdvertisingGate;
   providerConnectionGate: SocialProviderConnectionGate;
   /**
-     * @minItems 3
-     * @maxItems 3
-     */
+   * @minItems 4
+   * @maxItems 4
+   */
   workerHealth: SocialWorkerHealth[];
 }

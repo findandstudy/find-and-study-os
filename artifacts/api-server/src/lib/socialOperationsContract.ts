@@ -28,6 +28,15 @@ export type SocialCreativeGate = {
   allowedProviders: string[];
   reason: string | null;
 };
+export type SocialAdvertisingGate = {
+  enabled: boolean;
+  workerEnabled: boolean;
+  connectivityEnabled: boolean;
+  providerAdvertisingEnabled: boolean;
+  allowedProviders: string[];
+  maximumCampaignBudgetMinor: number | null;
+  reason: string | null;
+};
 
 const PROVIDER_RE = /^[a-z][a-z0-9._-]{1,63}$/;
 const SAFE_RUNTIME_ID_RE = /^[A-Za-z0-9._:-]{1,96}$/;
@@ -241,6 +250,141 @@ export function resolveSocialCreativeGate(input: {
       reason: "SOCIAL_CREATIVE_PROVIDER_ALLOWLIST_EMPTY",
     };
   return { ...base, enabled: true, reason: null };
+}
+
+function parseAdvertisingBudgetLimit(value?: string): number | null {
+  const raw = value?.trim() ?? "";
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) &&
+    parsed >= 100 &&
+    parsed <= 1_000_000_000_000
+    ? parsed
+    : null;
+}
+
+export function resolveSocialAdvertisingGate(input: {
+  workerEnabled?: string;
+  connectivityEnabled?: string;
+  providerAdvertisingEnabled?: string;
+  allowLiveIntegrations?: string;
+  providerAllowlist?: string;
+  maximumCampaignBudgetMinor?: string;
+}): SocialAdvertisingGate {
+  const workerEnabled = explicitTrue(input.workerEnabled);
+  const connectivityEnabled = explicitTrue(input.connectivityEnabled);
+  const providerAdvertisingEnabled = explicitTrue(
+    input.providerAdvertisingEnabled,
+  );
+  const liveIntegrationsEnabled = explicitTrue(input.allowLiveIntegrations);
+  const allowlist = providerAllowlist(input.providerAllowlist);
+  const maximumCampaignBudgetMinor = parseAdvertisingBudgetLimit(
+    input.maximumCampaignBudgetMinor,
+  );
+  const base = {
+    workerEnabled,
+    connectivityEnabled,
+    providerAdvertisingEnabled,
+    allowedProviders: allowlist.allowedProviders,
+    maximumCampaignBudgetMinor,
+  };
+  if (!workerEnabled)
+    return { ...base, enabled: false, reason: "SOCIAL_AD_WORKER_DISABLED" };
+  if (!connectivityEnabled)
+    return {
+      ...base,
+      enabled: false,
+      reason: "SOCIAL_PROVIDER_CONNECTIVITY_DISABLED",
+    };
+  if (!providerAdvertisingEnabled)
+    return {
+      ...base,
+      enabled: false,
+      reason: "SOCIAL_PROVIDER_ADVERTISING_DISABLED",
+    };
+  if (!liveIntegrationsEnabled)
+    return { ...base, enabled: false, reason: "LIVE_INTEGRATIONS_DISABLED" };
+  if (!allowlist.valid)
+    return {
+      ...base,
+      enabled: false,
+      allowedProviders: [],
+      reason: "SOCIAL_AD_PROVIDER_ALLOWLIST_INVALID",
+    };
+  if (allowlist.allowedProviders.length === 0)
+    return {
+      ...base,
+      enabled: false,
+      reason: "SOCIAL_AD_PROVIDER_ALLOWLIST_EMPTY",
+    };
+  if (maximumCampaignBudgetMinor === null)
+    return {
+      ...base,
+      enabled: false,
+      reason: "SOCIAL_AD_BUDGET_LIMIT_INVALID",
+    };
+  return { ...base, enabled: true, reason: null };
+}
+
+export function assertSocialAdvertisingBudget(input: {
+  dailyBudgetMinor: number;
+  lifetimeBudgetMinor: number;
+  maximumCampaignBudgetMinor: number | null;
+}): void {
+  if (
+    !Number.isSafeInteger(input.dailyBudgetMinor) ||
+    !Number.isSafeInteger(input.lifetimeBudgetMinor) ||
+    input.dailyBudgetMinor < 1 ||
+    input.lifetimeBudgetMinor < input.dailyBudgetMinor
+  )
+    throw new Error("SOCIAL_AD_BUDGET_INVALID");
+  if (
+    input.maximumCampaignBudgetMinor === null ||
+    input.lifetimeBudgetMinor > input.maximumCampaignBudgetMinor
+  )
+    throw new Error("SOCIAL_AD_BUDGET_LIMIT_EXCEEDED");
+}
+
+export function normalizeSocialAdDestinationUrl(value: string): string {
+  if (value.length > 2048) throw new Error("SOCIAL_AD_DESTINATION_INVALID");
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("SOCIAL_AD_DESTINATION_INVALID");
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    (url.port && url.port !== "443") ||
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    /^\d+(?:\.\d+){3}$/.test(hostname) ||
+    hostname.includes(":") ||
+    !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
+      hostname,
+    )
+  )
+    throw new Error("SOCIAL_AD_DESTINATION_INVALID");
+  url.hostname = hostname;
+  url.port = "";
+  return url.toString();
+}
+
+export function normalizeSocialAdCountryCodes(values: string[]): string[] {
+  const normalized = [
+    ...new Set(values.map((value) => value.trim().toUpperCase())),
+  ];
+  if (
+    normalized.length < 1 ||
+    normalized.length > 25 ||
+    normalized.some((value) => !/^[A-Z]{2}$/.test(value))
+  )
+    throw new Error("SOCIAL_AD_COUNTRY_CODES_INVALID");
+  return normalized.sort();
 }
 
 export function assertSocialCreativeOutputCompatible(

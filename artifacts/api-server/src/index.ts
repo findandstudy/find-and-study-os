@@ -3201,6 +3201,10 @@ async function seedClaudeIntegration() {
       const { startMessageCampaignWorker } = await import("./lib/inbox/messageCampaignWorker");
       return startMessageCampaignWorker();
     } },
+    { name: "activityStaleSessionCleanup", offsetMs: 47_000, start: async () => {
+      const { startActivityStaleSessionCleanup } = await import("./routes/activity");
+      return startActivityStaleSessionCleanup();
+    } },
   ]);
   const backgroundJobsRequested = backgroundJobsEnabled();
   await backgroundJobs.start(backgroundJobsRequested);

@@ -1,5 +1,75 @@
 # Operations & Growth Foundation — Local Implementation Record
 
+## 7 September 2026 advertising-control addendum
+
+This addendum supersedes the ad-spend implementation limitation below. It does
+not authorize a live advertising provider or any production deployment.
+
+- Migration `0105_social_ad_control.sql` adds tenant/organization scoped ad
+  campaigns, approval-gated operations, append-only review/attempt evidence and
+  strict campaign/operation state machines. All four new tables use FORCE RLS.
+- Every create, budget, pause, resume and end operation is idempotent and
+  maker-checker controlled. New campaigns are always provisioned `PAUSED`; a
+  separately approved `RESUME` is required before the provider may spend.
+- Budget is checked when the request is created and again when the worker
+  claims it. Destination URLs are HTTPS-only and reject credentials, fragments,
+  local names, IP literals and non-standard ports.
+- The advertising worker is isolated per provider account, uses bounded leases,
+  retries and dead-letter states, and cannot overlap publication or performance
+  work for the same account.
+- The managed-provider response is strict and bounded. Only hashes of provider
+  campaign references and receipts are stored in the CRM database.
+- `/admin/social` now includes Ads Control for campaign creation, review,
+  execution history and safe lifecycle actions. Provider connectivity,
+  advertising and worker switches remain independently default-off.
+- Local PostgreSQL 16.15 verification passes with `107/107` migrations and
+  `21/21` social tables under FORCE RLS. The advertising suite proves tenant
+  isolation, database-enforced maker-checker, `CREATE → PAUSED → RESUME → ACTIVE`,
+  execution-time budget rejection and append-only evidence.
+
+Live traffic still requires provider contracts, sandbox/canary evidence,
+account verification, quota and spend policy, rollback/stop evidence and an
+explicit activation decision for every external kill switch.
+
+## 7 September 2026 security and performance review addendum
+
+The repository-wide follow-up concentrated on concrete, reproducible risks in
+the newly delivered social surface and the shared activity/runtime paths. It
+does not claim an unbounded whole-system security or load certification.
+
+- Social and institution routes no longer return raw internal exception text
+  for unexpected failures. Advertising mutations have separate per-user rate
+  limits, and every queued operation revalidates the current integration,
+  provider-account and campaign-reference binding before execution.
+- Advertising `CREATE` must start without a provider reference; all later
+  operations must match the exact stored provider campaign reference hash.
+  Cross-campaign or stale provider results are dead-lettered without mutating
+  campaign state.
+- Activity ingestion now bounds batch size, session/page identifiers, route
+  length and report ranges; rejects fragments, query strings and control
+  characters; verifies session ownership; and caps client counters to elapsed
+  server time. Stale-session cleanup is explicitly lifecycle-managed, limited
+  to 500 rows per run and uses indexed read paths from additive migration
+  `0106_activity_read_path_indexes.sql`.
+- Production dependency resolution pins fixed `qs`, `@xmldom/xmldom` and
+  `fflate` versions. `pnpm audit --prod` reports zero known advisories across
+  639 production dependencies.
+- Shell-dependent inline environment assignments in API test scripts were
+  replaced by a command-allowlisted, `shell: false` launcher. The stale inbox
+  HMAC regression now proves that a missing signing secret fails closed.
+- Canonical migration ledger is `107/107`; the advertising PostgreSQL suite is
+  `6/6`, publication orchestration `10/10`, activity normalization `19/19`,
+  background lifecycle `8/8`, destructive cleanup guard `4/4` and security
+  regressions `35/35`. Workspace typecheck and API/Edcons production builds
+  pass.
+
+The remaining legacy authorization and tenant-writer registries are fully
+classified but intentionally quarantined rather than silently declared safe:
+187 writer files/2,461 surfaces and 76 route files/840 registrations remain on
+the long-term Control Plane migration path. High-volume certification still
+requires measured workload, provider sandbox/canary, queue saturation, DR and
+multi-tenant operational evidence; no such certification is inferred here.
+
 ## 6 September 2026 reliability addendum
 
 This addendum supersedes the first-slice publication limitations below without

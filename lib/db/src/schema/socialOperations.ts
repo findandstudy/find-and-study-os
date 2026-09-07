@@ -1008,6 +1008,251 @@ export const socialWorkerHeartbeatsTable = pgTable(
   ],
 ).enableRLS();
 
+export const socialAdCampaignsTable = pgTable(
+  "social_ad_campaigns",
+  {
+    id: uuid("id").primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id").notNull(),
+    accountId: uuid("account_id").notNull(),
+    briefId: uuid("brief_id").notNull(),
+    provider: text("provider").notNull(),
+    name: text("name").notNull(),
+    objective: text("objective").notNull(),
+    destinationUrl: text("destination_url").notNull(),
+    countryCodes: text("country_codes").array().notNull(),
+    languageCodes: text("language_codes").array().notNull().default([]),
+    ageMin: integer("age_min").notNull(),
+    ageMax: integer("age_max").notNull(),
+    currencyCode: text("currency_code").notNull(),
+    requestedDailyBudgetMinor: bigint("requested_daily_budget_minor", {
+      mode: "number",
+    }).notNull(),
+    requestedLifetimeBudgetMinor: bigint("requested_lifetime_budget_minor", {
+      mode: "number",
+    }).notNull(),
+    currentDailyBudgetMinor: bigint("current_daily_budget_minor", {
+      mode: "number",
+    }).notNull(),
+    currentLifetimeBudgetMinor: bigint("current_lifetime_budget_minor", {
+      mode: "number",
+    }).notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    status: text("status").notNull().default("PENDING_APPROVAL"),
+    definitionSha256: text("definition_sha256").notNull(),
+    providerCampaignRefHash: text("provider_campaign_ref_hash"),
+    providerReceiptHash: text("provider_receipt_hash"),
+    lastAppliedOperationId: uuid("last_applied_operation_id"),
+    lastErrorCode: text("last_error_code"),
+    createdByLegacyUserId: integer("created_by_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    approvedByLegacyUserId: integer("approved_by_legacy_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("social_ad_campaigns_tenant_id_id_uq").on(table.tenantId, table.id),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_ad_campaigns_organization_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.accountId],
+      foreignColumns: [socialAccountsTable.tenantId, socialAccountsTable.id],
+      name: "social_ad_campaigns_account_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.briefId],
+      foreignColumns: [
+        socialContentBriefsTable.tenantId,
+        socialContentBriefsTable.id,
+      ],
+      name: "social_ad_campaigns_brief_fk",
+    }).onDelete("restrict"),
+    index("social_ad_campaigns_scope_status_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.status,
+      table.startsAt,
+      table.id,
+    ),
+    check("social_ad_campaigns_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
+
+export const socialAdOperationsTable = pgTable(
+  "social_ad_operations",
+  {
+    id: uuid("id").primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    campaignId: uuid("campaign_id").notNull(),
+    operationType: text("operation_type").notNull(),
+    requestedDailyBudgetMinor: bigint("requested_daily_budget_minor", {
+      mode: "number",
+    }),
+    requestedLifetimeBudgetMinor: bigint("requested_lifetime_budget_minor", {
+      mode: "number",
+    }),
+    status: text("status").notNull().default("PENDING_APPROVAL"),
+    requestKey: text("request_key").notNull(),
+    payloadSha256: text("payload_sha256").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    leaseTokenHash: text("lease_token_hash"),
+    leasedAt: timestamp("leased_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    workerId: text("worker_id"),
+    providerRequestHash: text("provider_request_hash"),
+    providerReceiptHash: text("provider_receipt_hash"),
+    providerCampaignRefHash: text("provider_campaign_ref_hash"),
+    providerState: text("provider_state"),
+    lastErrorCode: text("last_error_code"),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    createdByLegacyUserId: integer("created_by_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    approvedByLegacyUserId: integer("approved_by_legacy_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("social_ad_operations_tenant_id_id_uq").on(table.tenantId, table.id),
+    unique("social_ad_operations_request_uq").on(
+      table.tenantId,
+      table.organizationId,
+      table.requestKey,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.campaignId],
+      foreignColumns: [
+        socialAdCampaignsTable.tenantId,
+        socialAdCampaignsTable.id,
+      ],
+      name: "social_ad_operations_campaign_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.tenantId, table.organizationId],
+      foreignColumns: [organizationsTable.tenantId, organizationsTable.id],
+      name: "social_ad_operations_organization_fk",
+    }).onDelete("restrict"),
+    index("social_ad_operations_due_idx").on(
+      table.tenantId,
+      table.organizationId,
+      table.nextAttemptAt,
+      table.createdAt,
+      table.id,
+    ),
+    check("social_ad_operations_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
+
+export const socialAdOperationReviewsTable = pgTable(
+  "social_ad_operation_reviews",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    operationId: uuid("operation_id").notNull(),
+    reviewerLegacyUserId: integer("reviewer_legacy_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    decision: text("decision").notNull(),
+    reason: text("reason"),
+    requestKey: text("request_key").notNull(),
+    evidenceSha256: text("evidence_sha256").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "social_ad_operation_reviews_pk",
+      columns: [table.tenantId, table.id],
+    }),
+    unique("social_ad_operation_reviews_once_uq").on(
+      table.tenantId,
+      table.operationId,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.operationId],
+      foreignColumns: [
+        socialAdOperationsTable.tenantId,
+        socialAdOperationsTable.id,
+      ],
+      name: "social_ad_operation_reviews_operation_fk",
+    }).onDelete("restrict"),
+    check("social_ad_operation_reviews_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
+
+export const socialAdOperationAttemptsTable = pgTable(
+  "social_ad_operation_attempts",
+  {
+    id: uuid("id").notNull(),
+    tenantId: uuid("tenant_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    operationId: uuid("operation_id").notNull(),
+    attemptNumber: integer("attempt_number").notNull(),
+    workerId: text("worker_id").notNull(),
+    runtimeReleaseId: text("runtime_release_id").notNull(),
+    outcome: text("outcome").notNull(),
+    providerRequestHash: text("provider_request_hash").notNull(),
+    providerReceiptHash: text("provider_receipt_hash"),
+    providerCampaignRefHash: text("provider_campaign_ref_hash"),
+    providerState: text("provider_state"),
+    errorCode: text("error_code"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "social_ad_operation_attempts_pk",
+      columns: [table.tenantId, table.id],
+    }),
+    unique("social_ad_operation_attempts_once_uq").on(
+      table.tenantId,
+      table.operationId,
+      table.attemptNumber,
+    ),
+    foreignKey({
+      columns: [table.tenantId, table.operationId],
+      foreignColumns: [
+        socialAdOperationsTable.tenantId,
+        socialAdOperationsTable.id,
+      ],
+      name: "social_ad_operation_attempts_operation_fk",
+    }).onDelete("restrict"),
+    check("social_ad_operation_attempts_id_v7_chk", uuidV7(table.id)),
+  ],
+).enableRLS();
+
 export type SocialContentBrief = typeof socialContentBriefsTable.$inferSelect;
 export type SocialAccount = typeof socialAccountsTable.$inferSelect;
 export type SocialCreativeRequest =
@@ -1016,3 +1261,5 @@ export type SocialCreativeAttempt =
   typeof socialCreativeAttemptsTable.$inferSelect;
 export type SocialPublicationIntent =
   typeof socialPublicationIntentsTable.$inferSelect;
+export type SocialAdCampaign = typeof socialAdCampaignsTable.$inferSelect;
+export type SocialAdOperation = typeof socialAdOperationsTable.$inferSelect;

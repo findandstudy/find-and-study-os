@@ -767,6 +767,15 @@
       "externalPilot": "quarantine"
     },
     {
+      "path": "artifacts/api-server/src/lib/socialAdvertisingQueue.ts",
+      "ownership": "external_integration",
+      "enforcement": "receipt_guarded",
+      "risk": "critical",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Advertising operations are maker-checker approved, account-lane isolated, execution-time budget checked, lease-bound and append-only receipt backed; provider advertising remains independently default-off."
+    },
+    {
       "path": "artifacts/api-server/src/lib/socialCreativeQueue.ts",
       "ownership": "external_integration",
       "enforcement": "receipt_guarded",
@@ -1344,6 +1353,15 @@
       "risk": "high",
       "owner": "Platform Security",
       "externalPilot": "quarantine"
+    },
+    {
+      "path": "artifacts/api-server/src/routes/socialAdvertising.ts",
+      "ownership": "external_integration",
+      "enforcement": "quarantine_required",
+      "risk": "critical",
+      "owner": "Growth & Social",
+      "externalPilot": "quarantine",
+      "note": "Ads Control requires explicit permissions and dual approval, provisions new campaigns paused, and remains quarantined until signed active-context adoption and provider pilot approval."
     },
     {
       "path": "artifacts/api-server/src/routes/socialOperations.ts",

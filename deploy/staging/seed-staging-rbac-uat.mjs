@@ -164,7 +164,7 @@ async function run() {
     if (
       identityRow?.database_name !== "fasos_staging" ||
       identityRow?.user_name !== "fas_migrator" ||
-      identityRow?.migration_count !== 105 ||
+      identityRow?.migration_count !== 107 ||
       identityRow?.user_count !== expectedPreUserCount
     ) {
       fail("database identity, ledger, or exact pre-user count does not match");

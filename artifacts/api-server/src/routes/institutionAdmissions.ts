@@ -88,6 +88,7 @@ router.use("/institution", requireAuth, institutionPortalGate);
 
 function statusForError(error: unknown): number {
   const code = error instanceof Error ? error.message : "institution_request_failed";
+  if (!/^institution_[a-z0-9_]{2,96}$/.test(code)) return 500;
   if (code.includes("unavailable") || code.includes("denied") || code.includes("conflict")) return 403;
   if (code.includes("assurance_required")) return 503;
   if (code.endsWith("_invalid") || code.includes("requires_") || code.endsWith("_required") || code.includes("_not_")) return 400;
@@ -97,8 +98,9 @@ function statusForError(error: unknown): number {
 function sendFailure(res: Response, error: unknown): void {
   const code = error instanceof Error ? error.message : "institution_request_failed";
   const status = statusForError(error);
-  if (status === 500) console.error("[institution-admissions]", error);
-  res.status(status).json({ error: code, code: code.toUpperCase() });
+  if (status === 500) console.error("[institution-admissions] request failed");
+  const publicCode = status === 500 ? "institution_request_failed" : code;
+  res.status(status).json({ error: publicCode, code: publicCode.toUpperCase() });
 }
 
 async function appendEvent(

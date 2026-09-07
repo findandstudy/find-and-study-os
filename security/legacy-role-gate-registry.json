@@ -8,10 +8,10 @@
     "defaultEnforcement": "legacy_quarantine"
   },
   "totals": {
-    "routeRegistrations": 834,
-    "requireAuth": 752,
+    "routeRegistrations": 840,
+    "requireAuth": 759,
     "requireRole": 485,
-    "requirePermission": 72,
+    "requirePermission": 78,
     "requireScope": 0,
     "directRoleChecks": 29,
     "authOnlyRouteCandidates": 128,
@@ -35,7 +35,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/activity.ts",
-      "sha256": "9956467475d126f7fefb16767655cb2b1b2d4fd1645b39e8a471662347fb3409",
+      "sha256": "8dbd5e09a6d255f721015117931334c02299cb87fe1f33aba465eb0d3014b8e3",
       "routeRegistrations": 11,
       "requireAuth": 12,
       "requireRole": 5,
@@ -50,7 +50,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/activityV1.ts",
-      "sha256": "a2ad5ad663413c67fddd6e9ee21f8d8cc8df9a61eb8c5c6b1e66b4ab9e60de38",
+      "sha256": "4c661c211ffcd05e44c89c3d0d4573332d470e0d8306eae07e7b27337f94dac4",
       "routeRegistrations": 2,
       "requireAuth": 3,
       "requireRole": 1,
@@ -620,7 +620,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/index.ts",
-      "sha256": "a35b34279b0085584d357ac816097d8e8585e5090dd94191f7ca89af6ed65e5a",
+      "sha256": "eed3dd2f2d692174376e0212e7eb662001779bb43eb233d8aad4fd64b6b50a36",
       "routeRegistrations": 0,
       "requireAuth": 0,
       "requireRole": 0,
@@ -635,7 +635,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/institutionAdmissions.ts",
-      "sha256": "7104646ba5ff68da900090d55fad054c33c0368519cdc6f4b00b1947a1cc0a62",
+      "sha256": "fb69b6573b3759a4ddbc4f83ffd07f64a41b795a407efd5b57975e6524765d80",
       "routeRegistrations": 31,
       "requireAuth": 2,
       "requireRole": 0,
@@ -979,8 +979,23 @@
       "note": "Route-local review required before corridor migration."
     },
     {
+      "path": "artifacts/api-server/src/routes/socialAdvertising.ts",
+      "sha256": "0fd001f85aae28853f0260ba8cc0d9089b9f97f6c68128b1a0239ae394709a9d",
+      "routeRegistrations": 6,
+      "requireAuth": 7,
+      "requireRole": 0,
+      "requirePermission": 6,
+      "requireScope": 0,
+      "directRoleChecks": 0,
+      "authOnlyRouteCandidates": 0,
+      "publicRouteCandidates": 0,
+      "enforcement": "legacy_quarantine",
+      "owner": "Growth & Social",
+      "note": "Ads Control has explicit view/manage/approve permissions and maker-checker, but remains quarantined until the signed active-context corridor is adopted."
+    },
+    {
       "path": "artifacts/api-server/src/routes/socialOperations.ts",
-      "sha256": "337bfbf3b1d69fd704af2ed8f38f2c17315ae5220005d1564935c15c06c13a3b",
+      "sha256": "c5c567735508d8eaa51d9ab1e1075441c2b3b19c881197eaa6763a1814ed3892",
       "routeRegistrations": 25,
       "requireAuth": 26,
       "requireRole": 0,

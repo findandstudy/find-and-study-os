@@ -32,7 +32,7 @@ assert.equal(
       "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
     )
   ).rows[0]?.count,
-  105,
+  107,
 );
 await admin.query(`DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='fas_social_executor') THEN
@@ -280,7 +280,7 @@ test("all social tables force RLS and evidence tables expose no delete policy", 
     LEFT JOIN pg_policies p ON p.schemaname=n.nspname AND p.tablename=c.relname
     WHERE n.nspname='public' AND c.relname LIKE 'social_%' AND c.relkind='r'
     GROUP BY c.relname,c.relforcerowsecurity ORDER BY c.relname`);
-  assert.equal(result.rowCount, 17);
+  assert.equal(result.rowCount, 21);
   assert.equal(
     result.rows.every(
       (row) => row.relforcerowsecurity === true && row.delete_policies === 0,

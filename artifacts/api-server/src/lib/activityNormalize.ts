@@ -113,6 +113,18 @@ export function clampSessionMetrics<T extends { activeDurationSeconds?: number |
 
 export const MAX_TRACKED_SESSION_SECONDS = 8 * 60 * 60;
 export const MAX_HEARTBEAT_DELTA_SECONDS = 45;
+export const MAX_ACTIVITY_REPORT_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+
+export function isValidActivityReportRange(from: Date, to: Date): boolean {
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  return (
+    Number.isFinite(fromMs) &&
+    Number.isFinite(toMs) &&
+    fromMs < toMs &&
+    toMs - fromMs <= MAX_ACTIVITY_REPORT_RANGE_MS
+  );
+}
 
 export type ActivitySessionLike = {
   startedAt: Date | string | null;

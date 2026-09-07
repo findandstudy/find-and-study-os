@@ -173,6 +173,7 @@ test("every API background registration returns a shutdown contract", () => {
     "startPortalAiGuardianScanner",
     "startAcademyKnowledgeSync",
     "startMessageCampaignWorker",
+    "startActivityStaleSessionCleanup",
   ]) {
     assert.match(index, new RegExp(`return ${starter}\\(\\)`), starter);
   }
@@ -198,6 +199,7 @@ test("dedicated social workers heartbeat, contain transient ticks and close thei
     "../src/workers/socialPublicationWorker.ts",
     "../src/workers/socialPerformanceWorker.ts",
     "../src/workers/socialCreativeWorker.ts",
+    "../src/workers/socialAdvertisingWorker.ts",
   ]) {
     const worker = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.match(worker, /recordSocialWorkerHeartbeat/);

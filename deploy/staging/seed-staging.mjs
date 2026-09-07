@@ -69,10 +69,10 @@ async function run() {
     if (
       row?.database_name !== "fasos_staging" ||
       row?.user_name !== "fas_migrator" ||
-      row?.migration_count !== 105 ||
+      row?.migration_count !== 107 ||
       row?.user_count !== 0
     ) {
-      fail("seed requires a fresh 105/105 staging database with zero users");
+      fail("seed requires a fresh 107/107 staging database with zero users");
     }
     await client.query(seedSql);
     const passwordHash = await bcrypt.hash(password, 12);

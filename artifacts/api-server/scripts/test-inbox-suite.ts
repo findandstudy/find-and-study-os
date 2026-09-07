@@ -493,12 +493,12 @@ function testWebFormSignatureUnit(): Section {
       "garbage signature rejected without throwing",
       details,
     ) && ok;
-  // Document that an unconfigured secret short-circuits to true (current
-  // behavior); the webhooks route guards this by gating on cfg.secret too.
+  // The reusable verifier must fail closed on its own; callers must not need a
+  // second route-level guard to make an unconfigured secret safe.
   ok =
     assert(
-      verifyWebFormSignature(body, undefined, undefined) === true,
-      "no secret configured -> verifier short-circuits (route still gates on cfg.secret)",
+      verifyWebFormSignature(body, undefined, undefined) === false,
+      "no secret configured -> verifier fails closed",
       details,
     ) && ok;
 

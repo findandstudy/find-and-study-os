@@ -3386,6 +3386,21 @@ export interface SocialCreativeGate {
   reason: string | null;
 }
 
+export interface SocialAdvertisingGate {
+  enabled: boolean;
+  workerEnabled: boolean;
+  connectivityEnabled: boolean;
+  providerAdvertisingEnabled: boolean;
+  allowedProviders: string[];
+  /**
+   * @minimum 100
+   * @nullable
+   */
+  maximumCampaignBudgetMinor: number | null;
+  /** @nullable */
+  reason: string | null;
+}
+
 export interface SocialOperationsContext {
   enabled: boolean;
   mode: SocialOperationsContextMode;
@@ -3396,6 +3411,7 @@ export interface SocialOperationsContext {
   publicationGate: SocialPublicationGate;
   performanceGate: SocialPerformanceGate;
   creativeGate: SocialCreativeGate;
+  advertisingGate: SocialAdvertisingGate;
   providerConnectionGate: SocialProviderConnectionGate;
 }
 
@@ -3403,9 +3419,10 @@ export type SocialWorkerHealthKind = typeof SocialWorkerHealthKind[keyof typeof 
 
 
 export const SocialWorkerHealthKind = {
-  publication: 'publication',
-  performance: 'performance',
-  creative: 'creative',
+  publication: "publication",
+  performance: "performance",
+  creative: "creative",
+  advertising: "advertising",
 } as const;
 
 export type SocialWorkerHealthStatus = typeof SocialWorkerHealthStatus[keyof typeof SocialWorkerHealthStatus];
@@ -3571,16 +3588,293 @@ export interface SocialOperationsOverview {
   publicationGate: SocialPublicationGate;
   performanceGate: SocialPerformanceGate;
   creativeGate: SocialCreativeGate;
+  advertisingGate: SocialAdvertisingGate;
   providerConnectionGate: SocialProviderConnectionGate;
   /**
-     * @minItems 3
-     * @maxItems 3
-     */
+   * @minItems 4
+   * @maxItems 4
+   */
   workerHealth: SocialWorkerHealth[];
 }
 
-export type CreateSocialAccountBodyAccountKind = typeof CreateSocialAccountBodyAccountKind[keyof typeof CreateSocialAccountBodyAccountKind];
+export type SocialAdCampaignObjective =
+  (typeof SocialAdCampaignObjective)[keyof typeof SocialAdCampaignObjective];
 
+export const SocialAdCampaignObjective = {
+  AWARENESS: "AWARENESS",
+  TRAFFIC: "TRAFFIC",
+  LEADS: "LEADS",
+  CONVERSIONS: "CONVERSIONS",
+  VIDEO_VIEWS: "VIDEO_VIEWS",
+} as const;
+
+export type SocialAdCampaignStatus =
+  (typeof SocialAdCampaignStatus)[keyof typeof SocialAdCampaignStatus];
+
+export const SocialAdCampaignStatus = {
+  PENDING_APPROVAL: "PENDING_APPROVAL",
+  APPROVED: "APPROVED",
+  PROVISIONING: "PROVISIONING",
+  PAUSED: "PAUSED",
+  ACTIVE: "ACTIVE",
+  COMPLETED: "COMPLETED",
+  REJECTED: "REJECTED",
+  FAILED: "FAILED",
+  CANCELED: "CANCELED",
+} as const;
+
+export type SocialAdCampaignLatestOperationType =
+  (typeof SocialAdCampaignLatestOperationType)[keyof typeof SocialAdCampaignLatestOperationType];
+
+export const SocialAdCampaignLatestOperationType = {
+  CREATE: "CREATE",
+  PAUSE: "PAUSE",
+  RESUME: "RESUME",
+  UPDATE_BUDGET: "UPDATE_BUDGET",
+  END: "END",
+} as const;
+
+export interface SocialAdCampaign {
+  id: string;
+  account_id: string;
+  brief_id: string;
+  account_name?: string;
+  provider: string;
+  name: string;
+  objective: SocialAdCampaignObjective;
+  destination_url: string;
+  /**
+   * @minItems 1
+   * @maxItems 25
+   * @items.pattern ^[A-Z]{2}$
+   */
+  country_codes: string[];
+  /** @maxItems 20 */
+  language_codes: string[];
+  /**
+   * @minimum 18
+   * @maximum 65
+   */
+  age_min: number;
+  /**
+   * @minimum 18
+   * @maximum 65
+   */
+  age_max: number;
+  /** @pattern ^[A-Z]{3}$ */
+  currency_code: string;
+  /** @minimum 1 */
+  current_daily_budget_minor: number;
+  /** @minimum 1 */
+  current_lifetime_budget_minor: number;
+  starts_at: string;
+  ends_at: string;
+  status: SocialAdCampaignStatus;
+  /** @nullable */
+  last_error_code?: string | null;
+  latest_operation_id?: string;
+  latest_operation_type?: SocialAdCampaignLatestOperationType;
+  latest_operation_status?: string;
+  latest_operation_creator?: number;
+  [key: string]: unknown;
+}
+
+export interface SocialAdCampaignListResponse {
+  data: SocialAdCampaign[];
+  advertisingGate: SocialAdvertisingGate;
+}
+
+export type CreateSocialAdCampaignBodyObjective =
+  (typeof CreateSocialAdCampaignBodyObjective)[keyof typeof CreateSocialAdCampaignBodyObjective];
+
+export const CreateSocialAdCampaignBodyObjective = {
+  AWARENESS: "AWARENESS",
+  TRAFFIC: "TRAFFIC",
+  LEADS: "LEADS",
+  CONVERSIONS: "CONVERSIONS",
+  VIDEO_VIEWS: "VIDEO_VIEWS",
+} as const;
+
+export interface CreateSocialAdCampaignBody {
+  /**
+   * @minLength 8
+   * @maxLength 160
+   * @pattern ^[A-Za-z0-9._:-]+$
+   */
+  requestKey: string;
+  accountId: string;
+  briefId: string;
+  /**
+   * @minLength 1
+   * @maxLength 160
+   */
+  name: string;
+  objective: CreateSocialAdCampaignBodyObjective;
+  /** @maxLength 2048 */
+  destinationUrl: string;
+  /**
+   * @minItems 1
+   * @maxItems 25
+   */
+  countryCodes: string[];
+  /** @maxItems 20 */
+  languageCodes: string[];
+  /**
+   * @minimum 18
+   * @maximum 65
+   */
+  ageMin: number;
+  /**
+   * @minimum 18
+   * @maximum 65
+   */
+  ageMax: number;
+  /** @pattern ^[A-Z]{3}$ */
+  currencyCode: string;
+  /**
+   * @minimum 1
+   * @maximum 1000000000000
+   */
+  dailyBudgetMinor: number;
+  /**
+   * @minimum 1
+   * @maximum 1000000000000
+   */
+  lifetimeBudgetMinor: number;
+  startsAt: string;
+  endsAt: string;
+  /**
+   * @minimum 1
+   * @maximum 8
+   */
+  maxAttempts?: number;
+}
+
+export type CreateSocialAdActionBodyAction =
+  (typeof CreateSocialAdActionBodyAction)[keyof typeof CreateSocialAdActionBodyAction];
+
+export const CreateSocialAdActionBodyAction = {
+  PAUSE: "PAUSE",
+  RESUME: "RESUME",
+  UPDATE_BUDGET: "UPDATE_BUDGET",
+  END: "END",
+} as const;
+
+export interface CreateSocialAdActionBody {
+  /**
+   * @minLength 8
+   * @maxLength 160
+   * @pattern ^[A-Za-z0-9._:-]+$
+   */
+  requestKey: string;
+  action: CreateSocialAdActionBodyAction;
+  /**
+   * @minimum 1
+   * @maximum 1000000000000
+   */
+  dailyBudgetMinor?: number;
+  /**
+   * @minimum 1
+   * @maximum 1000000000000
+   */
+  lifetimeBudgetMinor?: number;
+  /**
+   * @minimum 1
+   * @maximum 8
+   */
+  maxAttempts?: number;
+}
+
+export type SocialAdOperationOperationType =
+  (typeof SocialAdOperationOperationType)[keyof typeof SocialAdOperationOperationType];
+
+export const SocialAdOperationOperationType = {
+  CREATE: "CREATE",
+  PAUSE: "PAUSE",
+  RESUME: "RESUME",
+  UPDATE_BUDGET: "UPDATE_BUDGET",
+  END: "END",
+} as const;
+
+export interface SocialAdOperation {
+  id: string;
+  campaign_id: string;
+  operation_type: SocialAdOperationOperationType;
+  status: string;
+  [key: string]: unknown;
+}
+
+export type SocialAdOperationReviewResultOperationType =
+  (typeof SocialAdOperationReviewResultOperationType)[keyof typeof SocialAdOperationReviewResultOperationType];
+
+export const SocialAdOperationReviewResultOperationType = {
+  CREATE: "CREATE",
+  PAUSE: "PAUSE",
+  RESUME: "RESUME",
+  UPDATE_BUDGET: "UPDATE_BUDGET",
+  END: "END",
+} as const;
+
+export type SocialAdOperationReviewResultStatus =
+  (typeof SocialAdOperationReviewResultStatus)[keyof typeof SocialAdOperationReviewResultStatus];
+
+export const SocialAdOperationReviewResultStatus = {
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+} as const;
+
+export interface SocialAdOperationReviewResult {
+  id: string;
+  campaignId: string;
+  operationType: SocialAdOperationReviewResultOperationType;
+  status: SocialAdOperationReviewResultStatus;
+  replay: boolean;
+}
+
+export type SocialAdOperationAttemptOutcome =
+  (typeof SocialAdOperationAttemptOutcome)[keyof typeof SocialAdOperationAttemptOutcome];
+
+export const SocialAdOperationAttemptOutcome = {
+  APPLIED: "APPLIED",
+  RETRY: "RETRY",
+  DEAD_LETTER: "DEAD_LETTER",
+  LEASE_EXPIRED: "LEASE_EXPIRED",
+} as const;
+
+/**
+ * @nullable
+ */
+export type SocialAdOperationAttemptProviderState =
+  | (typeof SocialAdOperationAttemptProviderState)[keyof typeof SocialAdOperationAttemptProviderState]
+  | null;
+
+export const SocialAdOperationAttemptProviderState = {
+  PAUSED: "PAUSED",
+  ACTIVE: "ACTIVE",
+  COMPLETED: "COMPLETED",
+} as const;
+
+export interface SocialAdOperationAttempt {
+  id: string;
+  /**
+   * @minimum 1
+   * @maximum 8
+   */
+  attempt_number: number;
+  worker_id: string;
+  runtime_release_id: string;
+  outcome: SocialAdOperationAttemptOutcome;
+  /** @nullable */
+  provider_state?: SocialAdOperationAttemptProviderState;
+  /** @nullable */
+  error_code?: string | null;
+  started_at: string;
+  completed_at: string;
+  created_at: string;
+}
+
+export type CreateSocialAccountBodyAccountKind =
+  (typeof CreateSocialAccountBodyAccountKind)[keyof typeof CreateSocialAccountBodyAccountKind];
 
 export const CreateSocialAccountBodyAccountKind = {
   PROFILE: 'PROFILE',
@@ -4357,6 +4651,7 @@ search?: string;
 page?: number;
 limit?: number;
 };
+
 export type ListLeadsParams = {
 season?: string;
 status?: string;
@@ -4898,6 +5193,19 @@ export type ListSocialAccountIntegrations200DataItem = {
 
 export type ListSocialAccountIntegrations200 = {
   data: ListSocialAccountIntegrations200DataItem[];
+};
+
+export type ListSocialAdCampaignsParams = {
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+};
+
+export type ListSocialAdOperationAttempts200 = {
+  /** @maxItems 50 */
+  data: SocialAdOperationAttempt[];
 };
 
 export type ListSocialAccounts200 = {
