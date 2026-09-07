@@ -95,8 +95,19 @@ import { LogOut, ChevronUp, ChevronDown, User } from "lucide-react";
 type MenuItem = { title: string; icon: typeof LayoutDashboard; url: string; group?: string; permKey?: string; externalHref?: string };
 type TFunc = (key: string, params?: Record<string, string | number>) => string;
 
-// Sidebar groups that start collapsed by default (long, less-frequently used).
-const DEFAULT_CLOSED_GROUPS = new Set(["website", "ai", "system"]);
+// Keep the daily workspace immediately visible while the active group opens
+// automatically. This prevents the larger administrative IA from becoming one
+// long, permanently expanded list.
+const DEFAULT_CLOSED_GROUPS = new Set([
+  "studentApplications",
+  "partnersContracts",
+  "catalogAcademy",
+  "financePricing",
+  "growthContentWeb",
+  "analyticsQuality",
+  "automationIntegrations",
+  "systemManagement",
+]);
 
 function getMenuForRole(
   role: string,
@@ -151,24 +162,21 @@ function getMenuForRole(
     const isAdmin = role === 'super_admin' || role === 'admin';
     const canSee = (perm: string) => isAdmin || (agentStaffPerms || []).includes(perm);
 
-    const crmItems: MenuItem[] = [
+    const primaryWorkItems: MenuItem[] = [
+      { title: t("dashboard.dashboard"), icon: LayoutDashboard, url: '/admin' },
+      { title: t("dashboard.operations"), icon: ListChecks, url: '/admin/operations' },
+      { title: t("dashboard.tasks"), icon: ClipboardList, url: '/staff/tasks' },
+      { title: t("dashboard.messages"), icon: MessageCircle, url: '/staff/messages' },
+    ];
+
+    const studentApplicationItems: MenuItem[] = [
       { title: t("dashboard.leads"), icon: Users, url: '/staff/leads' },
       { title: t("dashboard.students"), icon: GraduationCap, url: '/staff/students' },
       { title: t("dashboard.applications"), icon: FileText, url: '/staff/applications' },
       { title: t("dashboard.courseFinder"), icon: Search, url: '/staff/course-finder' },
-      { title: t("dashboard.messages"), icon: MessageCircle, url: '/staff/messages' },
-      { title: t("dashboard.tasks"), icon: ClipboardList, url: '/staff/tasks' },
     ];
-    if (hasPermFn?.('academy.access')) {
-      crmItems.push({
-        title: t("dashboard.academy"),
-        icon: ExternalLink,
-        url: '/admin/__academy__',
-        externalHref: '/api/academy-sso',
-      });
-    }
 
-    const agentNetworkItems: MenuItem[] = [
+    const partnersContractsItems: MenuItem[] = [
       { title: t("dashboard.agents"), icon: Handshake, url: '/staff/agents' },
       { title: t("staffAgents.agencyApplications"), icon: ClipboardCheck, url: '/staff/agency-applications' },
       ...(canSee('contracts.view') ? [{ title: t("dashboard.contracts"), icon: FileText, url: '/admin/contracts', permKey: 'contracts.view' }] : []),
@@ -178,19 +186,19 @@ function getMenuForRole(
       ...(canSee('self_fill_links.view') ? [{ title: t("dashboard.selfFillLinks"), icon: Link2, url: '/admin/self-fill-links', permKey: 'self_fill_links.view' }] : []),
     ];
 
+    const catalogAcademyItems: MenuItem[] = [
+      { title: t("dashboard.catalog"), icon: Library, url: '/admin/catalog' },
+      ...(hasPermFn?.('academy.access') ? [{
+        title: t("dashboard.academy"),
+        icon: ExternalLink,
+        url: '/admin/__academy__',
+        externalHref: '/api/academy-sso',
+      }] : []),
+    ];
+
     const financeItems: MenuItem[] = [
       ...(showFinance ? [{ title: t("dashboard.finance"), icon: DollarSign, url: '/staff/finance' }] : []),
       { title: t("dashboard.campaigns"), icon: Megaphone, url: '/admin/campaigns' },
-    ];
-
-    const engagementItems: MenuItem[] = [
-      ...(hasPermFn?.('social.view') ? [{ title: t("dashboard.socialOperations"), icon: Megaphone, url: '/admin/social', permKey: 'social.view' }] : []),
-    ];
-
-    const catalogAdsItems: MenuItem[] = [
-      { title: t("dashboard.catalog"), icon: Library, url: '/admin/catalog' },
-      { title: t("dashboard.popupAds"), icon: Bell, url: '/admin/popups' },
-      { title: t("dashboard.embeds"), icon: Code2, url: '/admin/embeds' },
     ];
 
     const insightsItems: MenuItem[] = [
@@ -220,6 +228,19 @@ function getMenuForRole(
       { title: t("dashboard.websitePublishHistory"), icon: History, url: '/admin/website/publish-history' },
     ] : [];
 
+    const growthContentWebItems: MenuItem[] = [
+      ...(hasPermFn?.('social.view') ? [{ title: t("dashboard.socialOperations"), icon: Megaphone, url: '/admin/social', permKey: 'social.view' }] : []),
+      { title: t("dashboard.popupAds"), icon: Bell, url: '/admin/popups' },
+      { title: t("dashboard.embeds"), icon: Code2, url: '/admin/embeds' },
+      ...websiteItems,
+    ];
+
+    const automationIntegrationItems: MenuItem[] = [
+      ...(isAdmin ? [{ title: t("dashboard.portalAutomation"), icon: Bot, url: '/admin/portal-automation' }] : []),
+      ...(isAdmin ? [{ title: t("dashboard.portalCredentials"), icon: KeyRound, url: '/admin/portal-credentials' }] : []),
+      ...aiItems,
+    ];
+
     const systemItems: MenuItem[] = [
       { title: t("dashboard.users"), icon: UserCheck, url: '/admin/users' },
       ...(isAdmin ? [{ title: t("dashboard.staffCards"), icon: IdCard, url: '/admin/staff-cards' }] : []),
@@ -228,24 +249,18 @@ function getMenuForRole(
       ...(isAdmin ? [{ title: t("dashboard.systemHealth"), icon: HeartPulse, url: '/admin/system-health' }] : []),
       ...(isAdmin ? [{ title: t("dashboard.apiTokens"), icon: KeyRound, url: '/admin/api-tokens' }] : []),
       { title: t("dashboard.settings"), icon: Settings, url: '/admin/settings' },
-      ...(isAdmin ? [{ title: t("dashboard.portalCredentials"), icon: KeyRound, url: '/admin/portal-credentials' }] : []),
-      ...(isAdmin ? [{ title: t("dashboard.portalAutomation"), icon: Bot, url: '/admin/portal-automation' }] : []),
     ];
 
     const groups = [
-      { id: 'overview', label: t("dashboard.overview"), items: [
-        { title: t("dashboard.dashboard"), icon: LayoutDashboard, url: '/admin' },
-        { title: t("dashboard.operations"), icon: ListChecks, url: '/admin/operations' },
-      ] },
-      { id: 'insights', label: t("reporting.insights"), items: insightsItems },
-      { id: 'crm', label: t("dashboard.groupCrm"), items: crmItems },
-      { id: 'agentNetwork', label: t("dashboard.groupAgentNetwork"), items: agentNetworkItems },
-      { id: 'finance', label: t("dashboard.groupFinance"), items: financeItems },
-      { id: 'engagement', label: t("dashboard.groupEngagement"), items: engagementItems },
-      { id: 'catalogAds', label: t("dashboard.groupCatalogAds"), items: catalogAdsItems },
-      { id: 'ai', label: t("dashboard.groupAi"), items: aiItems },
-      { id: 'website', label: t("dashboard.website"), items: websiteItems },
-      { id: 'system', label: t("dashboard.groupSystem"), items: systemItems },
+      { id: 'primaryWork', label: t("dashboard.groupPrimaryWork"), items: primaryWorkItems },
+      { id: 'studentApplications', label: t("dashboard.groupStudentApplications"), items: studentApplicationItems },
+      { id: 'partnersContracts', label: t("dashboard.groupPartnersContracts"), items: partnersContractsItems },
+      { id: 'catalogAcademy', label: t("dashboard.groupCatalogAcademy"), items: catalogAcademyItems },
+      { id: 'financePricing', label: t("dashboard.groupFinancePricing"), items: financeItems },
+      { id: 'growthContentWeb', label: t("dashboard.groupGrowthContentWeb"), items: growthContentWebItems },
+      { id: 'analyticsQuality', label: t("dashboard.groupAnalyticsQuality"), items: insightsItems },
+      { id: 'automationIntegrations', label: t("dashboard.groupAutomationIntegrations"), items: automationIntegrationItems },
+      { id: 'systemManagement', label: t("dashboard.groupSystemManagement"), items: systemItems },
     ].filter(g => g.items.length > 0);
 
     return { groups };
