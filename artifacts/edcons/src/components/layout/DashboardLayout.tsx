@@ -622,7 +622,9 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     try { window.localStorage.setItem(pinnedStorageKey, JSON.stringify(pinnedUrls)); } catch { /* ignore quota errors */ }
   }, [pinnedStorageKey, pinnedUrls]);
 
-  const groupStorageKey = `edcons:sidebarGroups:${user?.id ?? user?.email ?? "anon"}`;
+  // v2 resets expansion preferences after the information-architecture
+  // overhaul. Favorites keep their existing key and remain untouched.
+  const groupStorageKey = `edcons:sidebarGroups:v2:${user?.id ?? user?.email ?? "anon"}`;
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>(() => {
     if (typeof window === "undefined") return {};
     try {
