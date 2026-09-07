@@ -48,6 +48,10 @@ export const programsTable = pgTable("programs", {
   id: serial("id").primaryKey(),
   universityId: integer("university_id").notNull().references(() => universitiesTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  // English is the canonical source language for programme content. Localized
+  // projections live in program_translations and are regenerated whenever one
+  // of the human-readable source fields changes.
+  description: text("description"),
   degree: text("degree"),
   field: text("field"),
   language: text("language"),

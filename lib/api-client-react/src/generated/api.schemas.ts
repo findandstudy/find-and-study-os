@@ -1371,6 +1371,8 @@ export interface Program {
   universityId: number;
   name: string;
   /** @nullable */
+  description?: string | null;
+  /** @nullable */
   degree?: string | null;
   /** @nullable */
   field?: string | null;
@@ -1410,6 +1412,8 @@ export interface CreateProgramBody {
   universityId: number;
   name: string;
   /** @nullable */
+  description?: string | null;
+  /** @nullable */
   degree?: string | null;
   /** @nullable */
   field?: string | null;
@@ -1447,6 +1451,8 @@ export interface CreateProgramBody {
 export interface UpdateProgramBody {
   /** @nullable */
   name?: string | null;
+  /** @nullable */
+  description?: string | null;
   /** @nullable */
   degree?: string | null;
   /** @nullable */
@@ -2225,6 +2231,12 @@ export interface AiAgentHandoffMessages {
   zh: string;
   hi: string;
   id: string;
+  ur: string;
+  tk: string;
+  ky: string;
+  kk: string;
+  uz: string;
+  tg: string;
 }
 
 export type AiAgentConfigLanguagesItem = typeof AiAgentConfigLanguagesItem[keyof typeof AiAgentConfigLanguagesItem];
@@ -2241,6 +2253,12 @@ export const AiAgentConfigLanguagesItem = {
   zh: 'zh',
   hi: 'hi',
   id: 'id',
+  ur: 'ur',
+  tk: 'tk',
+  ky: 'ky',
+  kk: 'kk',
+  uz: 'uz',
+  tg: 'tg',
 } as const;
 
 /**
@@ -2324,6 +2342,12 @@ export const AiAgentConfigUpdateLanguagesItem = {
   zh: 'zh',
   hi: 'hi',
   id: 'id',
+  ur: 'ur',
+  tk: 'tk',
+  ky: 'ky',
+  kk: 'kk',
+  uz: 'uz',
+  tg: 'tg',
 } as const;
 
 /**
@@ -2359,6 +2383,12 @@ export const AiAgentTestRequestLanguage = {
   zh: 'zh',
   hi: 'hi',
   id: 'id',
+  ur: 'ur',
+  tk: 'tk',
+  ky: 'ky',
+  kk: 'kk',
+  uz: 'uz',
+  tg: 'tg',
 } as const;
 
 export type AiAgentTestRequestHistoryItemDirection = typeof AiAgentTestRequestHistoryItemDirection[keyof typeof AiAgentTestRequestHistoryItemDirection];
@@ -2394,6 +2424,12 @@ export const AiAgentTestResultLanguage = {
   zh: 'zh',
   hi: 'hi',
   id: 'id',
+  ur: 'ur',
+  tk: 'tk',
+  ky: 'ky',
+  kk: 'kk',
+  uz: 'uz',
+  tg: 'tg',
 } as const;
 
 /**
@@ -4708,6 +4744,7 @@ export type ListProgramsParams = {
 universityId?: number;
 country?: string;
 language?: string;
+locale?: 'en' | 'tr' | 'ar' | 'fr' | 'ru' | 'fa' | 'zh' | 'hi' | 'es' | 'id' | 'ur' | 'tk' | 'ky' | 'kk' | 'uz' | 'tg';
 search?: string;
 page?: number;
 limit?: number;

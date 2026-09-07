@@ -15,7 +15,7 @@
  *   5. admin POST /test → 200, returns the would-be reply WITHOUT sending
  *      (the bot SEND override is asserted to never be called).
  *
- * The shared ai_agent integrations row is snapshotted and restored.
+ * The canonical default bot configuration is snapshotted and restored.
  *
  * Run with:
  *   pnpm --filter @workspace/api-server run test:ai-agent-admin
@@ -25,10 +25,9 @@ import assert from "node:assert/strict";
 import http from "http";
 import express, { type Express, type Request } from "express";
 import { eq } from "drizzle-orm";
-import { db, integrationsTable } from "@workspace/db";
+import { aiBotsTable, db } from "@workspace/db";
 
 import inboxRouter from "../src/routes/inbox.js";
-import { AI_AGENT_INTEGRATION_KEY } from "../src/lib/inbox/aiAgentConfig.js";
 import {
   __setBotReplyOverrideForTests,
   __setBotSendOverrideForTests,
@@ -84,34 +83,32 @@ async function apiReq(
   }
 }
 
-// Snapshot the ai_agent row so we can restore it after the run.
-let originalRow: typeof integrationsTable.$inferSelect | undefined;
+// Snapshot the canonical default bot so test writes cannot leak into another
+// suite or a developer's local configuration.
+let originalBot: typeof aiBotsTable.$inferSelect | undefined;
 
 after(async () => {
   __setBotReplyOverrideForTests(null);
   __setBotSendOverrideForTests(null);
-  if (originalRow) {
+  if (originalBot) {
     await db
-      .update(integrationsTable)
+      .update(aiBotsTable)
       .set({
-        config: originalRow.config,
-        isEnabled: originalRow.isEnabled,
-        name: originalRow.name,
-        category: originalRow.category,
+        configEncrypted: originalBot.configEncrypted,
       })
-      .where(eq(integrationsTable.key, AI_AGENT_INTEGRATION_KEY));
-  } else {
-    await db.delete(integrationsTable).where(eq(integrationsTable.key, AI_AGENT_INTEGRATION_KEY));
+      .where(eq(aiBotsTable.id, originalBot.id));
   }
   setImmediate(() => process.exit(process.exitCode ?? 0));
 });
 
-test("snapshot ai_agent row", async () => {
+test("snapshot default AI bot configuration", async () => {
   const [row] = await db
     .select()
-    .from(integrationsTable)
-    .where(eq(integrationsTable.key, AI_AGENT_INTEGRATION_KEY));
-  originalRow = row;
+    .from(aiBotsTable)
+    .where(eq(aiBotsTable.isDefault, true))
+    .limit(1);
+  assert.ok(row, "a canonical default AI bot must exist for route integration tests");
+  originalBot = row;
 });
 
 // ---------------------------------------------------------------------------
@@ -278,14 +275,19 @@ test("admin POST /inbox/ai-agent/test → escalation yields null reply, no send"
   currentUser = { id: 999000, role: "admin", isActive: true };
 
   // Seed an escalation keyword we can reliably trigger.
-  await apiReq("PUT", "/inbox/ai-agent/config", {
+  const configWrite = await apiReq("PUT", "/inbox/ai-agent/config", {
     escalationKeywords: {
       contract: [`zzkw_${RUN_ID}`],
       payment: [],
       commission: [],
       partner: [],
+      human_request: [],
+      visa_documents: [],
+      supplier: [],
     },
   });
+  assert.equal(configWrite.status, 200, "complete escalation keyword map should persist");
+  assert.deepEqual(configWrite.data.config.escalationKeywords.contract, [`zzkw_${RUN_ID}`]);
 
   let sendCalled = false;
   __setBotSendOverrideForTests(async () => {

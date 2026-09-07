@@ -750,6 +750,13 @@
       "when": 1790323200000,
       "tag": "0106_activity_read_path_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1790409600000,
+      "tag": "0107_program_content_translations",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,8 @@ export interface UpdateProgramBody {
   /** @nullable */
   name?: string | null;
   /** @nullable */
+  description?: string | null;
+  /** @nullable */
   degree?: string | null;
   /** @nullable */
   field?: string | null;

@@ -10,6 +10,8 @@ export interface CreateProgramBody {
   universityId: number;
   name: string;
   /** @nullable */
+  description?: string | null;
+  /** @nullable */
   degree?: string | null;
   /** @nullable */
   field?: string | null;

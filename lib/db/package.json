@@ -13,6 +13,7 @@
     "verify:migration-state": "node ./verify-migration-state.mjs",
     "prepare:disposable-migration-db": "node ./prepare-disposable-migration-database.mjs",
     "test:production-prefix-adoption": "node ./test-production-prefix-adoption.mjs",
+    "test:program-content-translations": "node ./test-program-content-translations.mjs",
     "baseline:migrations": "node ./baseline-migrations.mjs",
     "migrate:reviewed": "node ./run-migrations.mjs",
     "migrate:staging-reviewed": "node ./run-staging-migrations.mjs",

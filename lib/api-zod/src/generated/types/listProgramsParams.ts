@@ -10,6 +10,7 @@ export type ListProgramsParams = {
 universityId?: number;
 country?: string;
 language?: string;
+locale?: 'en' | 'tr' | 'ar' | 'fr' | 'ru' | 'fa' | 'zh' | 'hi' | 'es' | 'id' | 'ur' | 'tk' | 'ky' | 'kk' | 'uz' | 'tg';
 search?: string;
 page?: number;
 limit?: number;

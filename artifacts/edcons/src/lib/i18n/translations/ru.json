@@ -5108,7 +5108,22 @@
     "bulkDeleteFailed": "Некоторые элементы не удалось удалить",
     "bulkDeleteFailedDesc": "Не удалось удалить {failed} из {total}. Возможно, они используются.",
     "uniTypePublic": "Государственный",
-    "importCreatedUniversities": "Создано новых университетов: {n} — {names}"
+    "importCreatedUniversities": "Создано новых университетов: {n} — {names}",
+    "autoTranslationQueued": "Английский источник сохранён, 15 переводов автоматически поставлены в очередь.",
+    "translationsQueued": "Переводы программы повторно поставлены в очередь.",
+    "failedTranslationsQueued": "Неудачные переводы ({n}) повторно поставлены в очередь.",
+    "retryFailedTranslations": "Повторить неудачные переводы",
+    "translationStatus": "Статус перевода",
+    "translationLanguage": "Язык",
+    "translationAttempts": "Попытки",
+    "translationPublished": "Опубликовано",
+    "translationFailed": "Ошибка",
+    "translationManualReview": "Требуется ручное обновление",
+    "translationPending": "В ожидании",
+    "translationManual": "Вручную",
+    "retryTranslations": "Повторить переводы",
+    "programDescriptionEnglish": "Описание программы (английский источник)",
+    "programDescriptionPlaceholder": "Введите основное описание программы на английском языке…"
   },
   "appDocsPanel": {
     "documentUploaded": "Документ загружен",

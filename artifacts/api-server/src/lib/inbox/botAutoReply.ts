@@ -148,7 +148,7 @@ export function detectDormBookingEscalation(
   keywords: Record<EscalationTopic, string[]> = DEFAULT_ESCALATION_KEYWORDS,
 ): EscalationTopic | null {
   const topic = detectEscalation(text, keywords);
-  if (topic !== "payment") return topic;
+  if (topic && topic !== "payment") return topic;
 
   const value = text.toLocaleLowerCase("en-US").replace(/\s+/g, " ").trim();
   const requiresHumanPaymentHelp = [
@@ -165,7 +165,7 @@ export function detectDormBookingEscalation(
 
 // ---------------------------------------------------------------------------
 // Language detection (heuristic) — picks the reply language for the brain.
-// Supported intake languages: EN / TR / AR / FA / FR / ES / RU / ZH / HI / ID.
+// Supported intake languages: EN / TR / AR / FR / RU / FA / ZH / HI / ES / ID / UR / TK / KY / KK / UZ / TG.
 // ---------------------------------------------------------------------------
 
 const TR_HINTS = [
@@ -190,6 +190,12 @@ const ID_HINTS = [
   "halo", "universitas", "jurusan", "pendaftaran", "beasiswa", "kuliah",
   "saya ingin", "terima kasih", "sarjana", "magister",
 ];
+const UR_HINTS = ["یونیورسٹی", "داخلہ", "درخواست", "وظیفہ", "تعلیم", "شکریہ", "میں چاہتا", "کورس"];
+const TK_HINTS = ["uniwersitet", "okuwa", "giriş", "arza", "stipendiýa", "sag bol", "isleýärin"];
+const KY_HINTS = ["университет", "окуу", "тапшыруу", "стипендия", "рахмат", "каалайм", "адистик"];
+const KK_HINTS = ["университет", "оқу", "өтініш", "шәкіртақы", "рақмет", "қалаймын", "мамандық"];
+const UZ_HINTS = ["universitet", "o‘qish", "o'qish", "ariza", "stipendiya", "rahmat", "xohlayman", "yo‘nalish", "yo'nalish"];
+const TG_HINTS = ["донишгоҳ", "таҳсил", "дархост", "стипендия", "ташаккур", "мехоҳам", "ихтисос"];
 
 /**
  * Detect the student's language from their message text. Script ranges decide
@@ -199,10 +205,16 @@ const ID_HINTS = [
 export function detectLanguage(text: string, fallback: BotLanguage = "en"): BotLanguage {
   if (/[\u4E00-\u9FFF]/.test(text)) return "zh";
   if (/[\u0900-\u097F]/.test(text)) return "hi";
+  if (/[ٹڈڑںھۓے]/.test(text) || UR_HINTS.some((h) => text.includes(h))) return "ur";
   if (/[پچژگک‌ی]/.test(text) || FA_HINTS.some((h) => text.includes(h))) return "fa";
   if (/[\u0600-\u06FF]/.test(text)) return "ar";
-  if (/[\u0400-\u04FF]/.test(text)) return "ru";
   const lower = text.toLowerCase();
+  if (TG_HINTS.some((h) => lower.includes(h)) || /[ҷӯӣ]/.test(lower)) return "tg";
+  if (KK_HINTS.some((h) => lower.includes(h)) || /[әұі]/.test(lower)) return "kk";
+  if (KY_HINTS.some((h) => lower.includes(h)) || /[ңөү]/.test(lower)) return "ky";
+  if (/[\u0400-\u04FF]/.test(text)) return "ru";
+  if (TK_HINTS.some((h) => lower.includes(h)) || /[äňýž]/.test(lower)) return "tk";
+  if (UZ_HINTS.some((h) => lower.includes(h)) || /(?:o['ʻ’]q|g['ʻ’])/.test(lower)) return "uz";
   // Turkish-specific letters are a strong signal.
   if (/[ışğİ]/.test(text) || /[çöü]/.test(lower) && TR_HINTS.some((h) => lower.includes(h))) {
     return "tr";
@@ -219,6 +231,11 @@ function phoneLanguageHint(phone: string | null | undefined): BotLanguage {
   if (normalized.startsWith("90")) return "tr";
   if (["966", "964", "963", "970", "971"].some((code) => normalized.startsWith(code))) return "ar";
   if (normalized.startsWith("98")) return "fa";
+  if (normalized.startsWith("92")) return "ur";
+  if (normalized.startsWith("993")) return "tk";
+  if (normalized.startsWith("996")) return "ky";
+  if (normalized.startsWith("998")) return "uz";
+  if (normalized.startsWith("992")) return "tg";
   if (normalized.startsWith("7")) return "ru";
   return "en";
 }
@@ -239,7 +256,7 @@ export function resolveConversationLanguage(
   metadata: Record<string, unknown>,
   phone?: string | null,
 ): ConversationLanguageState {
-  const supported = new Set<BotLanguage>(["tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id"]);
+  const supported = new Set<BotLanguage>(["tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id", "ur", "tk", "ky", "kk", "uz", "tg"]);
   const locked = supported.has(metadata.botLanguage as BotLanguage)
     ? metadata.botLanguage as BotLanguage
     : null;
@@ -461,6 +478,7 @@ async function generateBotReply(input: BotReplyInput): Promise<string> {
                       input.enforcedUniversityIds,
                       input.aiBotId,
                       input.enforcedProgramFilters,
+                      input.language,
                     )
                   : block.name === SEARCH_DORMBOOKING_CATALOG_TOOL_NAME
                     ? await executeDormBookingCatalogTool(block.input || {}, input.aiBotId)

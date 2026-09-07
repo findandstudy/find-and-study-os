@@ -11,12 +11,13 @@
 // cannot widen scope by asking for it. Results are capped and only expose
 // student-safe fields (no internal commission/contact data — mirrors the
 // non-staff sanitization already used by GET /course-finder).
-import { db, programsTable, universitiesTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { db, programsTable, programTranslationsTable, universitiesTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
 import { buildProgramFacetConditions } from "../../routes/course-finder";
 import { isProgramSearchToolEnabled } from "./knowledgeSources";
 import type { ProgramScope } from "./aiAgentConfig";
 import { normalizeProgramSearchInput } from "./programSearchIntent";
+import { normalizeProgramLocale } from "../programTranslationContract";
 
 export const SEARCH_PROGRAMS_TOOL_NAME = "searchPrograms";
 const MAX_RESULTS = 8;
@@ -88,6 +89,7 @@ export interface EnforcedProgramFilters {
 export interface SearchProgramsResultRow {
   id: number;
   name: string;
+  description: string | null;
   degree: string | null;
   field: string | null;
   language: string | null;
@@ -137,6 +139,7 @@ export async function executeSearchProgramsTool(
   enforcedUniversityIds?: number[],
   aiBotId?: number | null,
   enforcedFilters?: EnforcedProgramFilters,
+  requestedLocale?: string,
 ): Promise<SearchProgramsToolOutput> {
   const { enabled, scope } = await isProgramSearchToolEnabled(aiBotId);
   if (!enabled) {
@@ -156,23 +159,25 @@ export async function executeSearchProgramsTool(
   const where = requestedWhere && hardScopeWhere
     ? and(requestedWhere, hardScopeWhere)
     : hardScopeWhere ?? requestedWhere;
+  const contentLocale = normalizeProgramLocale(requestedLocale);
 
   const rows = await db
     .select({
       id: programsTable.id,
-      name: programsTable.name,
+      name: sql<string>`COALESCE(${programTranslationsTable.name}, ${programsTable.name})`,
+      description: sql<string | null>`COALESCE(${programTranslationsTable.description}, ${programsTable.description})`,
       degree: programsTable.degree,
-      field: programsTable.field,
+      field: sql<string | null>`COALESCE(${programTranslationsTable.field}, ${programsTable.field})`,
       language: programsTable.language,
-      duration: programsTable.duration,
+      duration: sql<string | null>`COALESCE(${programTranslationsTable.duration}, ${programsTable.duration})`,
       tuitionFee: programsTable.tuitionFee,
       discountedFee: programsTable.discountedFee,
       depositFee: programsTable.depositFee,
       languageFee: programsTable.languageFee,
       currency: programsTable.currency,
       scholarship: programsTable.scholarship,
-      intakes: programsTable.intakes,
-      requirements: programsTable.requirements,
+      intakes: sql<string | null>`COALESCE(${programTranslationsTable.intakes}, ${programsTable.intakes})`,
+      requirements: sql<string | null>`COALESCE(${programTranslationsTable.requirements}, ${programsTable.requirements})`,
       universityName: universitiesTable.name,
       universityCountry: universitiesTable.country,
       universityCity: universitiesTable.city,
@@ -180,6 +185,11 @@ export async function executeSearchProgramsTool(
     })
     .from(programsTable)
     .innerJoin(universitiesTable, eq(programsTable.universityId, universitiesTable.id))
+    .leftJoin(programTranslationsTable, and(
+      eq(programTranslationsTable.programId, programsTable.id),
+      eq(programTranslationsTable.locale, contentLocale),
+      eq(programTranslationsTable.status, "published"),
+    ))
     .where(where)
     .orderBy(universitiesTable.name, programsTable.name)
     .limit(MAX_RESULTS);

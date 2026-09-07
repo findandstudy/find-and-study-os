@@ -5108,7 +5108,22 @@
     "bulkDeleteFailed": "Beberapa item tidak dapat dihapus",
     "bulkDeleteFailedDesc": "{failed} dari {total} tidak dapat dihapus. Mungkin sedang digunakan.",
     "uniTypePublic": "Negeri",
-    "importCreatedUniversities": "{n} universitas baru dibuat: {names}"
+    "importCreatedUniversities": "{n} universitas baru dibuat: {names}",
+    "autoTranslationQueued": "Sumber bahasa Inggris disimpan dan 15 terjemahan otomatis dimasukkan ke antrean.",
+    "translationsQueued": "Terjemahan program dimasukkan kembali ke antrean.",
+    "failedTranslationsQueued": "{n} terjemahan yang gagal dimasukkan kembali ke antrean.",
+    "retryFailedTranslations": "Coba lagi terjemahan yang gagal",
+    "translationStatus": "Status terjemahan",
+    "translationLanguage": "Bahasa",
+    "translationAttempts": "Percobaan",
+    "translationPublished": "Diterbitkan",
+    "translationFailed": "Gagal",
+    "translationManualReview": "Pembaruan manual diperlukan",
+    "translationPending": "Menunggu",
+    "translationManual": "Manual",
+    "retryTranslations": "Coba lagi terjemahan",
+    "programDescriptionEnglish": "Deskripsi Program (sumber bahasa Inggris)",
+    "programDescriptionPlaceholder": "Masukkan deskripsi program bahasa Inggris yang kanonis…"
   },
   "appDocsPanel": {
     "documentUploaded": "Dokumen diunggah",

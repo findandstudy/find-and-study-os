@@ -28,6 +28,7 @@ import { PhoneCodePicker } from "@/components/ui/phone-code-picker";
 import { QuickContactButtons } from "@/components/QuickContact";
 import { useI18n } from "@/hooks/use-i18n";
 import { requiresDirectBranch } from "@workspace/roles";
+import { SYSTEM_LANGUAGE_OPTIONS } from "@/lib/i18n";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -701,8 +702,9 @@ function UsersTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="tr">Turkish</SelectItem>
+                    {SYSTEM_LANGUAGE_OPTIONS.map(({ code, label }) => (
+                      <SelectItem key={code} value={code}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -815,8 +817,9 @@ function UsersTab() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="tr">Turkish</SelectItem>
+                    {SYSTEM_LANGUAGE_OPTIONS.map(({ code, label }) => (
+                      <SelectItem key={code} value={code}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

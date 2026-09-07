@@ -23,6 +23,7 @@ describe("normalizeProgramImportRow — export round-trip (PI-1)", () => {
     // EXACT header list produced by runExport() in admin/Catalog.tsx
     const exportRow = {
       Program: "Computer Engineering",
+      Description: "English canonical programme description",
       University: "Avrasya University",
       Degree: "Bachelor",
       Field: "Engineering",
@@ -48,6 +49,7 @@ describe("normalizeProgramImportRow — export round-trip (PI-1)", () => {
     };
     const out = normalizeProgramImportRow(exportRow);
     assert.equal(out.name, "Computer Engineering");
+    assert.equal(out.description, "English canonical programme description");
     assert.equal(out.universityName, "Avrasya University");
     assert.equal(out.degree, "Bachelor");
     assert.equal(out.field, "Engineering");

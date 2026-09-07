@@ -13,6 +13,7 @@ import { formatDateTime } from "@/lib/i18n";
 import { Link2, Loader2, Plus, RotateCw, Ban, Copy, Pencil, Trash2, BellRing, AlertTriangle } from "lucide-react";
 import { ContractAssociationLink } from "@/components/contracts/ContractAssociationLink";
 import { ContractSubjectPicker } from "@/components/contracts/ContractSubjectPicker";
+import { SYSTEM_LANGUAGE_LABELS } from "@/lib/i18n";
 
 type Session = {
   id: number; templateId: number; agentId: number | null; mode: string; status: string;
@@ -33,10 +34,7 @@ type Template = {
   signingPageConfig?: { requireEmailVerification?: boolean } | null;
 };
 
-const LANG_LABELS: Record<string, string> = {
-  en: "English", tr: "Türkçe", ar: "العربية", fr: "Français", ru: "Русский",
-  es: "Español", fa: "فارسی", hi: "हिन्दी", id: "Bahasa", zh: "中文",
-};
+const LANG_LABELS = SYSTEM_LANGUAGE_LABELS;
 
 const STATUS_TONE: Record<string, any> = {
   intake_pending: "secondary",

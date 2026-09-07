@@ -4390,7 +4390,7 @@ router.put(
 const aiAgentTestSchema = z.object({
   aiBotId: z.number().int().positive().optional(),
   message: z.string().min(1).max(4000),
-  language: z.enum(["tr", "en", "ar", "ru", "fr"]).optional(),
+  language: z.enum(["en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id", "ur", "tk", "ky", "kk", "uz", "tg"]).optional(),
   history: z
     .array(
       z.object({

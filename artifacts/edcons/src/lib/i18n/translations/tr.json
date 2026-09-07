@@ -4990,7 +4990,22 @@
     "bulkDeleteFailed": "Bazı öğeler silinemedi",
     "bulkDeleteFailedDesc": "{total} öğeden {failed} tanesi silinemedi. Kullanımda olabilirler.",
     "uniTypePublic": "Devlet",
-    "importCreatedUniversities": "{n} yeni üniversite oluşturuldu: {names}"
+    "importCreatedUniversities": "{n} yeni üniversite oluşturuldu: {names}",
+    "autoTranslationQueued": "İngilizce kaynak kaydedildi ve 15 çeviri otomatik olarak sıraya alındı.",
+    "translationsQueued": "Program çevirileri yeniden sıraya alındı.",
+    "failedTranslationsQueued": "Başarısız {n} çeviri yeniden sıraya alındı.",
+    "retryFailedTranslations": "Başarısız çevirileri yeniden dene",
+    "translationStatus": "Çeviri durumu",
+    "translationLanguage": "Dil",
+    "translationAttempts": "Deneme",
+    "translationPublished": "Yayında",
+    "translationFailed": "Başarısız",
+    "translationManualReview": "Elle güncelleme gerekli",
+    "translationPending": "Bekliyor",
+    "translationManual": "Elle düzenlendi",
+    "retryTranslations": "Çevirileri yeniden dene",
+    "programDescriptionEnglish": "Program Açıklaması (İngilizce kaynak)",
+    "programDescriptionPlaceholder": "Kanonik İngilizce program açıklamasını girin…"
   },
   "appDocsPanel": {
     "documentUploaded": "Belge yüklendi",

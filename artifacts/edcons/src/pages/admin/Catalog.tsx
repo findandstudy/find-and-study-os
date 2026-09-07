@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Globe, Building2, GraduationCap, BookOpen, Plus, Upload, Download, Search, Pencil, Trash2, ChevronLeft, ChevronRight, AlertTriangle, ImageIcon, Lock, ExternalLink, ChevronsUpDown, ChevronUp, ChevronDown, Settings2, Loader2, Check, X, FileText, Save, GripVertical, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import { Globe, Building2, GraduationCap, BookOpen, Plus, Upload, Download, Search, Pencil, Trash2, ChevronLeft, ChevronRight, AlertTriangle, ImageIcon, Lock, ExternalLink, ChevronsUpDown, ChevronUp, ChevronDown, Settings2, Loader2, Check, X, FileText, Save, GripVertical, ArrowUp, ArrowDown, Eye, Languages, RefreshCw } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -22,6 +22,7 @@ import { useDocumentTypeCatalog } from "@/lib/programDocTypes";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/hooks/use-i18n";
 import { useSeason } from "@/contexts/SeasonContext";
+import { LANGUAGE_META } from "@/lib/i18n";
 import {
   chunkBulkImportRows,
   findProgramIdentityCollisions,
@@ -157,7 +158,18 @@ type University = {
   status: string;
 };
 type UniversityOption = Pick<University, "id" | "name">;
-type Program = { id: number; universityId: number; universityName?: string | null; name: string; degree?: string | null; field?: string | null; language?: string | null; duration?: string | null; tuitionFee?: number | null; currency?: string | null; scholarship?: number | null; intakes?: string | null; requirements?: string | null; commissionRate?: number | null; applicationFee?: number | null; advancedFee?: number | null; depositFee?: number | null; serviceFeeAmount?: number | null; discountedFee?: number | null; languageFee?: number | null; feeType?: string | null; minGpa?: number | null; minLanguageScore?: number | null; quota?: number | null; isActive: boolean };
+type ProgramTranslationSummary = { total: number; published: number; pending: number; failed: number; manual: number; target: number };
+type Program = { id: number; universityId: number; universityName?: string | null; name: string; description?: string | null; degree?: string | null; field?: string | null; language?: string | null; duration?: string | null; tuitionFee?: number | null; currency?: string | null; scholarship?: number | null; intakes?: string | null; requirements?: string | null; commissionRate?: number | null; applicationFee?: number | null; advancedFee?: number | null; depositFee?: number | null; serviceFeeAmount?: number | null; discountedFee?: number | null; languageFee?: number | null; feeType?: string | null; minGpa?: number | null; minLanguageScore?: number | null; quota?: number | null; isActive: boolean; translationSummary?: ProgramTranslationSummary };
+
+type ProgramTranslationRow = {
+  programId: number;
+  locale: string;
+  status: "queued" | "processing" | "retrying" | "published" | "failed" | "stale_manual";
+  isManual: boolean;
+  attempts: number;
+  errorCode?: string | null;
+  translatedAt?: string | null;
+};
 
 /* ─── BulkImportModal ─────────────────────────────────────── */
 
@@ -1615,6 +1627,7 @@ function ProgramsTab() {
   const [selectingAll, setSelectingAll] = useState(false);
   const [delAllOpen, setDelAllOpen] = useState(false);
   const [delAllInProgress, setDelAllInProgress] = useState(false);
+  const [translationProgram, setTranslationProgram] = useState<Program | null>(null);
 
   const { data: unisData } = useQuery({
     queryKey: ["university-options"],
@@ -1655,6 +1668,38 @@ function ProgramsTab() {
   });
   const programs: Program[] = data?.data ?? [];
   const totalPages = data?.meta?.totalPages ?? 1;
+
+  const translationDetails = useQuery<{ sourceLocale: string; targetLocales: string[]; data: ProgramTranslationRow[] }>({
+    queryKey: ["program-translations", translationProgram?.id],
+    queryFn: () => api(`/api/programs/${translationProgram!.id}/translations`),
+    enabled: translationProgram !== null,
+  });
+
+  const retryTranslations = useMutation({
+    mutationFn: (programId: number) => api(`/api/programs/${programId}/translations/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    }),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["programs"] }),
+        qc.invalidateQueries({ queryKey: ["program-translations", translationProgram?.id] }),
+      ]);
+      toast({ title: t("common.success"), description: t("catalogPage.translationsQueued") });
+    },
+  });
+
+  const retryAllFailed = useMutation({
+    mutationFn: () => api("/api/programs/translations/retry-failed", { method: "POST" }),
+    onSuccess: async (result) => {
+      await qc.invalidateQueries({ queryKey: ["programs"] });
+      toast({
+        title: t("common.success"),
+        description: t("catalogPage.failedTranslationsQueued", { n: result?.queued ?? 0 }),
+      });
+    },
+  });
 
   const { data: enrolledCounts = {} } = useQuery<Record<number, number>>({
     queryKey: ["programs-enrolled-counts", season],
@@ -1746,6 +1791,7 @@ function ProgramsTab() {
       if (onlySelected) list = list.filter(p => selected.has(p.id));
       const rows = list.map((p: Program) => ({
         Program: p.name, University: p.universityName ?? uniMap[p.universityId]?.name ?? "",
+        Description: p.description ?? "",
         Degree: p.degree ?? "", Field: p.field ?? "", Language: p.language ?? "",
         Duration: p.duration ?? "", "Fee Type": p.feeType ?? "",
         "Tuition Fee": p.tuitionFee ?? "", Currency: p.currency ?? "",
@@ -1817,7 +1863,11 @@ function ProgramsTab() {
       }
       return saved;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["programs"] }); setForm(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["programs"] });
+      toast({ title: t("common.success"), description: t("catalogPage.autoTranslationQueued") });
+      setForm(null);
+    },
   });
 
   const del = useMutation({
@@ -1859,6 +1909,7 @@ function ProgramsTab() {
   const templateRows = [
     {
       universityName: "Antalya Bilim University", name: "Associate of Cookery (Turkish)",
+      description: "A practice-focused associate programme in professional cookery.",
       degree: "Associate", field: "Business", language: "Turkish", duration: "24 Months",
       tuitionFee: 5200, currency: "USD", scholarship: 2860, intakes: "Sep",
       requirements: "High school diploma", commissionRate: 13, applicationFee: 0,
@@ -1871,6 +1922,7 @@ function ProgramsTab() {
     },
     {
       universityName: "Antalya Bilim University", name: "Bachelor of Dentistry (Turkish)",
+      description: "A five-year dentistry programme combining clinical and scientific education.",
       degree: "Bachelor", field: "Medicine", language: "Turkish", duration: "60 Months",
       tuitionFee: 14000, currency: "USD", scholarship: 2100, intakes: "Sep",
       requirements: "High school diploma, TR-YOS or equivalent",
@@ -1884,6 +1936,7 @@ function ProgramsTab() {
     {
       universityName: "Antalya Bilim University",
       name: "Master of Business Administration (Thesis) (English)",
+      description: "An advanced business administration programme with a research thesis.",
       degree: "Master", field: "Business", language: "English", duration: "12 Months",
       tuitionFee: 5400, currency: "USD", scholarship: 810, intakes: "Feb, Sep",
       requirements: "Bachelor's degree, English proficiency",
@@ -1900,6 +1953,7 @@ function ProgramsTab() {
   const notesRows: Record<string, string>[] = [
     { Column: "universityName", Required: "Yes", Notes: "Exact name as it appears in the Universities tab. Case-insensitive but spelling must match." },
     { Column: "name", Required: "Yes", Notes: "Program name (e.g. Computer Engineering)." },
+    { Column: "description", Required: "No", Notes: "Canonical English description. Saving automatically queues the other 15 languages." },
     { Column: "degree", Required: "No", Notes: "BSc, MSc, MBA, PhD, Diploma, etc." },
     { Column: "field", Required: "No", Notes: "Field of study (Engineering, Business, Arts, ...)." },
     { Column: "language", Required: "No", Notes: "Language of instruction (English, Turkish, ...)." },
@@ -2029,6 +2083,16 @@ function ProgramsTab() {
         </Button>
         <Button variant="outline" onClick={() => setBulkOpen(true)}><Upload className="h-4 w-4 mr-2" />{t("catalogPage.importExcel")}</Button>
         <Button variant="outline" onClick={() => runExport(false)}><Download className="h-4 w-4 mr-2" />{t("catalogPage.exportExcel")}</Button>
+        <Button
+          variant="outline"
+          onClick={() => retryAllFailed.mutate()}
+          disabled={retryAllFailed.isPending}
+        >
+          {retryAllFailed.isPending
+            ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            : <RefreshCw className="h-4 w-4 mr-2" />}
+          {t("catalogPage.retryFailedTranslations")}
+        </Button>
         <Button onClick={() => setForm({ isActive: true, currency: "USD" })}><Plus className="h-4 w-4 mr-2" />{t("catalogPage.addProgram")}</Button>
       </div>
 
@@ -2071,7 +2135,29 @@ function ProgramsTab() {
                   <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleOne(p.id)} className="rounded cursor-pointer" />
                 </td>
                 <td className="px-4 py-2.5">
-                  <div className="font-medium">{p.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium">{p.name}</div>
+                    {p.translationSummary && (
+                      <button
+                        type="button"
+                        onClick={() => setTranslationProgram(p)}
+                        title={t("catalogPage.translationStatus")}
+                        className="shrink-0"
+                      >
+                        <Badge
+                          variant="outline"
+                          className={p.translationSummary.published === p.translationSummary.target
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : p.translationSummary.failed > 0
+                              ? "border-red-200 bg-red-50 text-red-700"
+                              : "border-amber-200 bg-amber-50 text-amber-700"}
+                        >
+                          <Languages className="h-3 w-3 mr-1" />
+                          {p.translationSummary.published}/{p.translationSummary.target}
+                        </Badge>
+                      </button>
+                    )}
+                  </div>
                   {p.language && <span className="text-xs text-muted-foreground">{p.language} {p.duration ? `· ${p.duration}` : ""}</span>}
                 </td>
                 <td className="px-4 py-2.5 text-muted-foreground text-xs">{p.universityName ?? uniMap[p.universityId]?.name ?? `#${p.universityId}`}</td>
@@ -2129,6 +2215,7 @@ function ProgramsTab() {
               </Select>
             </div>
             <div><Label>{t("catalogPage.programNameRequired")}</Label><Input className="mt-1" value={form?.name ?? ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div><Label>{t("catalogPage.programDescriptionEnglish")}</Label><Textarea className="mt-1" rows={4} value={form?.description ?? ""} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={t("catalogPage.programDescriptionPlaceholder")} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>{t("catalogPage.degree")}</Label>
@@ -2344,6 +2431,72 @@ function ProgramsTab() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDelId(null)}>{t("common.cancel")}</Button>
             <Button variant="destructive" onClick={() => del.mutate(delId!)} disabled={del.isPending}>{t("common.delete")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={translationProgram !== null} onOpenChange={open => !open && setTranslationProgram(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Languages className="h-5 w-5 text-primary" />
+              {t("catalogPage.translationStatus")} · {translationProgram?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="rounded-lg border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="px-3 py-2 text-left">{t("catalogPage.translationLanguage")}</th>
+                  <th className="px-3 py-2 text-left">{t("common.status")}</th>
+                  <th className="px-3 py-2 text-left">{t("catalogPage.translationAttempts")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {translationDetails.isLoading && (
+                  <tr><td colSpan={3} className="px-3 py-8 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></td></tr>
+                )}
+                {translationDetails.data?.data.map((row: ProgramTranslationRow) => {
+                  const meta = (LANGUAGE_META as Record<string, { flag: string; nativeName: string }>)[row.locale];
+                  const statusLabel = row.status === "published"
+                    ? t("catalogPage.translationPublished")
+                    : row.status === "failed"
+                      ? t("catalogPage.translationFailed")
+                      : row.status === "stale_manual"
+                        ? t("catalogPage.translationManualReview")
+                        : t("catalogPage.translationPending");
+                  return (
+                    <tr key={row.locale}>
+                      <td className="px-3 py-2.5 font-medium">{meta?.flag} {meta?.nativeName || row.locale.toUpperCase()}</td>
+                      <td className="px-3 py-2.5">
+                        <Badge variant="outline" className={row.status === "published"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : row.status === "failed"
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : "border-amber-200 bg-amber-50 text-amber-700"}
+                        >
+                          {statusLabel}{row.isManual ? ` · ${t("catalogPage.translationManual")}` : ""}
+                        </Badge>
+                        {row.errorCode && <div className="mt-1 text-[11px] text-destructive font-mono">{row.errorCode}</div>}
+                      </td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{row.attempts}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTranslationProgram(null)}>{t("common.close")}</Button>
+            <Button
+              onClick={() => translationProgram && retryTranslations.mutate(translationProgram.id)}
+              disabled={!translationProgram || retryTranslations.isPending}
+            >
+              {retryTranslations.isPending
+                ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                : <RefreshCw className="h-4 w-4 mr-2" />}
+              {t("catalogPage.retryTranslations")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

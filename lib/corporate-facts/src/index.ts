@@ -31,6 +31,12 @@ export const CORPORATE_FACTS = Object.freeze({
     "Hindi",
     "Spanish",
     "Indonesian",
+    "Urdu",
+    "Turkmen",
+    "Kyrgyz",
+    "Kazakh",
+    "Uzbek",
+    "Tajik",
   ]),
   services: Object.freeze([
     "Study program discovery",

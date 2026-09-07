@@ -51,6 +51,20 @@ const SETTINGS_PATCH_FIELDS = [
 ];
 
 const CREDENTIAL_FIELDS = ["smtpPassword", "whatsappToken", "n8nWebhookUrl"];
+const SYSTEM_LANGUAGE_CODES = [
+  "en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id",
+  "ur", "tk", "ky", "kk", "uz", "tg",
+] as const;
+const SYSTEM_LANGUAGE_SET = new Set<string>(SYSTEM_LANGUAGE_CODES);
+
+function normalizeSupportedLanguages(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const languages = Array.from(new Set(
+    value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean),
+  ));
+  if (languages.length === 0 || languages.some((item) => !SYSTEM_LANGUAGE_SET.has(item))) return null;
+  return languages.join(",");
+}
 
 router.get("/settings/branding", async (req, res): Promise<void> => {
   const [settings] = await db.select({
@@ -128,7 +142,7 @@ router.get("/settings", requireAuth, requireRole(...MANAGER_ROLES), async (_req,
     // first explicit Super Admin PATCH owns creation and its audit receipt.
     res.json({
       defaultLanguage: "en",
-      supportedLanguages: "en,tr,ar,fr,ru",
+      supportedLanguages: "en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg",
       whatsappEnabled: false,
       metaLeadEnabled: false,
       dateFormat: "DD.MM.YYYY",
@@ -158,6 +172,22 @@ router.patch("/settings", requireAuth, requireRole("super_admin"), async (req, r
     updates.availableYears = normalizeYears(updates.availableYears);
     invalidateSeasonCache();
   }
+  if (updates.supportedLanguages !== undefined) {
+    const normalized = normalizeSupportedLanguages(updates.supportedLanguages);
+    if (!normalized) {
+      res.status(400).json({ error: "supportedLanguages contains an unsupported language" });
+      return;
+    }
+    updates.supportedLanguages = normalized;
+  }
+  if (updates.defaultLanguage !== undefined) {
+    const normalizedDefault = String(updates.defaultLanguage).trim().toLowerCase();
+    if (!SYSTEM_LANGUAGE_SET.has(normalizedDefault)) {
+      res.status(400).json({ error: "defaultLanguage is unsupported" });
+      return;
+    }
+    updates.defaultLanguage = normalizedDefault;
+  }
   if (updates.defaultSigningDeadlineDays !== undefined) {
     const n = parseInt(String(updates.defaultSigningDeadlineDays), 10);
     if (!Number.isInteger(n) || n < 1 || n > 365) {
@@ -171,11 +201,19 @@ router.patch("/settings", requireAuth, requireRole("super_admin"), async (req, r
   }
 
   const [existing] = await db.select().from(settingsTable);
+  const effectiveLanguages = String(
+    updates.supportedLanguages ?? existing?.supportedLanguages ?? SYSTEM_LANGUAGE_CODES.join(","),
+  ).split(",");
+  const effectiveDefault = String(updates.defaultLanguage ?? existing?.defaultLanguage ?? "en");
+  if (!effectiveLanguages.includes(effectiveDefault)) {
+    res.status(400).json({ error: "defaultLanguage must be included in supportedLanguages" });
+    return;
+  }
   let updated;
   if (!existing) {
     const [created] = await db.insert(settingsTable).values({
       defaultLanguage: "en",
-      supportedLanguages: "en,tr,ar,fr,ru",
+      supportedLanguages: "en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg",
       whatsappEnabled: false,
       metaLeadEnabled: false,
       ...updates,

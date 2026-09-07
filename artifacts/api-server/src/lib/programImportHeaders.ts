@@ -19,6 +19,8 @@ const HEADER_ALIASES: Record<string, string> = {
   "program": "name",
   "program name": "name",
   "name": "name",
+  "description": "description",
+  "program description": "description",
   // university (name-based resolution is primary; users never type IDs)
   "university": "universityName",
   "university name": "universityName",

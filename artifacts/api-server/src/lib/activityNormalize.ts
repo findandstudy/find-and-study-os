@@ -16,8 +16,8 @@ export const ROUTE_MODULE_MAP: Record<string, string> = {
   "/agent/messages": "Messages", "/agent/documents": "Documents",
 };
 
-export const EXCLUDE_SEGMENT_RE = /^(en|tr|ar|fr|ru|fa|zh|hi|es|id|login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|token|oauth|sso|invite|accept|decline|redirect|error|404|500)$/i;
-export const DIRTY_LABEL_RE = /^(login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|unknown|en|tr|ar|fr|ru|fa|zh|hi|es|id|404|500|error|redirect|null|undefined)$/i;
+export const EXCLUDE_SEGMENT_RE = /^(en|tr|ar|fr|ru|fa|zh|hi|es|id|ur|tk|ky|kk|uz|tg|login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|token|oauth|sso|invite|accept|decline|redirect|error|404|500)$/i;
+export const DIRTY_LABEL_RE = /^(login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|unknown|en|tr|ar|fr|ru|fa|zh|hi|es|id|ur|tk|ky|kk|uz|tg|404|500|error|redirect|null|undefined)$/i;
 const UUID_RE = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const NUM_TAIL_RE = /\/\d+$/;
 const LONG_TOKEN_RE = /\/[A-Za-z0-9_-]{20,}$/;

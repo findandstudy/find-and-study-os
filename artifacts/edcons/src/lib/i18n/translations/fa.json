@@ -5108,7 +5108,22 @@
     "bulkDeleteFailed": "برخی موارد حذف نشدند",
     "bulkDeleteFailedDesc": "{failed} مورد از {total} حذف نشد. ممکن است در حال استفاده باشند.",
     "uniTypePublic": "دولتی",
-    "importCreatedUniversities": "{n} دانشگاه جدید ایجاد شد: {names}"
+    "importCreatedUniversities": "{n} دانشگاه جدید ایجاد شد: {names}",
+    "autoTranslationQueued": "منبع انگلیسی ذخیره شد و ۱۵ ترجمه به‌صورت خودکار در صف قرار گرفت.",
+    "translationsQueued": "ترجمه‌های برنامه دوباره در صف قرار گرفتند.",
+    "failedTranslationsQueued": "{n} ترجمه ناموفق دوباره در صف قرار گرفت.",
+    "retryFailedTranslations": "تلاش دوباره برای ترجمه‌های ناموفق",
+    "translationStatus": "وضعیت ترجمه",
+    "translationLanguage": "زبان",
+    "translationAttempts": "تلاش‌ها",
+    "translationPublished": "منتشر شده",
+    "translationFailed": "ناموفق",
+    "translationManualReview": "به‌روزرسانی دستی لازم است",
+    "translationPending": "در انتظار",
+    "translationManual": "دستی",
+    "retryTranslations": "تلاش دوباره برای ترجمه‌ها",
+    "programDescriptionEnglish": "توضیحات برنامه (منبع انگلیسی)",
+    "programDescriptionPlaceholder": "توضیحات اصلی انگلیسی برنامه را وارد کنید…"
   },
   "appDocsPanel": {
     "documentUploaded": "مدرک بارگذاری شد",

@@ -5108,7 +5108,22 @@
     "bulkDeleteFailed": "تعذّر حذف بعض العناصر",
     "bulkDeleteFailedDesc": "تعذّر حذف {failed} من أصل {total}. قد تكون قيد الاستخدام.",
     "uniTypePublic": "حكومية",
-    "importCreatedUniversities": "تم إنشاء {n} جامعة جديدة: {names}"
+    "importCreatedUniversities": "تم إنشاء {n} جامعة جديدة: {names}",
+    "autoTranslationQueued": "تم حفظ المصدر الإنجليزي وإضافة 15 ترجمة إلى قائمة الانتظار تلقائيًا.",
+    "translationsQueued": "تمت إعادة إضافة ترجمات البرنامج إلى قائمة الانتظار.",
+    "failedTranslationsQueued": "تمت إعادة إضافة {n} ترجمة فاشلة إلى قائمة الانتظار.",
+    "retryFailedTranslations": "إعادة محاولة الترجمات الفاشلة",
+    "translationStatus": "حالة الترجمة",
+    "translationLanguage": "اللغة",
+    "translationAttempts": "المحاولات",
+    "translationPublished": "منشور",
+    "translationFailed": "فشل",
+    "translationManualReview": "يلزم تحديث يدوي",
+    "translationPending": "قيد الانتظار",
+    "translationManual": "يدوي",
+    "retryTranslations": "إعادة محاولة الترجمات",
+    "programDescriptionEnglish": "وصف البرنامج (المصدر الإنجليزي)",
+    "programDescriptionPlaceholder": "أدخل الوصف الإنجليزي الأساسي للبرنامج…"
   },
   "appDocsPanel": {
     "documentUploaded": "تم رفع المستند",

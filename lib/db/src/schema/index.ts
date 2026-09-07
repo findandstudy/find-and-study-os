@@ -6,6 +6,7 @@ export * from "./agentIntegrations";
 export * from "./applications";
 export * from "./documents";
 export * from "./universities";
+export * from "./programTranslations";
 export * from "./finance";
 export * from "./content";
 export * from "./settings";

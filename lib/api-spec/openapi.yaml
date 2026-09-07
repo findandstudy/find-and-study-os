@@ -1124,6 +1124,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: locale
+          in: query
+          description: Requested programme-content locale; unpublished translations fall back to English.
+          schema:
+            type: string
+            enum: [en, tr, ar, fr, ru, fa, zh, hi, es, id, ur, tk, ky, kk, uz, tg]
         - name: search
           in: query
           schema:
@@ -6534,6 +6540,8 @@ components:
           type: integer
         name:
           type: string
+        description:
+          type: ["string", "null"]
         degree:
           type: ["string", "null"]
         field:
@@ -6585,6 +6593,8 @@ components:
           type: integer
         name:
           type: string
+        description:
+          type: ["string", "null"]
         degree:
           type: ["string", "null"]
         field:
@@ -6628,6 +6638,8 @@ components:
       type: object
       properties:
         name:
+          type: ["string", "null"]
+        description:
           type: ["string", "null"]
         degree:
           type: ["string", "null"]
@@ -7790,7 +7802,13 @@ components:
         zh: { type: string }
         hi: { type: string }
         id: { type: string }
-      required: [tr, en, ar, fa, fr, es, ru, zh, hi, id]
+        ur: { type: string }
+        tk: { type: string }
+        ky: { type: string }
+        kk: { type: string }
+        uz: { type: string }
+        tg: { type: string }
+      required: [tr, en, ar, fr, ru, fa, zh, hi, es, id, ur, tk, ky, kk, uz, tg]
 
     AiAgentConfig:
       type: object
@@ -7813,7 +7831,7 @@ components:
           type: array
           items:
             type: string
-            enum: [tr, en, ar, fa, fr, es, ru, zh, hi, id]
+            enum: [tr, en, ar, fr, ru, fa, zh, hi, es, id, ur, tk, ky, kk, uz, tg]
         escalationKeywords:
           $ref: "#/components/schemas/EscalationKeywords"
         knowledgeBase:
@@ -7979,7 +7997,7 @@ components:
           type: array
           items:
             type: string
-            enum: [tr, en, ar, fa, fr, es, ru, zh, hi, id]
+            enum: [tr, en, ar, fr, ru, fa, zh, hi, es, id, ur, tk, ky, kk, uz, tg]
         escalationKeywords:
           $ref: "#/components/schemas/EscalationKeywords"
         knowledgeBase:
@@ -7998,7 +8016,7 @@ components:
           type: string
         language:
           type: string
-          enum: [tr, en, ar, fa, fr, es, ru, zh, hi, id]
+          enum: [tr, en, ar, fr, ru, fa, zh, hi, es, id, ur, tk, ky, kk, uz, tg]
         history:
           type: array
           items:
@@ -8022,7 +8040,7 @@ components:
           type: ["string", "null"]
         language:
           type: string
-          enum: [tr, en, ar, fa, fr, es, ru, zh, hi, id]
+          enum: [tr, en, ar, fr, ru, fa, zh, hi, es, id, ur, tk, ky, kk, uz, tg]
         escalation:
           type: object
           properties:

@@ -20,4 +20,10 @@ export const AiAgentTestResultLanguage = {
   zh: 'zh',
   hi: 'hi',
   id: 'id',
+  ur: 'ur',
+  tk: 'tk',
+  ky: 'ky',
+  kk: 'kk',
+  uz: 'uz',
+  tg: 'tg',
 } as const;

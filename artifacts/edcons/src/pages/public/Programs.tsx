@@ -48,6 +48,7 @@ function useDebounce(value: string, delay: number) {
 interface Program {
   id: number;
   name: string;
+  description: string | null;
   degree: string | null;
   field: string | null;
   language: string | null;
@@ -1520,6 +1521,13 @@ function ProgramDetailDialog({ open, onClose, program }: { open: boolean; onClos
             </div>
           )}
 
+          {program.description && (
+            <div className="space-y-1.5">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{t("common.description")}</p>
+              <p className="text-sm text-foreground/80 whitespace-pre-line leading-relaxed">{program.description}</p>
+            </div>
+          )}
+
           {program.requirements && (
             <div className="space-y-1.5">
               <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{t("programs.requirements")}</p>
@@ -1704,6 +1712,7 @@ export default function Programs() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: "24" });
       params.set("scope", "public");
+      params.set("locale", lang);
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (country.length) params.set("country", country.join(","));
       if (city.length) params.set("city", city.join(","));
@@ -1727,7 +1736,7 @@ export default function Programs() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, debouncedSearch, country, city, universityType, universityId, level, language, field, debouncedFeeMin, debouncedFeeMax]);
+  }, [page, debouncedSearch, country, city, universityType, universityId, level, language, field, debouncedFeeMin, debouncedFeeMax, lang]);
 
   useEffect(() => { fetchPrograms(); }, [fetchPrograms]);
   useEffect(() => { setPage(1); }, [debouncedSearch, country, city, universityType, universityId, level, language, field, debouncedFeeMin, debouncedFeeMax]);

@@ -127,6 +127,12 @@ const SUPPORTED_LANGUAGES: BotLanguage[] = [
   "zh",
   "hi",
   "id",
+  "ur",
+  "tk",
+  "ky",
+  "kk",
+  "uz",
+  "tg",
 ];
 
 export const DEFAULT_PROGRAM_SCOPE: ProgramScope = {
@@ -181,6 +187,12 @@ export const DEFAULT_AI_AGENT_CONFIG: AiAgentConfig = {
     zh: "我们的预订团队将接手此请求，并会尽快与您联系。",
     hi: "हमारी आरक्षण टीम अब इस अनुरोध को संभालेगी और शीघ्र आपसे संपर्क करेगी।",
     id: "Tim reservasi kami akan menangani permintaan ini dan segera menghubungi Anda.",
+    ur: "ہماری ریزرویشن ٹیم اب یہ درخواست سنبھالے گی اور جلد آپ سے رابطہ کرے گی۔",
+    tk: "Rezervasiýa toparymyz bu haýyşy öz üstüne alar we tiz wagtda siziň bilen habarlaşar.",
+    ky: "Биздин брондоо тобу бул өтүнүчтү өзүнө алып, жакында сиз менен байланышат.",
+    kk: "Біздің брондау тобымыз бұл өтінішті өзіне алып, жақын арада сізбен байланысады.",
+    uz: "Bron qilish jamoamiz bu soʻrovni qabul qiladi va tez orada siz bilan bogʻlanadi.",
+    tg: "Дастаи фармоиши мо ин дархостро баррасӣ карда, ба зудӣ бо шумо тамос мегирад.",
   },
   languages: [...SUPPORTED_LANGUAGES],
   escalationKeywords: DEFAULT_ESCALATION_KEYWORDS,
@@ -219,6 +231,12 @@ const handoffMessagesSchema = z.object({
   zh: z.string().max(2000),
   hi: z.string().max(2000),
   id: z.string().max(2000),
+  ur: z.string().max(2000),
+  tk: z.string().max(2000),
+  ky: z.string().max(2000),
+  kk: z.string().max(2000),
+  uz: z.string().max(2000),
+  tg: z.string().max(2000),
 });
 
 const qualityConfigSchema = z.object({
@@ -283,7 +301,7 @@ export const aiAgentConfigSchema = z.object({
   maxConsecutiveReplies: z.number().int().min(0).max(100),
   handoffMessage: z.string().max(2000),
   handoffMessages: handoffMessagesSchema,
-  languages: z.array(z.enum(["tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id"])).min(1),
+  languages: z.array(z.enum(["tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id", "ur", "tk", "ky", "kk", "uz", "tg"])).min(1),
   escalationKeywords: escalationKeywordsSchema,
   knowledgeBase: z.string().min(1).max(200000),
   programScope: programScopeSchema,

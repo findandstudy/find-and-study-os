@@ -1478,6 +1478,7 @@ export const ListProgramsQueryParams = zod.object({
   "universityId": zod.coerce.number().int().optional(),
   "country": zod.coerce.string().optional(),
   "language": zod.coerce.string().optional(),
+  "locale": zod.enum(['en', 'tr', 'ar', 'fr', 'ru', 'fa', 'zh', 'hi', 'es', 'id', 'ur', 'tk', 'ky', 'kk', 'uz', 'tg']).optional(),
   "search": zod.coerce.string().optional(),
   "page": zod.coerce.number().int().optional(),
   "limit": zod.coerce.number().int().optional()
@@ -1488,6 +1489,7 @@ export const ListProgramsResponse = zod.object({
   "id": zod.number().int(),
   "universityId": zod.number().int(),
   "name": zod.string(),
+  "description": zod.string().nullish(),
   "degree": zod.string().nullish(),
   "field": zod.string().nullish(),
   "language": zod.string().nullish(),
@@ -1522,6 +1524,7 @@ export const ListProgramsResponse = zod.object({
 export const CreateProgramBody = zod.object({
   "universityId": zod.number().int(),
   "name": zod.string(),
+  "description": zod.string().nullish(),
   "degree": zod.string().nullish(),
   "field": zod.string().nullish(),
   "language": zod.string().nullish(),
@@ -1545,6 +1548,7 @@ export const CreateProgramResponse = zod.object({
   "id": zod.number().int(),
   "universityId": zod.number().int(),
   "name": zod.string(),
+  "description": zod.string().nullish(),
   "degree": zod.string().nullish(),
   "field": zod.string().nullish(),
   "language": zod.string().nullish(),
@@ -1577,6 +1581,7 @@ export const GetProgramResponse = zod.object({
   "id": zod.number().int(),
   "universityId": zod.number().int(),
   "name": zod.string(),
+  "description": zod.string().nullish(),
   "degree": zod.string().nullish(),
   "field": zod.string().nullish(),
   "language": zod.string().nullish(),
@@ -1607,6 +1612,7 @@ export const UpdateProgramParams = zod.object({
 
 export const UpdateProgramBody = zod.object({
   "name": zod.string().nullish(),
+  "description": zod.string().nullish(),
   "degree": zod.string().nullish(),
   "field": zod.string().nullish(),
   "language": zod.string().nullish(),
@@ -1630,6 +1636,7 @@ export const UpdateProgramResponse = zod.object({
   "id": zod.number().int(),
   "universityId": zod.number().int(),
   "name": zod.string(),
+  "description": zod.string().nullish(),
   "degree": zod.string().nullish(),
   "field": zod.string().nullish(),
   "language": zod.string().nullish(),
@@ -2972,9 +2979,15 @@ export const GetAiAgentConfigResponse = zod.object({
   "ru": zod.string(),
   "zh": zod.string(),
   "hi": zod.string(),
-  "id": zod.string()
+  "id": zod.string(),
+  "ur": zod.string(),
+  "tk": zod.string(),
+  "ky": zod.string(),
+  "kk": zod.string(),
+  "uz": zod.string(),
+  "tg": zod.string()
 }),
-  "languages": zod.array(zod.enum(['tr', 'en', 'ar', 'fa', 'fr', 'es', 'ru', 'zh', 'hi', 'id'])),
+  "languages": zod.array(zod.enum(['tr', 'en', 'ar', 'fr', 'ru', 'fa', 'zh', 'hi', 'es', 'id', 'ur', 'tk', 'ky', 'kk', 'uz', 'tg'])),
   "escalationKeywords": zod.object({
   "contract": zod.array(zod.string()),
   "payment": zod.array(zod.string()),
@@ -3069,9 +3082,15 @@ export const UpdateAiAgentConfigBody = zod.object({
   "ru": zod.string(),
   "zh": zod.string(),
   "hi": zod.string(),
-  "id": zod.string()
+  "id": zod.string(),
+  "ur": zod.string(),
+  "tk": zod.string(),
+  "ky": zod.string(),
+  "kk": zod.string(),
+  "uz": zod.string(),
+  "tg": zod.string()
 }).optional(),
-  "languages": zod.array(zod.enum(['tr', 'en', 'ar', 'fa', 'fr', 'es', 'ru', 'zh', 'hi', 'id'])).optional(),
+  "languages": zod.array(zod.enum(['tr', 'en', 'ar', 'fr', 'ru', 'fa', 'zh', 'hi', 'es', 'id', 'ur', 'tk', 'ky', 'kk', 'uz', 'tg'])).optional(),
   "escalationKeywords": zod.object({
   "contract": zod.array(zod.string()),
   "payment": zod.array(zod.string()),
@@ -3157,9 +3176,15 @@ export const UpdateAiAgentConfigResponse = zod.object({
   "ru": zod.string(),
   "zh": zod.string(),
   "hi": zod.string(),
-  "id": zod.string()
+  "id": zod.string(),
+  "ur": zod.string(),
+  "tk": zod.string(),
+  "ky": zod.string(),
+  "kk": zod.string(),
+  "uz": zod.string(),
+  "tg": zod.string()
 }),
-  "languages": zod.array(zod.enum(['tr', 'en', 'ar', 'fa', 'fr', 'es', 'ru', 'zh', 'hi', 'id'])),
+  "languages": zod.array(zod.enum(['tr', 'en', 'ar', 'fr', 'ru', 'fa', 'zh', 'hi', 'es', 'id', 'ur', 'tk', 'ky', 'kk', 'uz', 'tg'])),
   "escalationKeywords": zod.object({
   "contract": zod.array(zod.string()),
   "payment": zod.array(zod.string()),
@@ -3223,7 +3248,7 @@ export const UpdateAiAgentConfigResponse = zod.object({
  */
 export const TestAiAgentBody = zod.object({
   "message": zod.string(),
-  "language": zod.enum(['tr', 'en', 'ar', 'fa', 'fr', 'es', 'ru', 'zh', 'hi', 'id']).optional(),
+  "language": zod.enum(['tr', 'en', 'ar', 'fr', 'ru', 'fa', 'zh', 'hi', 'es', 'id', 'ur', 'tk', 'ky', 'kk', 'uz', 'tg']).optional(),
   "history": zod.array(zod.object({
   "direction": zod.enum(['inbound', 'outbound']),
   "content": zod.string()
@@ -3233,7 +3258,7 @@ export const TestAiAgentBody = zod.object({
 export const TestAiAgentResponse = zod.object({
   "result": zod.object({
   "reply": zod.string().nullable(),
-  "language": zod.enum(['tr', 'en', 'ar', 'fa', 'fr', 'es', 'ru', 'zh', 'hi', 'id']),
+  "language": zod.enum(['tr', 'en', 'ar', 'fr', 'ru', 'fa', 'zh', 'hi', 'es', 'id', 'ur', 'tk', 'ky', 'kk', 'uz', 'tg']),
   "escalation": zod.object({
   "escalated": zod.boolean(),
   "topic": zod.union([zod.literal('contract'),zod.literal('payment'),zod.literal('commission'),zod.literal('partner'),zod.literal('human_request'),zod.literal('visa_documents'),zod.literal('supplier'),zod.literal(null)]).nullable()

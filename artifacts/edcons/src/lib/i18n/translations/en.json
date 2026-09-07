@@ -5049,7 +5049,22 @@
     "bulkDeleteFailed": "Some items could not be deleted",
     "bulkDeleteFailedDesc": "{failed} of {total} could not be deleted. They may be in use.",
     "uniTypePublic": "Public",
-    "importCreatedUniversities": "{n} new universities were created: {names}"
+    "importCreatedUniversities": "{n} new universities were created: {names}",
+    "autoTranslationQueued": "The English source was saved and 15 translations were queued automatically.",
+    "translationsQueued": "Program translations were queued again.",
+    "failedTranslationsQueued": "{n} failed translations were queued again.",
+    "retryFailedTranslations": "Retry failed translations",
+    "translationStatus": "Translation status",
+    "translationLanguage": "Language",
+    "translationAttempts": "Attempts",
+    "translationPublished": "Published",
+    "translationFailed": "Failed",
+    "translationManualReview": "Manual update required",
+    "translationPending": "Pending",
+    "translationManual": "Manual",
+    "retryTranslations": "Retry translations",
+    "programDescriptionEnglish": "Program Description (English source)",
+    "programDescriptionPlaceholder": "Enter the canonical English program description…"
   },
   "appDocsPanel": {
     "documentUploaded": "Document uploaded",

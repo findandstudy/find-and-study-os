@@ -5108,7 +5108,22 @@
     "bulkDeleteFailed": "कुछ आइटम हटाए नहीं जा सके",
     "bulkDeleteFailedDesc": "{total} में से {failed} हटाए नहीं जा सके। वे उपयोग में हो सकते हैं।",
     "uniTypePublic": "सरकारी",
-    "importCreatedUniversities": "{n} नए विश्वविद्यालय बनाए गए: {names}"
+    "importCreatedUniversities": "{n} नए विश्वविद्यालय बनाए गए: {names}",
+    "autoTranslationQueued": "अंग्रेज़ी स्रोत सहेजा गया और 15 अनुवाद अपने-आप कतार में लगाए गए।",
+    "translationsQueued": "प्रोग्राम के अनुवाद फिर से कतार में लगाए गए।",
+    "failedTranslationsQueued": "{n} विफल अनुवाद फिर से कतार में लगाए गए।",
+    "retryFailedTranslations": "विफल अनुवाद फिर से आज़माएँ",
+    "translationStatus": "अनुवाद की स्थिति",
+    "translationLanguage": "भाषा",
+    "translationAttempts": "प्रयास",
+    "translationPublished": "प्रकाशित",
+    "translationFailed": "विफल",
+    "translationManualReview": "मैन्युअल अपडेट आवश्यक",
+    "translationPending": "लंबित",
+    "translationManual": "मैन्युअल",
+    "retryTranslations": "अनुवाद फिर से आज़माएँ",
+    "programDescriptionEnglish": "प्रोग्राम विवरण (अंग्रेज़ी स्रोत)",
+    "programDescriptionPlaceholder": "प्रोग्राम का मानक अंग्रेज़ी विवरण दर्ज करें…"
   },
   "appDocsPanel": {
     "documentUploaded": "दस्तावेज़ अपलोड किया गया",

@@ -133,6 +133,7 @@ async function apiFetch(url: string, opts?: RequestInit) {
 type Program = {
   id: number;
   name: string;
+  description?: string | null;
   degree?: string | null;
   field?: string | null;
   language?: string | null;
@@ -260,7 +261,7 @@ function getInitialCourseFinderViewMode(): "grid" | "list" {
 }
 
 export default function CourseFinder() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { user, hasAgentStaffPermission } = useAuth(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -316,14 +317,14 @@ export default function CourseFinder() {
     const params = new URLSearchParams(window.location.search);
     const pid = params.get("programId");
     if (pid) {
-      apiFetch(`${BASE_URL}/api/course-finder?programId=${pid}&limit=1`)
+      apiFetch(`${BASE_URL}/api/course-finder?programId=${pid}&limit=1&locale=${encodeURIComponent(lang)}`)
         .then((res: any) => {
           const prog = res?.data?.[0];
           if (prog) setSelectedProgram(prog);
         })
         .catch(() => {});
     }
-  }, []);
+  }, [lang]);
 
   // Build a query string of just the active filter selections — used both
   // for the program list and (now) for the cascading /filters endpoint so
@@ -395,11 +396,12 @@ export default function CourseFinder() {
 
   const buildQueryParams = useCallback((targetPage: number) => {
     const p = new URLSearchParams(filterParams);
+    p.set("locale", lang);
     p.set("page", String(targetPage));
     p.set("limit", "24");
     if (sortField === "tuition") p.set("sort", sortDir === "asc" ? "price_asc" : "price_desc");
     return p.toString();
-  }, [filterParams, sortField, sortDir]);
+  }, [filterParams, lang, sortField, sortDir]);
 
   const queryParams = useMemo(() => buildQueryParams(page), [buildQueryParams, page]);
 
@@ -1897,6 +1899,7 @@ function ProgramInfoDialog({ program: p, onClose, showCommission, agentShareRate
   showApplicationFee?: boolean;
   showServiceFee?: boolean;
 }) {
+  const { t } = useI18n();
   if (!p) return null;
   const hasDiscount = p.discountedFee != null && p.tuitionFee != null && p.discountedFee < p.tuitionFee;
   const cur = p.currency ?? "USD";
@@ -1990,6 +1993,18 @@ function ProgramInfoDialog({ program: p, onClose, showCommission, agentShareRate
               </div>
             </div>
           ))}
+
+          {p.description && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="w-4 h-4 text-primary" />
+                <h3 className="font-semibold text-sm">{t("common.description")}</h3>
+              </div>
+              <div className="bg-muted/30 rounded-xl p-3">
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{p.description}</p>
+              </div>
+            </div>
+          )}
 
           {p.requirements && (
             <div>

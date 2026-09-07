@@ -10,7 +10,7 @@ import type {
   ProgramScope,
 } from "@workspace/api-client-react";
 import { useI18n } from "@/hooks/use-i18n";
-import { getLocale } from "@/lib/i18n";
+import { getLocale, SUPPORTED_LANGUAGES } from "@/lib/i18n";
 import {
   UI_DAY_ORDER,
   type WeekDayKey,
@@ -73,7 +73,7 @@ const ESCALATION_TOPICS: EscalationTopicKey[] = [
   "visa_documents",
   "supplier",
 ];
-const TEST_LANGUAGES = ["tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id"] as const;
+const TEST_LANGUAGES = SUPPORTED_LANGUAGES;
 type TestLanguage = (typeof TEST_LANGUAGES)[number];
 type AiAgentModelOption = {
   id: string;

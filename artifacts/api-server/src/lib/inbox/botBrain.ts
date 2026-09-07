@@ -17,7 +17,13 @@ export type BotLanguage =
   | "ru"
   | "zh"
   | "hi"
-  | "id";
+  | "id"
+  | "ur"
+  | "tk"
+  | "ky"
+  | "kk"
+  | "uz"
+  | "tg";
 
 const LANGUAGE_NAME: Record<BotLanguage, string> = {
   tr: "Turkish",
@@ -30,6 +36,12 @@ const LANGUAGE_NAME: Record<BotLanguage, string> = {
   zh: "Chinese",
   hi: "Hindi",
   id: "Indonesian",
+  ur: "Urdu",
+  tk: "Turkmen",
+  ky: "Kyrgyz",
+  kk: "Kazakh",
+  uz: "Uzbek",
+  tg: "Tajik",
 };
 
 export type EscalationTopic =
@@ -345,7 +357,7 @@ export function buildBotSystemPromptParts(
   const retrievedBlock = buildRetrievedKnowledgeBlock(retrievedChunks ?? []);
   const cacheable = [
     "You are the configured organization's first-line messaging assistant. Your exact brand identity, scope and operating rules are defined by the knowledge base below; never substitute another brand identity.",
-    `Always reply in ${langName} (the student's language). If the student clearly switches language, follow them. Supported languages: Turkish, English, Arabic, Persian, French, Spanish, Russian, Chinese, Hindi, Indonesian.`,
+    `Always reply in ${langName} (the student's language). If the student clearly switches language, follow them. Supported languages: English, Turkish, Arabic, French, Russian, Persian, Chinese, Hindi, Spanish, Indonesian, Urdu, Turkmen, Kyrgyz, Kazakh, Uzbek, and Tajik.`,
     "",
     kb,
     "",
