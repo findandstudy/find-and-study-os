@@ -86,6 +86,11 @@ test("migration owns durable queueing, stale-manual handling, and the 16-languag
   assert.match(migration, /WHEN "program_translations"\."is_manual" THEN 'stale_manual'/);
   assert.match(migration, /fas_program_content_source_hash/);
   assert.match(migration, /en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg/);
+  assert.doesNotMatch(
+    migration,
+    /FROM\s+"programs"\s+p\s+CROSS JOIN/i,
+    "schema migration must not create an unbounded historical translation backlog",
+  );
 });
 
 test("the dedicated worker entry exists and API list cache varies by content locale", () => {

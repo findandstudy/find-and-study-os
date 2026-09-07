@@ -107,16 +107,10 @@ ON "programs"
 FOR EACH ROW
 EXECUTE FUNCTION "fas_queue_program_translations"();
 --> statement-breakpoint
--- Existing programmes enter the same durable queue at low operational risk;
--- no external request occurs until the explicitly enabled worker is running.
-INSERT INTO "program_translations" ("program_id", "locale", "source_hash", "status", "next_attempt_at")
-SELECT p."id", locale,
-	"fas_program_content_source_hash"(p."name", p."description", p."field", p."duration", p."intakes", p."requirements"),
-	'queued', now()
-FROM "programs" p
-CROSS JOIN unnest(ARRAY['tr','ar','fr','ru','fa','zh','hi','es','id','ur','tk','ky','kk','uz','tg']::text[]) AS locale
-ON CONFLICT ("program_id", "locale") DO NOTHING;
---> statement-breakpoint
+-- Existing catalogues are intentionally not backfilled in this schema migration.
+-- A large tenant can own hundreds of thousands of programmes, so historical
+-- translation reconciliation must run as a separately budgeted, resumable batch.
+-- New programmes and subsequent source-content edits are queued by the trigger.
 ALTER TABLE "settings" ALTER COLUMN "supported_languages" SET DEFAULT 'en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg';
 --> statement-breakpoint
 UPDATE "settings"
