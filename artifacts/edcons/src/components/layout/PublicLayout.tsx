@@ -4,14 +4,9 @@ import { useI18n } from "@/hooks/use-i18n";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { GraduationCap, Menu, X, ChevronDown, Mail, Phone, MapPin } from "lucide-react";
-import { SUPPORTED_LANGUAGES, LANGUAGE_META, type Language } from "@/lib/i18n/index";
+import { SUPPORTED_LANGUAGES, LANGUAGE_META, LANGUAGE_COUNTRY_CODES, type Language } from "@/lib/i18n/index";
 import { CountryFlag } from "@/components/CountryFlag";
 import { CookieBanner } from "@/components/CookieBanner";
-
-const LANG_COUNTRY: Record<string, string> = {
-  en: "GB", tr: "TR", ar: "SA", fr: "FR", ru: "RU",
-  fa: "IR", zh: "CN", hi: "IN", es: "ES", id: "ID",
-};
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   const { t, lang, setLang, localePath, isRTL } = useI18n();
@@ -101,7 +96,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                 className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-secondary/80 transition-colors text-sm font-medium"
                 aria-label="Select language"
               >
-                <CountryFlag code={LANG_COUNTRY[lang] || "GB"} size="sm" />
+                <CountryFlag code={LANGUAGE_COUNTRY_CODES[lang]} size="sm" alt="" />
                 <span className="text-foreground">{currentMeta.code.toUpperCase()}</span>
                 <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${langOpen ? "rotate-180" : ""}`} />
               </button>
@@ -117,7 +112,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                           code === lang ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
                         }`}
                       >
-                        <CountryFlag code={LANG_COUNTRY[code] || "GB"} size="md" />
+                        <CountryFlag code={LANGUAGE_COUNTRY_CODES[code]} size="md" alt="" />
                         <span>{meta.nativeName}</span>
                         <span className="text-muted-foreground text-xs ms-auto">{meta.code.toUpperCase()}</span>
                       </button>
@@ -165,7 +160,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                           code === lang ? "bg-primary/10 text-primary font-semibold" : "text-foreground hover:bg-secondary/80"
                         }`}
                       >
-                        <CountryFlag code={LANG_COUNTRY[code] || "GB"} size="sm" />
+                        <CountryFlag code={LANGUAGE_COUNTRY_CODES[code]} size="sm" alt="" />
                         <span>{meta.nativeName}</span>
                       </button>
                     );
