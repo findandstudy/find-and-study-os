@@ -726,6 +726,24 @@
       "note": "Default-off EXECUTE-only manifest writer derives hashes from verified Journey evidence and the latest active institution-sharing consent. It stores no document byte or raw object reference; Privacy/Legal and consented-cohort activation remain gated."
     },
     {
+      "path": "artifacts/api-server/src/lib/programTranslationQueue.ts",
+      "ownership": "platform_global",
+      "enforcement": "quarantine_required",
+      "risk": "medium",
+      "owner": "Catalog & Content",
+      "externalPilot": "quarantine",
+      "note": "Source-hash and lease guarded global catalog translation queue; automated provider processing remains default-off and quarantined."
+    },
+    {
+      "path": "artifacts/api-server/src/lib/programTranslationWorker.ts",
+      "ownership": "external_integration",
+      "enforcement": "quarantine_required",
+      "risk": "high",
+      "owner": "Catalog & Content",
+      "externalPilot": "quarantine",
+      "note": "Default-off translation worker calls an external AI provider and commits only source-hash-matched results; provider activation remains quarantined."
+    },
+    {
       "path": "artifacts/api-server/src/lib/replitAuth.ts",
       "ownership": "privileged_config",
       "enforcement": "quarantine_required",
@@ -1485,6 +1503,15 @@
       "owner": "Portal Automation",
       "externalPilot": "quarantine",
       "note": "Status polling is lane-isolated and evidence-bound; named-partner activation remains gated."
+    },
+    {
+      "path": "artifacts/api-server/src/workers/programTranslationWorker.ts",
+      "ownership": "external_integration",
+      "enforcement": "quarantine_required",
+      "risk": "high",
+      "owner": "Catalog & Content",
+      "externalPilot": "quarantine",
+      "note": "Dedicated default-off worker bootstrap; external provider activation remains quarantined."
     },
     {
       "path": "artifacts/api-server/src/workers/socialPublicationWorker.ts",
