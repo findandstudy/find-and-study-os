@@ -115,7 +115,7 @@ database URL/password on the command line. The runner requires:
 - the dedicated `ALLOW_STAGING_MIGRATIONS=true` and
   `MIGRATION_TARGET_ENV=staging` opt-ins.
 
-After migration, run `deploy/staging/seed-staging.mjs` only for a fresh `107/107`
+After migration, run `deploy/staging/seed-staging.mjs` only for a fresh `108/108`
 database with zero users. It creates synthetic reference data and one synthetic
 Super Admin; it refuses any other database or pre-populated user table. Keep
 the generated password only in `/opt/findandstudy-staging/secrets/admin-password`.
@@ -140,7 +140,7 @@ Required acceptance evidence:
 - `GET /api/health` returns exact HTTP `200`, `dbConnected=true`, and the
   expected staging release ID;
 - TLS verification succeeds and HTTPS sends HSTS;
-- the migration ledger is exact `107/107`;
+- the migration ledger is exact `108/108`;
 - a server-side login / `auth/me` / logout smoke succeeds with the synthetic
   account without logging its password or session cookie;
 - the app runs as UID/GID `10042`, with read-only root filesystem, all Linux
@@ -156,7 +156,7 @@ contain `e2e` or `test`.
 
 `deploy/staging/seed-staging-rbac-uat.mjs` provisions the fixed `@audit.test`
 matrix used by `rbac-functional.spec.ts`. The seed refuses every target except
-`fas_migrator@127.0.0.1:5432/fasos_staging`, requires the exact `107/107` ledger,
+`fas_migrator@127.0.0.1:5432/fasos_staging`, requires the exact `108/108` ledger,
 accepts only the original staging admin plus its known fixture identities, and
 reconciles to exactly 11 UAT users, two agent profiles, one student profile and
 12 total users. Keep the UAT password and its complete runner env in
@@ -200,7 +200,7 @@ redirects or non-JSON identity responses. Supply its password and release-bound
 environment through the same restricted host-only env file, not command-line
 arguments.
 
-After the run, verify the ledger remains `107/107`, the ten core/social
+After the run, verify the ledger remains `108/108`, the ten core/social
 delivery and worker gates remain off, app logs contain no fatal/unhandled error, and all
 unrelated VPS containers retain their pre-run health. Create and restore-drill a
 new checksum-attested backup for the accepted 12-user synthetic state.

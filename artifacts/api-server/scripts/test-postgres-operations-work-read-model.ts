@@ -39,7 +39,7 @@ try {
   const ledger = await client.query(
     "SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations",
   );
-  assert.equal(ledger.rows[0]?.count, 107);
+  assert.equal(ledger.rows[0]?.count, 108);
 
   const indexResult = await client.query<{ count: number }>(
     `
