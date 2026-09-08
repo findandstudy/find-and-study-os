@@ -29,6 +29,10 @@ import {
   loadProposalDocumentRequirements,
 } from "@/lib/proposalDocumentRequirements";
 import { resolveProposalBranding } from "@/lib/proposalBranding";
+import {
+  getProposalFeeAdjustmentContext,
+  type ProposalFeeAdjustmentContext,
+} from "@/lib/proposalFeeAdjustment";
 import { createDocumentRecord, uploadDocumentFile } from "@/lib/uploadDocumentFile";
 import { applicationCreationErrorMessage } from "@/lib/applicationCreationError";
 import { useI18n } from "@/hooks/use-i18n";
@@ -285,6 +289,13 @@ export default function CourseFinder() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfMarkup, setPdfMarkup] = useState(0);
   const [markupModalOpen, setMarkupModalOpen] = useState(false);
+  const [preparingPdfMarkup, setPreparingPdfMarkup] = useState(false);
+  const [pdfFeeContext, setPdfFeeContext] = useState<ProposalFeeAdjustmentContext>({
+    currency: "USD",
+    currencies: [],
+    hasMultipleCurrencies: false,
+    sampleFee: 0,
+  });
   const [viewMode, setViewMode] = useState<"grid" | "list">(getInitialCourseFinderViewMode);
   const [sortField, setSortField] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -468,6 +479,10 @@ export default function CourseFinder() {
   }
 
   function toggleSelect(programId: number) {
+    // A flat monetary adjustment belongs to the exact selection/currency set.
+    // Clear it before changing that set so a stale GBP adjustment cannot later
+    // be applied to a USD-only selection (or vice versa).
+    setPdfMarkup(0);
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(programId)) next.delete(programId);
@@ -476,25 +491,71 @@ export default function CourseFinder() {
     });
   }
 
+  function buildProposalSelectionParams(): URLSearchParams {
+    const allParams = new URLSearchParams();
+    allParams.set("page", "1");
+    allParams.set("limit", "500");
+    allParams.set("locale", lang);
+    if (filters.country.length) allParams.set("country", filters.country.join(","));
+    if (filters.city.length) allParams.set("city", filters.city.join(","));
+    if (filters.universityType.length) allParams.set("universityType", filters.universityType.join(","));
+    if (filters.universityId.length) allParams.set("universityId", filters.universityId.join(","));
+    if (filters.level.length) allParams.set("level", filters.level.join(","));
+    if (filters.language.length) allParams.set("language", filters.language.join(","));
+    if (filters.field.length) allParams.set("field", filters.field.join(","));
+    if (filters.search) allParams.set("search", filters.search);
+    if (filters.feeMin) allParams.set("feeMin", filters.feeMin);
+    if (filters.feeMax) allParams.set("feeMax", filters.feeMax);
+    return allParams;
+  }
+
+  async function loadSelectedPrograms(): Promise<Program[]> {
+    const selectedById = new Map<number, Program>();
+    for (const [cachedKey, cachedPage] of queryClient.getQueriesData<CourseFinderPage>({ queryKey: ["course-finder"] })) {
+      const cachedParams = Array.isArray(cachedKey) ? cachedKey[1] : null;
+      if (
+        typeof cachedParams !== "string" ||
+        new URLSearchParams(cachedParams).get("locale") !== lang
+      ) {
+        continue;
+      }
+      for (const program of cachedPage?.data ?? []) {
+        if (selectedIds.has(program.id)) selectedById.set(program.id, program);
+      }
+    }
+    // The visible page is authoritative if a stale cache entry for the same ID
+    // exists from a previous query state.
+    for (const program of programs) {
+      if (selectedIds.has(program.id)) selectedById.set(program.id, program);
+    }
+
+    if (selectedById.size < selectedIds.size) {
+      const allData = await apiFetch(
+        `${BASE_URL}/api/course-finder?${buildProposalSelectionParams().toString()}`,
+      ) as { data: Program[] };
+      for (const program of allData.data) {
+        if (selectedIds.has(program.id)) selectedById.set(program.id, program);
+      }
+    }
+
+    const selected = [...selectedIds]
+      .map((id) => selectedById.get(id))
+      .filter((program): program is Program => Boolean(program));
+    if (selected.length !== selectedIds.size) {
+      throw new Error("Some selected programs are no longer available. Refresh the list and select them again.");
+    }
+    return selected;
+  }
+
   async function toggleSelectAll() {
+    setPdfMarkup(0);
     if (selectedIds.size > 0) {
       setSelectedIds(new Set());
     } else {
       try {
-        const allParams = new URLSearchParams();
-        allParams.set("page", "1");
-        allParams.set("limit", "1000");
-        if (filters.country.length) allParams.set("country", filters.country.join(","));
-        if (filters.city.length) allParams.set("city", filters.city.join(","));
-        if (filters.universityType.length) allParams.set("universityType", filters.universityType.join(","));
-        if (filters.universityId.length) allParams.set("universityId", filters.universityId.join(","));
-        if (filters.level.length) allParams.set("level", filters.level.join(","));
-        if (filters.language.length) allParams.set("language", filters.language.join(","));
-        if (filters.field.length) allParams.set("field", filters.field.join(","));
-        if (filters.search) allParams.set("search", filters.search);
-        if (filters.feeMin) allParams.set("feeMin", filters.feeMin);
-        if (filters.feeMax) allParams.set("feeMax", filters.feeMax);
-        const allData = await apiFetch(`${BASE_URL}/api/course-finder?${allParams.toString()}`) as { data: Program[] };
+        const allData = await apiFetch(
+          `${BASE_URL}/api/course-finder?${buildProposalSelectionParams().toString()}`,
+        ) as { data: Program[] };
         setSelectedIds(new Set(allData.data.map(p => p.id)));
       } catch {
         setSelectedIds(new Set(programs.map(p => p.id)));
@@ -541,6 +602,23 @@ export default function CourseFinder() {
     ? (agentProfile?.effectiveCommissionRate ?? undefined)
     : null;
 
+  async function handleOpenPdfMarkup() {
+    setPreparingPdfMarkup(true);
+    try {
+      const selected = await loadSelectedPrograms();
+      setPdfFeeContext(getProposalFeeAdjustmentContext(selected));
+      setMarkupModalOpen(true);
+    } catch (err: any) {
+      toast({
+        title: t("courseFinderPage.pdfGenerationFailed"),
+        description: err.message || t("courseFinderPage.unknownError"),
+        variant: "destructive",
+      });
+    } finally {
+      setPreparingPdfMarkup(false);
+    }
+  }
+
   async function handleGeneratePdf() {
     if (selectedIds.size === 0) {
       toast({ title: t("courseFinderPage.noProgramsSelected"), description: t("courseFinderPage.noProgramsSelectedDesc"), variant: "destructive" });
@@ -549,23 +627,10 @@ export default function CourseFinder() {
     setGeneratingPdf(true);
     try {
       const proposalPdfImport = import("@/lib/generateProposalPdf");
-      let selected = programs.filter(p => selectedIds.has(p.id));
-      if (selected.length < selectedIds.size) {
-        const allParams = new URLSearchParams();
-        allParams.set("page", "1");
-        allParams.set("limit", "1000");
-        if (filters.country.length) allParams.set("country", filters.country.join(","));
-        if (filters.city.length) allParams.set("city", filters.city.join(","));
-        if (filters.universityType.length) allParams.set("universityType", filters.universityType.join(","));
-        if (filters.universityId.length) allParams.set("universityId", filters.universityId.join(","));
-        if (filters.level.length) allParams.set("level", filters.level.join(","));
-        if (filters.language.length) allParams.set("language", filters.language.join(","));
-        if (filters.field.length) allParams.set("field", filters.field.join(","));
-        if (filters.search) allParams.set("search", filters.search);
-        if (filters.feeMin) allParams.set("feeMin", filters.feeMin);
-        if (filters.feeMax) allParams.set("feeMax", filters.feeMax);
-        const allData = await apiFetch(`${BASE_URL}/api/course-finder?${allParams.toString()}`) as { data: Program[] };
-        selected = allData.data.filter(p => selectedIds.has(p.id));
+      const selected = await loadSelectedPrograms();
+      const feeContext = getProposalFeeAdjustmentContext(selected);
+      if (pdfMarkup !== 0 && feeContext.hasMultipleCurrencies) {
+        throw new Error("PDF fee adjustment requires all selected programs to use the same currency.");
       }
       const [{ generateProposalPdf }, settings] = await Promise.all([
         proposalPdfImport,
@@ -972,18 +1037,23 @@ export default function CourseFinder() {
                   </Button>
                   {selectedIds.size > 0 && (
                     <>
-                      {canUsePdfMarkup && !effectiveForceHideServiceFee && (
+                      {canUsePdfMarkup && !effectiveForceHideServiceFee && !hideServiceFee && (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setMarkupModalOpen(true)}
+                          onClick={handleOpenPdfMarkup}
+                          disabled={preparingPdfMarkup}
                           className="h-8 text-xs gap-1.5 rounded-lg"
                         >
-                          <DollarSign className="w-3.5 h-3.5" />
+                          {preparingPdfMarkup ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <DollarSign className="w-3.5 h-3.5" />
+                          )}
                           PDF Fee Adjustment
                           {pdfMarkup !== 0 && (
                             <Badge variant="secondary" className={`ml-1 text-[10px] px-1.5 py-0 h-4 ${pdfMarkup > 0 ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"}`}>
-                              {pdfMarkup > 0 ? "+" : ""}{pdfMarkup.toLocaleString()} {programs[0]?.currency || "USD"}
+                              {pdfMarkup > 0 ? "+" : ""}{pdfMarkup.toLocaleString()} {pdfFeeContext.currency}
                             </Badge>
                           )}
                         </Button>
@@ -993,7 +1063,11 @@ export default function CourseFinder() {
                           <input
                             type="checkbox"
                             checked={hideServiceFee}
-                            onChange={e => setHideServiceFee(e.target.checked)}
+                            onChange={e => {
+                              const checked = e.target.checked;
+                              setHideServiceFee(checked);
+                              if (checked) setPdfMarkup(0);
+                            }}
                             className="rounded border-gray-300 text-primary focus:ring-primary h-3.5 w-3.5"
                           />
                           Hide Service Fee
@@ -1195,10 +1269,14 @@ export default function CourseFinder() {
             open={markupModalOpen}
             onOpenChange={setMarkupModalOpen}
             currentMarkup={pdfMarkup}
-            onApply={setPdfMarkup}
-            currency={programs[0]?.currency || "USD"}
-            sampleFee={programs[0]?.serviceFeeAmount}
+            onApply={(amount) => {
+              setPdfMarkup(amount);
+              if (amount !== 0) setHideServiceFee(false);
+            }}
+            currency={pdfFeeContext.currency}
+            sampleFee={pdfFeeContext.sampleFee}
             allowNegative={!!canUseNegativeMarkup}
+            hasMultipleCurrencies={pdfFeeContext.hasMultipleCurrencies}
           />
         </Suspense>
       )}
