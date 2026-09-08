@@ -5,12 +5,16 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListProgramsLocale } from './listProgramsLocale';
 
 export type ListProgramsParams = {
 universityId?: number;
 country?: string;
 language?: string;
-locale?: 'en' | 'tr' | 'ar' | 'fr' | 'ru' | 'fa' | 'zh' | 'hi' | 'es' | 'id' | 'ur' | 'tk' | 'ky' | 'kk' | 'uz' | 'tg';
+/**
+ * Requested programme-content locale; unpublished translations fall back to English.
+ */
+locale?: ListProgramsLocale;
 search?: string;
 page?: number;
 limit?: number;

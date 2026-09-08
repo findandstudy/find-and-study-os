@@ -304,6 +304,7 @@ export const getHealthCheckQueryKey = () => {
     ] as const;
     }
 
+
 export const getHealthCheckQueryOptions = <TData = Awaited<ReturnType<typeof healthCheck>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
@@ -12291,6 +12292,454 @@ export function useListSocialAccountIntegrations<TData = Awaited<ReturnType<type
 
 
 
+export const getListSocialAdCampaignsUrl = (params?: ListSocialAdCampaignsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/ad-campaigns?${stringifiedParams}` : `/api/social/ad-campaigns`
+}
+
+/**
+ * @summary List approval-gated advertising campaigns without provider identifiers
+ */
+export const listSocialAdCampaigns = async (params?: ListSocialAdCampaignsParams, options?: Parameters<typeof customFetch>[1]): Promise<SocialAdCampaignListResponse> => {
+
+  return customFetch<SocialAdCampaignListResponse>(getListSocialAdCampaignsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialAdCampaignsQueryKey = (params?: ListSocialAdCampaignsParams,) => {
+    return [
+    `/api/social/ad-campaigns`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSocialAdCampaignsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialAdCampaigns>>, TError = ErrorType<void>>(params?: ListSocialAdCampaignsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialAdCampaigns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialAdCampaignsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialAdCampaigns>>> = ({ signal }) => listSocialAdCampaigns(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialAdCampaigns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialAdCampaignsQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialAdCampaigns>>>
+export type ListSocialAdCampaignsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List approval-gated advertising campaigns without provider identifiers
+ */
+
+export function useListSocialAdCampaigns<TData = Awaited<ReturnType<typeof listSocialAdCampaigns>>, TError = ErrorType<void>>(
+ params?: ListSocialAdCampaignsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialAdCampaigns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialAdCampaignsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSocialAdCampaignUrl = () => {
+
+
+
+
+  return `/api/social/ad-campaigns`
+}
+
+/**
+ * @summary Create an approval-pending campaign that providers must provision paused
+ */
+export const createSocialAdCampaign = async (createSocialAdCampaignBody: CreateSocialAdCampaignBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialAdCampaign> => {
+
+  return customFetch<SocialAdCampaign>(getCreateSocialAdCampaignUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSocialAdCampaignBody)
+  }
+);}
+
+
+
+
+
+export const getCreateSocialAdCampaignMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialAdCampaign>>, TError,{data: BodyType<CreateSocialAdCampaignBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSocialAdCampaign>>, TError,{data: BodyType<CreateSocialAdCampaignBody>}, TContext> => {
+
+const mutationKey = ['createSocialAdCampaign'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSocialAdCampaign>>, {data: BodyType<CreateSocialAdCampaignBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSocialAdCampaign(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSocialAdCampaignMutationResult = NonNullable<Awaited<ReturnType<typeof createSocialAdCampaign>>>
+    export type CreateSocialAdCampaignMutationBody = BodyType<CreateSocialAdCampaignBody>
+    export type CreateSocialAdCampaignMutationError = ErrorType<void>
+
+    /**
+ * @summary Create an approval-pending campaign that providers must provision paused
+ */
+export const useCreateSocialAdCampaign = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialAdCampaign>>, TError,{data: BodyType<CreateSocialAdCampaignBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSocialAdCampaign>>,
+        TError,
+        {data: BodyType<CreateSocialAdCampaignBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSocialAdCampaignMutationOptions(options));
+    }
+
+export const getCreateSocialAdCampaignActionUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/ad-campaigns/${id}/actions`
+}
+
+/**
+ * @summary Request a maker-checker-approved pause, resume, budget update or end
+ */
+export const createSocialAdCampaignAction = async (id: string,
+    createSocialAdActionBody: CreateSocialAdActionBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialAdOperation> => {
+
+  return customFetch<SocialAdOperation>(getCreateSocialAdCampaignActionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSocialAdActionBody)
+  }
+);}
+
+
+
+
+
+export const getCreateSocialAdCampaignActionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialAdCampaignAction>>, TError,{id: string;data: BodyType<CreateSocialAdActionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSocialAdCampaignAction>>, TError,{id: string;data: BodyType<CreateSocialAdActionBody>}, TContext> => {
+
+const mutationKey = ['createSocialAdCampaignAction'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSocialAdCampaignAction>>, {id: string;data: BodyType<CreateSocialAdActionBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createSocialAdCampaignAction(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSocialAdCampaignActionMutationResult = NonNullable<Awaited<ReturnType<typeof createSocialAdCampaignAction>>>
+    export type CreateSocialAdCampaignActionMutationBody = BodyType<CreateSocialAdActionBody>
+    export type CreateSocialAdCampaignActionMutationError = ErrorType<void>
+
+    /**
+ * @summary Request a maker-checker-approved pause, resume, budget update or end
+ */
+export const useCreateSocialAdCampaignAction = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSocialAdCampaignAction>>, TError,{id: string;data: BodyType<CreateSocialAdActionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSocialAdCampaignAction>>,
+        TError,
+        {id: string;data: BodyType<CreateSocialAdActionBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSocialAdCampaignActionMutationOptions(options));
+    }
+
+export const getReviewSocialAdOperationUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/ad-operations/${id}/review`
+}
+
+/**
+ * @summary Independently approve or reject an advertising operation
+ */
+export const reviewSocialAdOperation = async (id: string,
+    reviewSocialContentBriefBody: ReviewSocialContentBriefBody, options?: Parameters<typeof customFetch>[1]): Promise<SocialAdOperationReviewResult> => {
+
+  return customFetch<SocialAdOperationReviewResult>(getReviewSocialAdOperationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewSocialContentBriefBody)
+  }
+);}
+
+
+
+
+
+export const getReviewSocialAdOperationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewSocialAdOperation>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewSocialAdOperation>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext> => {
+
+const mutationKey = ['reviewSocialAdOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewSocialAdOperation>>, {id: string;data: BodyType<ReviewSocialContentBriefBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewSocialAdOperation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewSocialAdOperationMutationResult = NonNullable<Awaited<ReturnType<typeof reviewSocialAdOperation>>>
+    export type ReviewSocialAdOperationMutationBody = BodyType<ReviewSocialContentBriefBody>
+    export type ReviewSocialAdOperationMutationError = ErrorType<void>
+
+    /**
+ * @summary Independently approve or reject an advertising operation
+ */
+export const useReviewSocialAdOperation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewSocialAdOperation>>, TError,{id: string;data: BodyType<ReviewSocialContentBriefBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewSocialAdOperation>>,
+        TError,
+        {id: string;data: BodyType<ReviewSocialContentBriefBody>},
+        TContext
+      > => {
+      return useMutation(getReviewSocialAdOperationMutationOptions(options));
+    }
+
+export const getCancelSocialAdOperationUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/ad-operations/${id}/cancel`
+}
+
+/**
+ * @summary Cancel an advertising operation before execution starts
+ */
+export const cancelSocialAdOperation = async (id: string,
+    submitSocialOperationBody: SubmitSocialOperationBody, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getCancelSocialAdOperationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submitSocialOperationBody)
+  }
+);}
+
+
+
+
+
+export const getCancelSocialAdOperationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSocialAdOperation>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelSocialAdOperation>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext> => {
+
+const mutationKey = ['cancelSocialAdOperation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelSocialAdOperation>>, {id: string;data: BodyType<SubmitSocialOperationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  cancelSocialAdOperation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelSocialAdOperationMutationResult = NonNullable<Awaited<ReturnType<typeof cancelSocialAdOperation>>>
+    export type CancelSocialAdOperationMutationBody = BodyType<SubmitSocialOperationBody>
+    export type CancelSocialAdOperationMutationError = ErrorType<void>
+
+    /**
+ * @summary Cancel an advertising operation before execution starts
+ */
+export const useCancelSocialAdOperation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelSocialAdOperation>>, TError,{id: string;data: BodyType<SubmitSocialOperationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelSocialAdOperation>>,
+        TError,
+        {id: string;data: BodyType<SubmitSocialOperationBody>},
+        TContext
+      > => {
+      return useMutation(getCancelSocialAdOperationMutationOptions(options));
+    }
+
+export const getListSocialAdOperationAttemptsUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/ad-operations/${id}/attempts`
+}
+
+/**
+ * @summary List redacted provider execution attempts for an advertising operation
+ */
+export const listSocialAdOperationAttempts = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ListSocialAdOperationAttempts200> => {
+
+  return customFetch<ListSocialAdOperationAttempts200>(getListSocialAdOperationAttemptsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSocialAdOperationAttemptsQueryKey = (id: string,) => {
+    return [
+    `/api/social/ad-operations/${id}/attempts`
+    ] as const;
+    }
+
+
+export const getListSocialAdOperationAttemptsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialAdOperationAttempts>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialAdOperationAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSocialAdOperationAttemptsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSocialAdOperationAttempts>>> = ({ signal }) => listSocialAdOperationAttempts(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSocialAdOperationAttempts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSocialAdOperationAttemptsQueryResult = NonNullable<Awaited<ReturnType<typeof listSocialAdOperationAttempts>>>
+export type ListSocialAdOperationAttemptsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List redacted provider execution attempts for an advertising operation
+ */
+
+export function useListSocialAdOperationAttempts<TData = Awaited<ReturnType<typeof listSocialAdOperationAttempts>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialAdOperationAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSocialAdOperationAttemptsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getListSocialAccountsUrl = () => {
 
 
@@ -13270,566 +13719,11 @@ export const listSocialPublicationAttempts = async (id: string, options?: Parame
 
 
 
-export const getListSocialAdCampaignsUrl = (
-  params?: ListSocialAdCampaignsParams,
-) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : String(value));
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0
-    ? `/api/social/ad-campaigns?${stringifiedParams}`
-    : `/api/social/ad-campaigns`;
-};
-
-/**
- * @summary List approval-gated advertising campaigns without provider identifiers
- */
-export const listSocialAdCampaigns = async (
-  params?: ListSocialAdCampaignsParams,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<SocialAdCampaignListResponse> => {
-  return customFetch<SocialAdCampaignListResponse>(
-    getListSocialAdCampaignsUrl(params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
-};
-
-export const getListSocialAdCampaignsQueryKey = (
-  params?: ListSocialAdCampaignsParams,
-) => {
-  return [`/api/social/ad-campaigns`, ...(params ? [params] : [])] as const;
-};
-
-export const getListSocialAdCampaignsQueryOptions = <
-  TData = Awaited<ReturnType<typeof listSocialAdCampaigns>>,
-  TError = ErrorType<void>,
->(
-  params?: ListSocialAdCampaignsParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listSocialAdCampaigns>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey =
-    queryOptions?.queryKey ?? getListSocialAdCampaignsQueryKey(params);
-
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof listSocialAdCampaigns>>
-  > = ({ signal }) =>
-    listSocialAdCampaigns(params, { signal, ...requestOptions });
-
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof listSocialAdCampaigns>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type ListSocialAdCampaignsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof listSocialAdCampaigns>>
->;
-export type ListSocialAdCampaignsQueryError = ErrorType<void>;
-
-/**
- * @summary List approval-gated advertising campaigns without provider identifiers
- */
-
-export function useListSocialAdCampaigns<
-  TData = Awaited<ReturnType<typeof listSocialAdCampaigns>>,
-  TError = ErrorType<void>,
->(
-  params?: ListSocialAdCampaignsParams,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listSocialAdCampaigns>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListSocialAdCampaignsQueryOptions(params, options);
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-export const getCreateSocialAdCampaignUrl = () => {
-  return `/api/social/ad-campaigns`;
-};
-
-/**
- * @summary Create an approval-pending campaign that providers must provision paused
- */
-export const createSocialAdCampaign = async (
-  createSocialAdCampaignBody: CreateSocialAdCampaignBody,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<SocialAdCampaign> => {
-  return customFetch<SocialAdCampaign>(getCreateSocialAdCampaignUrl(), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(createSocialAdCampaignBody),
-  });
-};
-
-export const getCreateSocialAdCampaignMutationOptions = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createSocialAdCampaign>>,
-    TError,
-    { data: BodyType<CreateSocialAdCampaignBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof createSocialAdCampaign>>,
-  TError,
-  { data: BodyType<CreateSocialAdCampaignBody> },
-  TContext
-> => {
-  const mutationKey = ["createSocialAdCampaign"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof createSocialAdCampaign>>,
-    { data: BodyType<CreateSocialAdCampaignBody> }
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return createSocialAdCampaign(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type CreateSocialAdCampaignMutationResult = NonNullable<
-  Awaited<ReturnType<typeof createSocialAdCampaign>>
->;
-export type CreateSocialAdCampaignMutationBody =
-  BodyType<CreateSocialAdCampaignBody>;
-export type CreateSocialAdCampaignMutationError = ErrorType<void>;
-
-/**
- * @summary Create an approval-pending campaign that providers must provision paused
- */
-export const useCreateSocialAdCampaign = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createSocialAdCampaign>>,
-    TError,
-    { data: BodyType<CreateSocialAdCampaignBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof createSocialAdCampaign>>,
-  TError,
-  { data: BodyType<CreateSocialAdCampaignBody> },
-  TContext
-> => {
-  return useMutation(getCreateSocialAdCampaignMutationOptions(options));
-};
-
-export const getCreateSocialAdCampaignActionUrl = (id: string) => {
-  return `/api/social/ad-campaigns/${id}/actions`;
-};
-
-/**
- * @summary Request a maker-checker-approved pause, resume, budget update or end
- */
-export const createSocialAdCampaignAction = async (
-  id: string,
-  createSocialAdActionBody: CreateSocialAdActionBody,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<SocialAdOperation> => {
-  return customFetch<SocialAdOperation>(
-    getCreateSocialAdCampaignActionUrl(id),
-    {
-      ...options,
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...options?.headers },
-      body: JSON.stringify(createSocialAdActionBody),
-    },
-  );
-};
-
-export const getCreateSocialAdCampaignActionMutationOptions = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createSocialAdCampaignAction>>,
-    TError,
-    { id: string; data: BodyType<CreateSocialAdActionBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof createSocialAdCampaignAction>>,
-  TError,
-  { id: string; data: BodyType<CreateSocialAdActionBody> },
-  TContext
-> => {
-  const mutationKey = ["createSocialAdCampaignAction"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof createSocialAdCampaignAction>>,
-    { id: string; data: BodyType<CreateSocialAdActionBody> }
-  > = (props) => {
-    const { id, data } = props ?? {};
-
-    return createSocialAdCampaignAction(id, data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type CreateSocialAdCampaignActionMutationResult = NonNullable<
-  Awaited<ReturnType<typeof createSocialAdCampaignAction>>
->;
-export type CreateSocialAdCampaignActionMutationBody =
-  BodyType<CreateSocialAdActionBody>;
-export type CreateSocialAdCampaignActionMutationError = ErrorType<void>;
-
-/**
- * @summary Request a maker-checker-approved pause, resume, budget update or end
- */
-export const useCreateSocialAdCampaignAction = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof createSocialAdCampaignAction>>,
-    TError,
-    { id: string; data: BodyType<CreateSocialAdActionBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof createSocialAdCampaignAction>>,
-  TError,
-  { id: string; data: BodyType<CreateSocialAdActionBody> },
-  TContext
-> => {
-  return useMutation(getCreateSocialAdCampaignActionMutationOptions(options));
-};
-
-export const getReviewSocialAdOperationUrl = (id: string) => {
-  return `/api/social/ad-operations/${id}/review`;
-};
-
-/**
- * @summary Independently approve or reject an advertising operation
- */
-export const reviewSocialAdOperation = async (
-  id: string,
-  reviewSocialContentBriefBody: ReviewSocialContentBriefBody,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<SocialAdOperationReviewResult> => {
-  return customFetch<SocialAdOperationReviewResult>(
-    getReviewSocialAdOperationUrl(id),
-    {
-      ...options,
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...options?.headers },
-      body: JSON.stringify(reviewSocialContentBriefBody),
-    },
-  );
-};
-
-export const getReviewSocialAdOperationMutationOptions = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof reviewSocialAdOperation>>,
-    TError,
-    { id: string; data: BodyType<ReviewSocialContentBriefBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof reviewSocialAdOperation>>,
-  TError,
-  { id: string; data: BodyType<ReviewSocialContentBriefBody> },
-  TContext
-> => {
-  const mutationKey = ["reviewSocialAdOperation"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof reviewSocialAdOperation>>,
-    { id: string; data: BodyType<ReviewSocialContentBriefBody> }
-  > = (props) => {
-    const { id, data } = props ?? {};
-
-    return reviewSocialAdOperation(id, data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type ReviewSocialAdOperationMutationResult = NonNullable<
-  Awaited<ReturnType<typeof reviewSocialAdOperation>>
->;
-export type ReviewSocialAdOperationMutationBody =
-  BodyType<ReviewSocialContentBriefBody>;
-export type ReviewSocialAdOperationMutationError = ErrorType<void>;
-
-/**
- * @summary Independently approve or reject an advertising operation
- */
-export const useReviewSocialAdOperation = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof reviewSocialAdOperation>>,
-    TError,
-    { id: string; data: BodyType<ReviewSocialContentBriefBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof reviewSocialAdOperation>>,
-  TError,
-  { id: string; data: BodyType<ReviewSocialContentBriefBody> },
-  TContext
-> => {
-  return useMutation(getReviewSocialAdOperationMutationOptions(options));
-};
-
-export const getCancelSocialAdOperationUrl = (id: string) => {
-  return `/api/social/ad-operations/${id}/cancel`;
-};
-
-/**
- * @summary Cancel an advertising operation before execution starts
- */
-export const cancelSocialAdOperation = async (
-  id: string,
-  submitSocialOperationBody: SubmitSocialOperationBody,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<void> => {
-  return customFetch<void>(getCancelSocialAdOperationUrl(id), {
-    ...options,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(submitSocialOperationBody),
-  });
-};
-
-export const getCancelSocialAdOperationMutationOptions = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof cancelSocialAdOperation>>,
-    TError,
-    { id: string; data: BodyType<SubmitSocialOperationBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof cancelSocialAdOperation>>,
-  TError,
-  { id: string; data: BodyType<SubmitSocialOperationBody> },
-  TContext
-> => {
-  const mutationKey = ["cancelSocialAdOperation"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof cancelSocialAdOperation>>,
-    { id: string; data: BodyType<SubmitSocialOperationBody> }
-  > = (props) => {
-    const { id, data } = props ?? {};
-
-    return cancelSocialAdOperation(id, data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type CancelSocialAdOperationMutationResult = NonNullable<
-  Awaited<ReturnType<typeof cancelSocialAdOperation>>
->;
-export type CancelSocialAdOperationMutationBody =
-  BodyType<SubmitSocialOperationBody>;
-export type CancelSocialAdOperationMutationError = ErrorType<void>;
-
-/**
- * @summary Cancel an advertising operation before execution starts
- */
-export const useCancelSocialAdOperation = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof cancelSocialAdOperation>>,
-    TError,
-    { id: string; data: BodyType<SubmitSocialOperationBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof cancelSocialAdOperation>>,
-  TError,
-  { id: string; data: BodyType<SubmitSocialOperationBody> },
-  TContext
-> => {
-  return useMutation(getCancelSocialAdOperationMutationOptions(options));
-};
-
-export const getListSocialAdOperationAttemptsUrl = (id: string) => {
-  return `/api/social/ad-operations/${id}/attempts`;
-};
-
-/**
- * @summary List redacted provider execution attempts for an advertising operation
- */
-export const listSocialAdOperationAttempts = async (
-  id: string,
-  options?: Parameters<typeof customFetch>[1],
-): Promise<ListSocialAdOperationAttempts200> => {
-  return customFetch<ListSocialAdOperationAttempts200>(
-    getListSocialAdOperationAttemptsUrl(id),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
-};
-
-export const getListSocialAdOperationAttemptsQueryKey = (id: string) => {
-  return [`/api/social/ad-operations/${id}/attempts`] as const;
-};
-
-export const getListSocialAdOperationAttemptsQueryOptions = <
-  TData = Awaited<ReturnType<typeof listSocialAdOperationAttempts>>,
-  TError = ErrorType<void>,
->(
-  id: string,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listSocialAdOperationAttempts>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey =
-    queryOptions?.queryKey ?? getListSocialAdOperationAttemptsQueryKey(id);
-
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof listSocialAdOperationAttempts>>
-  > = ({ signal }) =>
-    listSocialAdOperationAttempts(id, { signal, ...requestOptions });
-
-  return {
-    queryKey,
-    queryFn,
-    enabled: id !== null && id !== undefined,
-    ...queryOptions,
-  } as UseQueryOptions<
-    Awaited<ReturnType<typeof listSocialAdOperationAttempts>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
-
-export type ListSocialAdOperationAttemptsQueryResult = NonNullable<
-  Awaited<ReturnType<typeof listSocialAdOperationAttempts>>
->;
-export type ListSocialAdOperationAttemptsQueryError = ErrorType<void>;
-
-/**
- * @summary List redacted provider execution attempts for an advertising operation
- */
-
-export function useListSocialAdOperationAttempts<
-  TData = Awaited<ReturnType<typeof listSocialAdOperationAttempts>>,
-  TError = ErrorType<void>,
->(
-  id: string,
-  options?: {
-    query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listSocialAdOperationAttempts>>,
-      TError,
-      TData
-    >;
-    request?: SecondParameter<typeof customFetch>;
-  },
-): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListSocialAdOperationAttemptsQueryOptions(
-    id,
-    options,
-  );
-
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
 export const getListSocialPublicationAttemptsQueryKey = (id: string,) => {
-  return [
+    return [
     `/api/social/publications/${id}/attempts`
-  ] as const;
-}
+    ] as const;
+    }
 
 
 export const getListSocialPublicationAttemptsQueryOptions = <TData = Awaited<ReturnType<typeof listSocialPublicationAttempts>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSocialPublicationAttempts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}

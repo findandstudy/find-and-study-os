@@ -610,7 +610,8 @@
     "ourServices": "Xizmatlar",
     "studentBlog": "Name",
     "contactTitle": "Aloqa",
-    "allRightsReserved": "Hamma hukuklar namoyishi."
+    "allRightsReserved": "Hamma hukuklar namoyishi.",
+    "becomePartner": "Hamkor bo‘ling"
   },
   "common": {
     "latinOnlyName": "Nomlari faqat латын harflaridan foydalanish kerak. Iltimos launcha harfli belgini (e.g, Араб) olib tashlashdan foydalaning.",
@@ -5049,7 +5050,7 @@
     "bulkDeleteFailedDesc": "{failed} of {total} could not be deleted. They may be in use.",
     "uniTypePublic": "Ochiq",
     "importCreatedUniversities": "{n} new universities were created: {names}",
-    "autoTranslationQueued": "Inglizcha manba saqlandi, va 15 tarjima bajarildi.",
+    "autoTranslationQueued": "Inglizcha manba saqlandi, va 22 tarjima bajarildi.",
     "translationsQueued": "Dasturning tarjimalari navbatda turildi.",
     "failedTranslationsQueued": "{n} failed translations were queued again.",
     "retryFailedTranslations": "@ info",

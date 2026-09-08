@@ -39,7 +39,7 @@ try {
   const ledger = await client.query(
     "SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations",
   );
-  assert.equal(ledger.rows[0]?.count, 108);
+  assert.equal(ledger.rows[0]?.count, 109);
 
   const indexResult = await client.query<{ count: number }>(
     `
@@ -141,7 +141,7 @@ try {
 
   await client.query("COMMIT");
   console.log(
-    `[operations-read-model] PASS ledger=108 indexes=13 visible=${first.summary.total} page=${first.items.length}`,
+    `[operations-read-model] PASS ledger=109 indexes=13 visible=${first.summary.total} page=${first.items.length}`,
   );
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);

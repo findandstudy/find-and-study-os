@@ -757,6 +757,13 @@
       "when": 1790409600000,
       "tag": "0107_program_content_translations",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1790496000000,
+      "tag": "0108_expand_system_and_program_locales",
+      "breakpoints": true
     }
   ]
 }

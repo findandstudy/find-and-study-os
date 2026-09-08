@@ -13,6 +13,7 @@ import {
   parseProgramTranslation,
 } from "../lib/programTranslationContract";
 import {
+  reconcileMissingProgramTranslations,
   requeueAllFailedProgramTranslations,
   requeueProgramTranslations,
 } from "../lib/programTranslationQueue";
@@ -568,6 +569,26 @@ router.post("/programs/translations/retry-failed", requireAuth, requireRole(...M
   const queued = await requeueAllFailedProgramTranslations();
   await logAudit(req.user!.id, "program_translations.requeue_failed", "program", undefined, { queued }, req.ip);
   res.json({ queued });
+});
+
+router.post("/programs/translations/reconcile", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
+  const afterProgramId = Number(req.body?.afterProgramId ?? 0);
+  const limit = Number(req.body?.limit ?? 100);
+  if (!Number.isSafeInteger(afterProgramId) || afterProgramId < 0) {
+    res.status(400).json({ error: "afterProgramId must be a non-negative integer" });
+    return;
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+    res.status(400).json({ error: "limit must be an integer between 1 and 200" });
+    return;
+  }
+  const result = await reconcileMissingProgramTranslations(afterProgramId, limit);
+  await logAudit(req.user!.id, "program_translations.reconcile", "program", undefined, {
+    afterProgramId,
+    limit,
+    ...result,
+  }, req.ip);
+  res.json(result);
 });
 
 router.put("/programs/:id/translations/:locale", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {

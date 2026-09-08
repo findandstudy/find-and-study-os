@@ -610,7 +610,8 @@
     "ourServices": "خدماتنا",
     "studentBlog": "مدونة الطلاب",
     "contactTitle": "اتصل بنا",
-    "allRightsReserved": "جميع الحقوق محفوظة."
+    "allRightsReserved": "جميع الحقوق محفوظة.",
+    "becomePartner": "كن شريكًا"
   },
   "common": {
     "latinOnlyName": "Names must use Latin letters only. Please remove non-Latin characters (e.g. Arabic, Cyrillic).",
@@ -5109,7 +5110,7 @@
     "bulkDeleteFailedDesc": "تعذّر حذف {failed} من أصل {total}. قد تكون قيد الاستخدام.",
     "uniTypePublic": "حكومية",
     "importCreatedUniversities": "تم إنشاء {n} جامعة جديدة: {names}",
-    "autoTranslationQueued": "تم حفظ المصدر الإنجليزي وإضافة 15 ترجمة إلى قائمة الانتظار تلقائيًا.",
+    "autoTranslationQueued": "تم حفظ المصدر الإنجليزي وإضافة 22 ترجمة إلى قائمة الانتظار تلقائيًا.",
     "translationsQueued": "تمت إعادة إضافة ترجمات البرنامج إلى قائمة الانتظار.",
     "failedTranslationsQueued": "تمت إعادة إضافة {n} ترجمة فاشلة إلى قائمة الانتظار.",
     "retryFailedTranslations": "إعادة محاولة الترجمات الفاشلة",

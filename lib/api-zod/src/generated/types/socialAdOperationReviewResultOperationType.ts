@@ -6,13 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SocialAdOperationReviewResultOperationType =
-  (typeof SocialAdOperationReviewResultOperationType)[keyof typeof SocialAdOperationReviewResultOperationType];
+export type SocialAdOperationReviewResultOperationType = typeof SocialAdOperationReviewResultOperationType[keyof typeof SocialAdOperationReviewResultOperationType];
+
 
 export const SocialAdOperationReviewResultOperationType = {
-  CREATE: "CREATE",
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  CREATE: 'CREATE',
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;

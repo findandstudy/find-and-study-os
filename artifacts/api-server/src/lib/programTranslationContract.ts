@@ -2,7 +2,8 @@ export const PROGRAM_SOURCE_LOCALE = "en" as const;
 
 export const PROGRAM_TARGET_LOCALES = [
   "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id",
-  "ur", "tk", "ky", "kk", "uz", "tg",
+  "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+  "ko", "uk", "it",
 ] as const;
 
 export const PROGRAM_SUPPORTED_LOCALES = [PROGRAM_SOURCE_LOCALE, ...PROGRAM_TARGET_LOCALES] as const;
@@ -27,6 +28,13 @@ export const PROGRAM_LOCALE_NAMES: Record<ProgramSupportedLocale, string> = {
   kk: "Kazakh (Қазақша)",
   uz: "Uzbek Latin (Oʻzbekcha)",
   tg: "Tajik (Тоҷикӣ)",
+  bn: "Bengali (বাংলা)",
+  pt: "Portuguese (Português)",
+  ne: "Nepali (नेपाली)",
+  vi: "Vietnamese (Tiếng Việt)",
+  ko: "Korean (한국어)",
+  uk: "Ukrainian (Українська)",
+  it: "Italian (Italiano)",
 };
 
 export const PROGRAM_TRANSLATABLE_FIELDS = [

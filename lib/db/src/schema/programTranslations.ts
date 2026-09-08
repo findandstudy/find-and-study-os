@@ -53,7 +53,7 @@ export const programTranslationsTable = pgTable(
     index("program_translations_locale_name_idx").on(table.locale, table.name),
     check(
       "program_translations_locale_chk",
-      sql`${table.locale} IN ('tr','ar','fr','ru','fa','zh','hi','es','id','ur','tk','ky','kk','uz','tg')`,
+      sql`${table.locale} IN ('tr','ar','fr','ru','fa','zh','hi','es','id','ur','tk','ky','kk','uz','tg','bn','pt','ne','vi','ko','uk','it')`,
     ),
     check(
       "program_translations_status_chk",

@@ -6,12 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CreateSocialAdActionBodyAction =
-  (typeof CreateSocialAdActionBodyAction)[keyof typeof CreateSocialAdActionBodyAction];
+export type CreateSocialAdActionBodyAction = typeof CreateSocialAdActionBodyAction[keyof typeof CreateSocialAdActionBodyAction];
+
 
 export const CreateSocialAdActionBodyAction = {
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;

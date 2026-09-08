@@ -5,7 +5,7 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
-import type { SocialAdOperationAttempt } from "./socialAdOperationAttempt";
+import type { SocialAdOperationAttempt } from './socialAdOperationAttempt';
 
 export type ListSocialAdOperationAttempts200 = {
   /** @maxItems 50 */

@@ -133,6 +133,13 @@ const SUPPORTED_LANGUAGES: BotLanguage[] = [
   "kk",
   "uz",
   "tg",
+  "bn",
+  "pt",
+  "ne",
+  "vi",
+  "ko",
+  "uk",
+  "it",
 ];
 
 export const DEFAULT_PROGRAM_SCOPE: ProgramScope = {
@@ -193,6 +200,13 @@ export const DEFAULT_AI_AGENT_CONFIG: AiAgentConfig = {
     kk: "Біздің брондау тобымыз бұл өтінішті өзіне алып, жақын арада сізбен байланысады.",
     uz: "Bron qilish jamoamiz bu soʻrovni qabul qiladi va tez orada siz bilan bogʻlanadi.",
     tg: "Дастаи фармоиши мо ин дархостро баррасӣ карда, ба зудӣ бо шумо тамос мегирад.",
+    bn: "আমাদের রিজার্ভেশন টিম এখন থেকে বিষয়টি দেখবে এবং শিগগিরই আপনার সঙ্গে যোগাযোগ করবে।",
+    pt: "A nossa equipa de reservas tratará deste pedido e entrará em contacto consigo em breve.",
+    ne: "हाम्रो आरक्षण टोलीले अब यो अनुरोध सम्हाल्नेछ र छिट्टै तपाईंलाई सम्पर्क गर्नेछ।",
+    vi: "Đội ngũ tư vấn của chúng tôi sẽ tiếp nhận yêu cầu này và sớm liên hệ với bạn.",
+    ko: "예약 담당 팀이 이 요청을 이어받아 곧 연락드리겠습니다.",
+    uk: "Наша команда з бронювання опрацює цей запит і незабаром зв’яжеться з вами.",
+    it: "Il nostro team prenotazioni prenderà in carico la richiesta e ti contatterà a breve.",
   },
   languages: [...SUPPORTED_LANGUAGES],
   escalationKeywords: DEFAULT_ESCALATION_KEYWORDS,
@@ -237,6 +251,13 @@ const handoffMessagesSchema = z.object({
   kk: z.string().max(2000),
   uz: z.string().max(2000),
   tg: z.string().max(2000),
+  bn: z.string().max(2000),
+  pt: z.string().max(2000),
+  ne: z.string().max(2000),
+  vi: z.string().max(2000),
+  ko: z.string().max(2000),
+  uk: z.string().max(2000),
+  it: z.string().max(2000),
 });
 
 const qualityConfigSchema = z.object({
@@ -301,7 +322,11 @@ export const aiAgentConfigSchema = z.object({
   maxConsecutiveReplies: z.number().int().min(0).max(100),
   handoffMessage: z.string().max(2000),
   handoffMessages: handoffMessagesSchema,
-  languages: z.array(z.enum(["tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id", "ur", "tk", "ky", "kk", "uz", "tg"])).min(1),
+  languages: z.array(z.enum([
+    "tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id",
+    "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+    "ko", "uk", "it",
+  ])).min(1),
   escalationKeywords: escalationKeywordsSchema,
   knowledgeBase: z.string().min(1).max(200000),
   programScope: programScopeSchema,

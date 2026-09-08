@@ -6,13 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CreateSocialAdCampaignBodyObjective =
-  (typeof CreateSocialAdCampaignBodyObjective)[keyof typeof CreateSocialAdCampaignBodyObjective];
+export type CreateSocialAdCampaignBodyObjective = typeof CreateSocialAdCampaignBodyObjective[keyof typeof CreateSocialAdCampaignBodyObjective];
+
 
 export const CreateSocialAdCampaignBodyObjective = {
-  AWARENESS: "AWARENESS",
-  TRAFFIC: "TRAFFIC",
-  LEADS: "LEADS",
-  CONVERSIONS: "CONVERSIONS",
-  VIDEO_VIEWS: "VIDEO_VIEWS",
+  AWARENESS: 'AWARENESS',
+  TRAFFIC: 'TRAFFIC',
+  LEADS: 'LEADS',
+  CONVERSIONS: 'CONVERSIONS',
+  VIDEO_VIEWS: 'VIDEO_VIEWS',
 } as const;

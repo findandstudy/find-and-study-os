@@ -151,6 +151,24 @@ export async function requeueProgramTranslations(
   locales?: ProgramTargetLocale[],
 ): Promise<number> {
   const targetLocales = locales?.length ? locales : [...PROGRAM_TARGET_LOCALES];
+  // Existing catalogue rows predate the translation table. A retry must also
+  // create any missing target rows; this operation is bounded to one program
+  // and at most PROGRAM_TARGET_LOCALES.length inserts.
+  await pool.query(`
+    INSERT INTO program_translations (
+      program_id, locale, source_hash, status, next_attempt_at, updated_at
+    )
+    SELECT program.id, locale,
+           fas_program_content_source_hash(
+             program.name, program.description, program.field, program.duration,
+             program.intakes, program.requirements
+           ),
+           'queued', now(), now()
+      FROM programs program
+      CROSS JOIN unnest($2::text[]) AS locale
+     WHERE program.id = $1
+    ON CONFLICT (program_id, locale) DO NOTHING
+  `, [programId, targetLocales]);
   const result = await pool.query(`
     UPDATE program_translations
     SET status = CASE WHEN is_manual THEN 'stale_manual' ELSE 'queued' END,
@@ -166,6 +184,71 @@ export async function requeueProgramTranslations(
       AND status <> 'processing'
   `, [programId, targetLocales]);
   return result.rowCount || 0;
+}
+
+export type ProgramTranslationReconcileResult = {
+  scanned: number;
+  queued: number;
+  nextCursor: number;
+  hasMore: boolean;
+};
+
+/**
+ * Add missing translation jobs for historical programmes in a strictly
+ * cursor-bound batch. Callers must persist/use nextCursor; a migration or API
+ * request must never attempt an unbounded full-catalogue cross join.
+ */
+export async function reconcileMissingProgramTranslations(
+  afterProgramId: number,
+  limit: number,
+): Promise<ProgramTranslationReconcileResult> {
+  const result = await pool.query<{
+    scanned: number;
+    queued: number;
+    next_cursor: number;
+    has_more: boolean;
+  }>(`
+    WITH batch AS MATERIALIZED (
+      SELECT program.id, program.name, program.description, program.field,
+             program.duration, program.intakes, program.requirements
+        FROM programs program
+       WHERE program.id > $1
+       ORDER BY program.id
+       LIMIT $2
+    ), inserted AS (
+      INSERT INTO program_translations (
+        program_id, locale, source_hash, status, next_attempt_at, updated_at
+      )
+      SELECT batch.id, locale,
+             fas_program_content_source_hash(
+               batch.name, batch.description, batch.field, batch.duration,
+               batch.intakes, batch.requirements
+             ),
+             'queued', now(), now()
+        FROM batch
+        CROSS JOIN unnest($3::text[]) AS locale
+      ON CONFLICT (program_id, locale) DO NOTHING
+      RETURNING program_id
+    ), summary AS (
+      SELECT count(*)::int AS scanned,
+             coalesce(max(id), $1)::int AS next_cursor
+        FROM batch
+    )
+    SELECT summary.scanned,
+           (SELECT count(*)::int FROM inserted) AS queued,
+           summary.next_cursor,
+           EXISTS (
+             SELECT 1 FROM programs program WHERE program.id > summary.next_cursor
+           ) AS has_more
+      FROM summary
+  `, [afterProgramId, limit, [...PROGRAM_TARGET_LOCALES]]);
+  const row = result.rows[0];
+  return {
+    scanned: Number(row?.scanned ?? 0),
+    queued: Number(row?.queued ?? 0),
+    nextCursor: Number(row?.next_cursor ?? afterProgramId),
+    hasMore: Boolean(row?.has_more),
+  };
 }
 
 export async function requeueAllFailedProgramTranslations(): Promise<number> {

@@ -610,7 +610,8 @@
     "ourServices": "Hizmetlerimiz",
     "studentBlog": "Öğrenci Blogu",
     "contactTitle": "İletişim",
-    "allRightsReserved": "Tüm hakları saklıdır."
+    "allRightsReserved": "Tüm hakları saklıdır.",
+    "becomePartner": "İş Ortağımız Olun"
   },
   "common": {
     "latinOnlyName": "İsimler yalnızca Latin harfleri içermelidir. Lütfen Latin olmayan karakterleri (ör. Arapça, Kiril) kaldırın.",
@@ -4991,7 +4992,7 @@
     "bulkDeleteFailedDesc": "{total} öğeden {failed} tanesi silinemedi. Kullanımda olabilirler.",
     "uniTypePublic": "Devlet",
     "importCreatedUniversities": "{n} yeni üniversite oluşturuldu: {names}",
-    "autoTranslationQueued": "İngilizce kaynak kaydedildi ve 15 çeviri otomatik olarak sıraya alındı.",
+    "autoTranslationQueued": "İngilizce kaynak kaydedildi ve 22 çeviri otomatik olarak sıraya alındı.",
     "translationsQueued": "Program çevirileri yeniden sıraya alındı.",
     "failedTranslationsQueued": "Başarısız {n} çeviri yeniden sıraya alındı.",
     "retryFailedTranslations": "Başarısız çevirileri yeniden dene",

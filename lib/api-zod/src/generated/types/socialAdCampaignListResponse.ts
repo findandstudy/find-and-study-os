@@ -5,8 +5,8 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
-import type { SocialAdCampaign } from "./socialAdCampaign";
-import type { SocialAdvertisingGate } from "./socialAdvertisingGate";
+import type { SocialAdCampaign } from './socialAdCampaign';
+import type { SocialAdvertisingGate } from './socialAdvertisingGate';
 
 export interface SocialAdCampaignListResponse {
   data: SocialAdCampaign[];

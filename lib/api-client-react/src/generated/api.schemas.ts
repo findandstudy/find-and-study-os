@@ -2237,6 +2237,13 @@ export interface AiAgentHandoffMessages {
   kk: string;
   uz: string;
   tg: string;
+  bn: string;
+  pt: string;
+  ne: string;
+  vi: string;
+  ko: string;
+  uk: string;
+  it: string;
 }
 
 export type AiAgentConfigLanguagesItem = typeof AiAgentConfigLanguagesItem[keyof typeof AiAgentConfigLanguagesItem];
@@ -2246,12 +2253,12 @@ export const AiAgentConfigLanguagesItem = {
   tr: 'tr',
   en: 'en',
   ar: 'ar',
-  fa: 'fa',
   fr: 'fr',
-  es: 'es',
   ru: 'ru',
+  fa: 'fa',
   zh: 'zh',
   hi: 'hi',
+  es: 'es',
   id: 'id',
   ur: 'ur',
   tk: 'tk',
@@ -2259,6 +2266,13 @@ export const AiAgentConfigLanguagesItem = {
   kk: 'kk',
   uz: 'uz',
   tg: 'tg',
+  bn: 'bn',
+  pt: 'pt',
+  ne: 'ne',
+  vi: 'vi',
+  ko: 'ko',
+  uk: 'uk',
+  it: 'it',
 } as const;
 
 /**
@@ -2335,12 +2349,12 @@ export const AiAgentConfigUpdateLanguagesItem = {
   tr: 'tr',
   en: 'en',
   ar: 'ar',
-  fa: 'fa',
   fr: 'fr',
-  es: 'es',
   ru: 'ru',
+  fa: 'fa',
   zh: 'zh',
   hi: 'hi',
+  es: 'es',
   id: 'id',
   ur: 'ur',
   tk: 'tk',
@@ -2348,6 +2362,13 @@ export const AiAgentConfigUpdateLanguagesItem = {
   kk: 'kk',
   uz: 'uz',
   tg: 'tg',
+  bn: 'bn',
+  pt: 'pt',
+  ne: 'ne',
+  vi: 'vi',
+  ko: 'ko',
+  uk: 'uk',
+  it: 'it',
 } as const;
 
 /**
@@ -2376,12 +2397,12 @@ export const AiAgentTestRequestLanguage = {
   tr: 'tr',
   en: 'en',
   ar: 'ar',
-  fa: 'fa',
   fr: 'fr',
-  es: 'es',
   ru: 'ru',
+  fa: 'fa',
   zh: 'zh',
   hi: 'hi',
+  es: 'es',
   id: 'id',
   ur: 'ur',
   tk: 'tk',
@@ -2389,6 +2410,13 @@ export const AiAgentTestRequestLanguage = {
   kk: 'kk',
   uz: 'uz',
   tg: 'tg',
+  bn: 'bn',
+  pt: 'pt',
+  ne: 'ne',
+  vi: 'vi',
+  ko: 'ko',
+  uk: 'uk',
+  it: 'it',
 } as const;
 
 export type AiAgentTestRequestHistoryItemDirection = typeof AiAgentTestRequestHistoryItemDirection[keyof typeof AiAgentTestRequestHistoryItemDirection];
@@ -2417,12 +2445,12 @@ export const AiAgentTestResultLanguage = {
   tr: 'tr',
   en: 'en',
   ar: 'ar',
-  fa: 'fa',
   fr: 'fr',
-  es: 'es',
   ru: 'ru',
+  fa: 'fa',
   zh: 'zh',
   hi: 'hi',
+  es: 'es',
   id: 'id',
   ur: 'ur',
   tk: 'tk',
@@ -2430,6 +2458,13 @@ export const AiAgentTestResultLanguage = {
   kk: 'kk',
   uz: 'uz',
   tg: 'tg',
+  bn: 'bn',
+  pt: 'pt',
+  ne: 'ne',
+  vi: 'vi',
+  ko: 'ko',
+  uk: 'uk',
+  it: 'it',
 } as const;
 
 /**
@@ -3429,9 +3464,9 @@ export interface SocialAdvertisingGate {
   providerAdvertisingEnabled: boolean;
   allowedProviders: string[];
   /**
-   * @minimum 100
-   * @nullable
-   */
+     * @minimum 100
+     * @nullable
+     */
   maximumCampaignBudgetMinor: number | null;
   /** @nullable */
   reason: string | null;
@@ -3455,10 +3490,10 @@ export type SocialWorkerHealthKind = typeof SocialWorkerHealthKind[keyof typeof 
 
 
 export const SocialWorkerHealthKind = {
-  publication: "publication",
-  performance: "performance",
-  creative: "creative",
-  advertising: "advertising",
+  publication: 'publication',
+  performance: 'performance',
+  creative: 'creative',
+  advertising: 'advertising',
 } as const;
 
 export type SocialWorkerHealthStatus = typeof SocialWorkerHealthStatus[keyof typeof SocialWorkerHealthStatus];
@@ -3627,47 +3662,47 @@ export interface SocialOperationsOverview {
   advertisingGate: SocialAdvertisingGate;
   providerConnectionGate: SocialProviderConnectionGate;
   /**
-   * @minItems 4
-   * @maxItems 4
-   */
+     * @minItems 4
+     * @maxItems 4
+     */
   workerHealth: SocialWorkerHealth[];
 }
 
-export type SocialAdCampaignObjective =
-  (typeof SocialAdCampaignObjective)[keyof typeof SocialAdCampaignObjective];
+export type SocialAdCampaignObjective = typeof SocialAdCampaignObjective[keyof typeof SocialAdCampaignObjective];
+
 
 export const SocialAdCampaignObjective = {
-  AWARENESS: "AWARENESS",
-  TRAFFIC: "TRAFFIC",
-  LEADS: "LEADS",
-  CONVERSIONS: "CONVERSIONS",
-  VIDEO_VIEWS: "VIDEO_VIEWS",
+  AWARENESS: 'AWARENESS',
+  TRAFFIC: 'TRAFFIC',
+  LEADS: 'LEADS',
+  CONVERSIONS: 'CONVERSIONS',
+  VIDEO_VIEWS: 'VIDEO_VIEWS',
 } as const;
 
-export type SocialAdCampaignStatus =
-  (typeof SocialAdCampaignStatus)[keyof typeof SocialAdCampaignStatus];
+export type SocialAdCampaignStatus = typeof SocialAdCampaignStatus[keyof typeof SocialAdCampaignStatus];
+
 
 export const SocialAdCampaignStatus = {
-  PENDING_APPROVAL: "PENDING_APPROVAL",
-  APPROVED: "APPROVED",
-  PROVISIONING: "PROVISIONING",
-  PAUSED: "PAUSED",
-  ACTIVE: "ACTIVE",
-  COMPLETED: "COMPLETED",
-  REJECTED: "REJECTED",
-  FAILED: "FAILED",
-  CANCELED: "CANCELED",
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPROVED: 'APPROVED',
+  PROVISIONING: 'PROVISIONING',
+  PAUSED: 'PAUSED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  REJECTED: 'REJECTED',
+  FAILED: 'FAILED',
+  CANCELED: 'CANCELED',
 } as const;
 
-export type SocialAdCampaignLatestOperationType =
-  (typeof SocialAdCampaignLatestOperationType)[keyof typeof SocialAdCampaignLatestOperationType];
+export type SocialAdCampaignLatestOperationType = typeof SocialAdCampaignLatestOperationType[keyof typeof SocialAdCampaignLatestOperationType];
+
 
 export const SocialAdCampaignLatestOperationType = {
-  CREATE: "CREATE",
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  CREATE: 'CREATE',
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;
 
 export interface SocialAdCampaign {
@@ -3680,22 +3715,22 @@ export interface SocialAdCampaign {
   objective: SocialAdCampaignObjective;
   destination_url: string;
   /**
-   * @minItems 1
-   * @maxItems 25
-   * @items.pattern ^[A-Z]{2}$
-   */
+     * @minItems 1
+     * @maxItems 25
+     * @items.pattern ^[A-Z]{2}$
+     */
   country_codes: string[];
   /** @maxItems 20 */
   language_codes: string[];
   /**
-   * @minimum 18
-   * @maximum 65
-   */
+     * @minimum 18
+     * @maximum 65
+     */
   age_min: number;
   /**
-   * @minimum 18
-   * @maximum 65
-   */
+     * @minimum 18
+     * @maximum 65
+     */
   age_max: number;
   /** @pattern ^[A-Z]{3}$ */
   currency_code: string;
@@ -3713,123 +3748,123 @@ export interface SocialAdCampaign {
   latest_operation_status?: string;
   latest_operation_creator?: number;
   [key: string]: unknown;
-}
+ }
 
 export interface SocialAdCampaignListResponse {
   data: SocialAdCampaign[];
   advertisingGate: SocialAdvertisingGate;
 }
 
-export type CreateSocialAdCampaignBodyObjective =
-  (typeof CreateSocialAdCampaignBodyObjective)[keyof typeof CreateSocialAdCampaignBodyObjective];
+export type CreateSocialAdCampaignBodyObjective = typeof CreateSocialAdCampaignBodyObjective[keyof typeof CreateSocialAdCampaignBodyObjective];
+
 
 export const CreateSocialAdCampaignBodyObjective = {
-  AWARENESS: "AWARENESS",
-  TRAFFIC: "TRAFFIC",
-  LEADS: "LEADS",
-  CONVERSIONS: "CONVERSIONS",
-  VIDEO_VIEWS: "VIDEO_VIEWS",
+  AWARENESS: 'AWARENESS',
+  TRAFFIC: 'TRAFFIC',
+  LEADS: 'LEADS',
+  CONVERSIONS: 'CONVERSIONS',
+  VIDEO_VIEWS: 'VIDEO_VIEWS',
 } as const;
 
 export interface CreateSocialAdCampaignBody {
   /**
-   * @minLength 8
-   * @maxLength 160
-   * @pattern ^[A-Za-z0-9._:-]+$
-   */
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
   requestKey: string;
   accountId: string;
   briefId: string;
   /**
-   * @minLength 1
-   * @maxLength 160
-   */
+     * @minLength 1
+     * @maxLength 160
+     */
   name: string;
   objective: CreateSocialAdCampaignBodyObjective;
   /** @maxLength 2048 */
   destinationUrl: string;
   /**
-   * @minItems 1
-   * @maxItems 25
-   */
+     * @minItems 1
+     * @maxItems 25
+     */
   countryCodes: string[];
   /** @maxItems 20 */
   languageCodes: string[];
   /**
-   * @minimum 18
-   * @maximum 65
-   */
+     * @minimum 18
+     * @maximum 65
+     */
   ageMin: number;
   /**
-   * @minimum 18
-   * @maximum 65
-   */
+     * @minimum 18
+     * @maximum 65
+     */
   ageMax: number;
   /** @pattern ^[A-Z]{3}$ */
   currencyCode: string;
   /**
-   * @minimum 1
-   * @maximum 1000000000000
-   */
+     * @minimum 1
+     * @maximum 1000000000000
+     */
   dailyBudgetMinor: number;
   /**
-   * @minimum 1
-   * @maximum 1000000000000
-   */
+     * @minimum 1
+     * @maximum 1000000000000
+     */
   lifetimeBudgetMinor: number;
   startsAt: string;
   endsAt: string;
   /**
-   * @minimum 1
-   * @maximum 8
-   */
+     * @minimum 1
+     * @maximum 8
+     */
   maxAttempts?: number;
 }
 
-export type CreateSocialAdActionBodyAction =
-  (typeof CreateSocialAdActionBodyAction)[keyof typeof CreateSocialAdActionBodyAction];
+export type CreateSocialAdActionBodyAction = typeof CreateSocialAdActionBodyAction[keyof typeof CreateSocialAdActionBodyAction];
+
 
 export const CreateSocialAdActionBodyAction = {
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;
 
 export interface CreateSocialAdActionBody {
   /**
-   * @minLength 8
-   * @maxLength 160
-   * @pattern ^[A-Za-z0-9._:-]+$
-   */
+     * @minLength 8
+     * @maxLength 160
+     * @pattern ^[A-Za-z0-9._:-]+$
+     */
   requestKey: string;
   action: CreateSocialAdActionBodyAction;
   /**
-   * @minimum 1
-   * @maximum 1000000000000
-   */
+     * @minimum 1
+     * @maximum 1000000000000
+     */
   dailyBudgetMinor?: number;
   /**
-   * @minimum 1
-   * @maximum 1000000000000
-   */
+     * @minimum 1
+     * @maximum 1000000000000
+     */
   lifetimeBudgetMinor?: number;
   /**
-   * @minimum 1
-   * @maximum 8
-   */
+     * @minimum 1
+     * @maximum 8
+     */
   maxAttempts?: number;
 }
 
-export type SocialAdOperationOperationType =
-  (typeof SocialAdOperationOperationType)[keyof typeof SocialAdOperationOperationType];
+export type SocialAdOperationOperationType = typeof SocialAdOperationOperationType[keyof typeof SocialAdOperationOperationType];
+
 
 export const SocialAdOperationOperationType = {
-  CREATE: "CREATE",
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  CREATE: 'CREATE',
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;
 
 export interface SocialAdOperation {
@@ -3838,25 +3873,25 @@ export interface SocialAdOperation {
   operation_type: SocialAdOperationOperationType;
   status: string;
   [key: string]: unknown;
-}
+ }
 
-export type SocialAdOperationReviewResultOperationType =
-  (typeof SocialAdOperationReviewResultOperationType)[keyof typeof SocialAdOperationReviewResultOperationType];
+export type SocialAdOperationReviewResultOperationType = typeof SocialAdOperationReviewResultOperationType[keyof typeof SocialAdOperationReviewResultOperationType];
+
 
 export const SocialAdOperationReviewResultOperationType = {
-  CREATE: "CREATE",
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  CREATE: 'CREATE',
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;
 
-export type SocialAdOperationReviewResultStatus =
-  (typeof SocialAdOperationReviewResultStatus)[keyof typeof SocialAdOperationReviewResultStatus];
+export type SocialAdOperationReviewResultStatus = typeof SocialAdOperationReviewResultStatus[keyof typeof SocialAdOperationReviewResultStatus];
+
 
 export const SocialAdOperationReviewResultStatus = {
-  APPROVED: "APPROVED",
-  REJECTED: "REJECTED",
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
 } as const;
 
 export interface SocialAdOperationReviewResult {
@@ -3867,35 +3902,34 @@ export interface SocialAdOperationReviewResult {
   replay: boolean;
 }
 
-export type SocialAdOperationAttemptOutcome =
-  (typeof SocialAdOperationAttemptOutcome)[keyof typeof SocialAdOperationAttemptOutcome];
+export type SocialAdOperationAttemptOutcome = typeof SocialAdOperationAttemptOutcome[keyof typeof SocialAdOperationAttemptOutcome];
+
 
 export const SocialAdOperationAttemptOutcome = {
-  APPLIED: "APPLIED",
-  RETRY: "RETRY",
-  DEAD_LETTER: "DEAD_LETTER",
-  LEASE_EXPIRED: "LEASE_EXPIRED",
+  APPLIED: 'APPLIED',
+  RETRY: 'RETRY',
+  DEAD_LETTER: 'DEAD_LETTER',
+  LEASE_EXPIRED: 'LEASE_EXPIRED',
 } as const;
 
 /**
  * @nullable
  */
-export type SocialAdOperationAttemptProviderState =
-  | (typeof SocialAdOperationAttemptProviderState)[keyof typeof SocialAdOperationAttemptProviderState]
-  | null;
+export type SocialAdOperationAttemptProviderState = typeof SocialAdOperationAttemptProviderState[keyof typeof SocialAdOperationAttemptProviderState] | null;
+
 
 export const SocialAdOperationAttemptProviderState = {
-  PAUSED: "PAUSED",
-  ACTIVE: "ACTIVE",
-  COMPLETED: "COMPLETED",
+  PAUSED: 'PAUSED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
 } as const;
 
 export interface SocialAdOperationAttempt {
   id: string;
   /**
-   * @minimum 1
-   * @maximum 8
-   */
+     * @minimum 1
+     * @maximum 8
+     */
   attempt_number: number;
   worker_id: string;
   runtime_release_id: string;
@@ -3909,8 +3943,8 @@ export interface SocialAdOperationAttempt {
   created_at: string;
 }
 
-export type CreateSocialAccountBodyAccountKind =
-  (typeof CreateSocialAccountBodyAccountKind)[keyof typeof CreateSocialAccountBodyAccountKind];
+export type CreateSocialAccountBodyAccountKind = typeof CreateSocialAccountBodyAccountKind[keyof typeof CreateSocialAccountBodyAccountKind];
+
 
 export const CreateSocialAccountBodyAccountKind = {
   PROFILE: 'PROFILE',
@@ -4687,7 +4721,6 @@ search?: string;
 page?: number;
 limit?: number;
 };
-
 export type ListLeadsParams = {
 season?: string;
 status?: string;
@@ -4744,11 +4777,43 @@ export type ListProgramsParams = {
 universityId?: number;
 country?: string;
 language?: string;
-locale?: 'en' | 'tr' | 'ar' | 'fr' | 'ru' | 'fa' | 'zh' | 'hi' | 'es' | 'id' | 'ur' | 'tk' | 'ky' | 'kk' | 'uz' | 'tg';
+/**
+ * Requested programme-content locale; unpublished translations fall back to English.
+ */
+locale?: ListProgramsLocale;
 search?: string;
 page?: number;
 limit?: number;
 };
+
+export type ListProgramsLocale = typeof ListProgramsLocale[keyof typeof ListProgramsLocale];
+
+
+export const ListProgramsLocale = {
+  en: 'en',
+  tr: 'tr',
+  ar: 'ar',
+  fr: 'fr',
+  ru: 'ru',
+  fa: 'fa',
+  zh: 'zh',
+  hi: 'hi',
+  es: 'es',
+  id: 'id',
+  ur: 'ur',
+  tk: 'tk',
+  ky: 'ky',
+  kk: 'kk',
+  uz: 'uz',
+  tg: 'tg',
+  bn: 'bn',
+  pt: 'pt',
+  ne: 'ne',
+  vi: 'vi',
+  ko: 'ko',
+  uk: 'uk',
+  it: 'it',
+} as const;
 
 export type ListInvoicesParams = {
 studentId?: number;
@@ -5233,11 +5298,11 @@ export type ListSocialAccountIntegrations200 = {
 };
 
 export type ListSocialAdCampaignsParams = {
-  /**
-   * @minimum 1
-   * @maximum 100
-   */
-  limit?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
 };
 
 export type ListSocialAdOperationAttempts200 = {

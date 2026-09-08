@@ -6,12 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type AiAgentTestRequestLanguage = typeof AiAgentTestRequestLanguage[keyof typeof AiAgentTestRequestLanguage];
+export type ListProgramsLocale = typeof ListProgramsLocale[keyof typeof ListProgramsLocale];
 
 
-export const AiAgentTestRequestLanguage = {
-  tr: 'tr',
+export const ListProgramsLocale = {
   en: 'en',
+  tr: 'tr',
   ar: 'ar',
   fr: 'fr',
   ru: 'ru',

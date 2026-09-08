@@ -6,12 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SocialAdOperationAttemptOutcome =
-  (typeof SocialAdOperationAttemptOutcome)[keyof typeof SocialAdOperationAttemptOutcome];
+export type SocialAdOperationAttemptOutcome = typeof SocialAdOperationAttemptOutcome[keyof typeof SocialAdOperationAttemptOutcome];
+
 
 export const SocialAdOperationAttemptOutcome = {
-  APPLIED: "APPLIED",
-  RETRY: "RETRY",
-  DEAD_LETTER: "DEAD_LETTER",
-  LEASE_EXPIRED: "LEASE_EXPIRED",
+  APPLIED: 'APPLIED',
+  RETRY: 'RETRY',
+  DEAD_LETTER: 'DEAD_LETTER',
+  LEASE_EXPIRED: 'LEASE_EXPIRED',
 } as const;

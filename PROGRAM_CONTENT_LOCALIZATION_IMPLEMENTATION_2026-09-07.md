@@ -1,18 +1,20 @@
 # Program İçeriği Yerelleştirme — Uygulama Notu
 
-Tarih: 7 Eylül 2026
-Durum: Yerel uygulama ve doğrulama tamamlandı; staging/production değişmedi.
+Tarih: 8 Eylül 2026
+Durum: 23 dil genişletmesi yerelde uygulanıp doğrulandı; staging dağıtımı bekliyor, production değişmedi.
 
 ## Sonuç
 
-- Sistem arayüzü için kanonik dil kümesi 16 dile çıkarıldı: `en`, `tr`, `ar`, `fr`, `ru`, `fa`, `zh`, `hi`, `es`, `id`, `ur`, `tk`, `ky`, `kk`, `uz`, `tg`.
+- Sistem arayüzü için kanonik dil kümesi 23 dile çıkarıldı: `en`, `tr`, `ar`, `fr`, `ru`, `fa`, `zh`, `hi`, `es`, `id`, `ur`, `tk`, `ky`, `kk`, `uz`, `tg`, `bn`, `pt`, `ne`, `vi`, `ko`, `uk`, `it`.
 - Program adı, açıklaması, alanı, süresi, intake ve gereksinimleri için İngilizce tek kaynak kabul edilir.
-- Yeni program oluşturulduğunda veya kaynak alanlardan biri değiştiğinde diğer 15 dil için çeviri işleri veritabanında otomatik ve kalıcı olarak kuyruğa alınır.
+- Yeni program oluşturulduğunda veya kaynak alanlardan biri değiştiğinde diğer 22 dil için çeviri işleri veritabanında otomatik ve kalıcı olarak kuyruğa alınır.
 - Yalnız `published` durumundaki güncel çeviriler kullanıcıya gösterilir. Çeviri hazır değilse sistem güvenli biçimde İngilizce kaynağa döner ve bu durumu `fallbackUsed` ile belirtir.
 
 ## Veri ve işlem sözleşmesi
 
-`0107_program_content_translations.sql` migration'ı `program_translations` tablosunu, kuyruk durumlarını, iş lease'lerini, retry zamanlarını ve kaynak hash bağını oluşturur.
+`0107_program_content_translations.sql` migration'ı `program_translations` tablosunu, kuyruk durumlarını, iş lease'lerini, retry zamanlarını ve kaynak hash bağını oluşturur. Additive `0108_expand_system_and_program_locales.sql`, hedef kümesini 22 dile genişletir ve sistem dil ayarını 23 dile taşır.
+
+Eski katalog tek ve sınırsız bir migration sorgusuyla kuyruğa alınmaz. Yetkili uzlaştırma rotası program ID cursor'u ve en fazla 200 programlık batch ile eksik işleri oluşturur. Tek-program retry de eksik locale satırlarını önce idempotent biçimde yaratır.
 
 Durumlar:
 
@@ -37,32 +39,32 @@ Kaynak değişiklikleri aktif lease'i geçersizleştirir. Eski kaynağa göre d�
 ## Ürün yüzeyleri
 
 - Admin Katalog program formu İngilizce açıklamayı kabul eder.
-- Program satırında `x/15` çeviri kapsamı, dil/durum/hata/deneme ayrıntısı ve güvenli retry kontrolleri bulunur.
+- Program satırında `x/22` çeviri kapsamı, dil/durum/hata/deneme ayrıntısı ve güvenli retry kontrolleri bulunur.
 - Program import/export şablonunda `Description` alanı vardır.
 - Public Programs, Staff Course Finder ve AI bot program araması seçilen dili ister; güncel çeviri yoksa İngilizceyi kullanır.
 - API'deki `locale`, eğitim dili filtresi olan mevcut `language` parametresinden ayrıdır.
-- Sitemap 16 locale için hreflang üretir; Urduca da RTL dilidir.
+- Sitemap 23 locale için hreflang üretir; Arapça, Farsça ve Urduca RTL kalır.
 
 ## Staging aktivasyon kapısı
 
 Staging'e geçiş ayrı onayla şu sırada yapılmalıdır:
 
-1. Kod deploy edilir ve migration `0107` yalnız kanonik migrator ile uygulanır.
+1. Kod deploy edilir ve migration `0108` yalnız kanonik migrator ile uygulanır.
 2. Claude veya OpenAI entegrasyonu yönetim panelinden doğrulanır.
 3. Worker ayrı process olarak veya izin verilen background-job koordinatörü içinde önce concurrency `1` ile açılır.
-4. Bir sentetik programda 15/15 sonuç, fallback, kaynak güncellemesi ve stale-manual davranışı doğrulanır.
+4. Bir sentetik programda 22/22 sonuç, fallback, kaynak güncellemesi ve stale-manual davranışı doğrulanır.
 5. Kuyruk derinliği, hata kodları, retry ve sağlayıcı rate-limit'i gözlenir; sonra kontrollü artırılır.
 
 ## Kanıt
 
-- Migration ledger ve uygulanmış yerel DB: `108/108`
-- Program translation contract testleri: `6/6`
-- PostgreSQL tetikleyici/kuyruk testi: PASS (`15 locale`, lease invalidation, manual review, cascade)
-- i18n kontrolü: `16 language`, `5020` kullanılan anahtar, key ve placeholder parity PASS
+- Migration ledger yapısı: `109/109`
+- Program translation contract testleri: `7/7`
+- Disposable PostgreSQL tetikleyici/kuyruk testi: PASS (`22 locale`, lease invalidation, manual review, cascade)
+- i18n kontrolü: `23 language`, `5021` kullanılan anahtar, `6409` İngilizce anahtar; key ve placeholder parity PASS
 - Tam workspace typecheck: PASS
 - API production build: PASS
-- Edcons production build ve `16 × 6` sitemap: PASS
+- Edcons production build ve `23 × 6` sitemap: PASS
 
 ## Bilinen yayın öncesi kalite işi
 
-Yeni altı arayüz sözlüğü (`ur`, `tk`, `ky`, `kk`, `uz`, `tg`) yapısal olarak eksiksiz ve makine çevirisi başlangıç sürümüdür. Production'da dil kalitesi iddiası için native dil incelemesi yapılmalıdır. İmzalı e-posta şablonları halen beş dilde native metin taşır ve diğer dillerde güvenli İngilizce fallback kullanır; bu çalışma program içeriği otomasyonundan ayrıdır.
+Yeni arayüz sözlükleri (`ur`, `tk`, `ky`, `kk`, `uz`, `tg`, `bn`, `pt`, `ne`, `vi`, `ko`, `uk`, `it`) yapısal olarak eksiksiz ve makine çevirisi başlangıç sürümüdür. Bengalce ve Nepalce paketlerdeki ilk İngilizce kalıntılar ikinci kontrollü çeviri geçişiyle giderildi. Production'da dil kalitesi iddiası için yine de native dil incelemesi yapılmalıdır. İmzalı e-posta şablonları halen beş dilde native metin taşır ve diğer dillerde güvenli İngilizce fallback kullanır; bu çalışma program içeriği otomasyonundan ayrıdır.

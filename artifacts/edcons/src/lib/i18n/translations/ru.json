@@ -610,7 +610,8 @@
     "ourServices": "Наши услуги",
     "studentBlog": "Студенческий блог",
     "contactTitle": "Контакты",
-    "allRightsReserved": "Все права защищены."
+    "allRightsReserved": "Все права защищены.",
+    "becomePartner": "Стать партнёром"
   },
   "common": {
     "latinOnlyName": "Names must use Latin letters only. Please remove non-Latin characters (e.g. Arabic, Cyrillic).",
@@ -5109,7 +5110,7 @@
     "bulkDeleteFailedDesc": "Не удалось удалить {failed} из {total}. Возможно, они используются.",
     "uniTypePublic": "Государственный",
     "importCreatedUniversities": "Создано новых университетов: {n} — {names}",
-    "autoTranslationQueued": "Английский источник сохранён, 15 переводов автоматически поставлены в очередь.",
+    "autoTranslationQueued": "Английский источник сохранён, 22 перевода автоматически поставлены в очередь.",
     "translationsQueued": "Переводы программы повторно поставлены в очередь.",
     "failedTranslationsQueued": "Неудачные переводы ({n}) повторно поставлены в очередь.",
     "retryFailedTranslations": "Повторить неудачные переводы",

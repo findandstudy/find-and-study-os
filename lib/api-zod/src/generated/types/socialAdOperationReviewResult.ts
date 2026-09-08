@@ -5,8 +5,8 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
-import type { SocialAdOperationReviewResultOperationType } from "./socialAdOperationReviewResultOperationType";
-import type { SocialAdOperationReviewResultStatus } from "./socialAdOperationReviewResultStatus";
+import type { SocialAdOperationReviewResultOperationType } from './socialAdOperationReviewResultOperationType';
+import type { SocialAdOperationReviewResultStatus } from './socialAdOperationReviewResultStatus';
 
 export interface SocialAdOperationReviewResult {
   id: string;

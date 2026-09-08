@@ -610,7 +610,8 @@
     "ourServices": "Nuestros servicios",
     "studentBlog": "Blog estudiantil",
     "contactTitle": "Contacto",
-    "allRightsReserved": "Todos los derechos reservados."
+    "allRightsReserved": "Todos los derechos reservados.",
+    "becomePartner": "Hazte socio"
   },
   "common": {
     "latinOnlyName": "Names must use Latin letters only. Please remove non-Latin characters (e.g. Arabic, Cyrillic).",
@@ -5108,7 +5109,7 @@
     "bulkDeleteFailedDesc": "No se pudieron eliminar {failed} de {total}. Puede que estén en uso.",
     "uniTypePublic": "Pública",
     "importCreatedUniversities": "Se crearon {n} universidades nuevas: {names}",
-    "autoTranslationQueued": "Se guardó la fuente en inglés y se pusieron automáticamente en cola 15 traducciones.",
+    "autoTranslationQueued": "Se guardó la fuente en inglés y se pusieron automáticamente en cola 22 traducciones.",
     "translationsQueued": "Las traducciones del programa se volvieron a poner en cola.",
     "failedTranslationsQueued": "Se volvieron a poner en cola {n} traducciones fallidas.",
     "retryFailedTranslations": "Reintentar traducciones fallidas",

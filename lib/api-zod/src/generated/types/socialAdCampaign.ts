@@ -5,9 +5,9 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
-import type { SocialAdCampaignLatestOperationType } from "./socialAdCampaignLatestOperationType";
-import type { SocialAdCampaignObjective } from "./socialAdCampaignObjective";
-import type { SocialAdCampaignStatus } from "./socialAdCampaignStatus";
+import type { SocialAdCampaignLatestOperationType } from './socialAdCampaignLatestOperationType';
+import type { SocialAdCampaignObjective } from './socialAdCampaignObjective';
+import type { SocialAdCampaignStatus } from './socialAdCampaignStatus';
 
 export interface SocialAdCampaign {
   id: string;
@@ -19,22 +19,22 @@ export interface SocialAdCampaign {
   objective: SocialAdCampaignObjective;
   destination_url: string;
   /**
-   * @minItems 1
-   * @maxItems 25
-   * @items.pattern ^[A-Z]{2}$
-   */
+     * @minItems 1
+     * @maxItems 25
+     * @items.pattern ^[A-Z]{2}$
+     */
   country_codes: string[];
   /** @maxItems 20 */
   language_codes: string[];
   /**
-   * @minimum 18
-   * @maximum 65
-   */
+     * @minimum 18
+     * @maximum 65
+     */
   age_min: number;
   /**
-   * @minimum 18
-   * @maximum 65
-   */
+     * @minimum 18
+     * @maximum 65
+     */
   age_max: number;
   /** @pattern ^[A-Z]{3}$ */
   currency_code: string;
@@ -52,4 +52,4 @@ export interface SocialAdCampaign {
   latest_operation_status?: string;
   latest_operation_creator?: number;
   [key: string]: unknown;
-}
+ }

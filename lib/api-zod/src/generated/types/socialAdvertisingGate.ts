@@ -13,9 +13,9 @@ export interface SocialAdvertisingGate {
   providerAdvertisingEnabled: boolean;
   allowedProviders: string[];
   /**
-   * @minimum 100
-   * @nullable
-   */
+     * @minimum 100
+     * @nullable
+     */
   maximumCampaignBudgetMinor: number | null;
   /** @nullable */
   reason: string | null;

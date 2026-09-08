@@ -1,6 +1,7 @@
 export const SUPPORTED_LANGUAGES = [
   "en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id",
-  "ur", "tk", "ky", "kk", "uz", "tg",
+  "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+  "ko", "uk", "it",
 ] as const;
 
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
@@ -34,12 +35,20 @@ export const LANGUAGE_META: Record<Language, LanguageMeta> = {
   kk: { code: "kk", name: "Kazakh", nativeName: "Қазақша", dir: "ltr", flag: "🇰🇿" },
   uz: { code: "uz", name: "Uzbek", nativeName: "Oʻzbekcha", dir: "ltr", flag: "🇺🇿" },
   tg: { code: "tg", name: "Tajik", nativeName: "Тоҷикӣ", dir: "ltr", flag: "🇹🇯" },
+  bn: { code: "bn", name: "Bengali", nativeName: "বাংলা", dir: "ltr", flag: "🇧🇩" },
+  pt: { code: "pt", name: "Portuguese", nativeName: "Português", dir: "ltr", flag: "🇵🇹" },
+  ne: { code: "ne", name: "Nepali", nativeName: "नेपाली", dir: "ltr", flag: "🇳🇵" },
+  vi: { code: "vi", name: "Vietnamese", nativeName: "Tiếng Việt", dir: "ltr", flag: "🇻🇳" },
+  ko: { code: "ko", name: "Korean", nativeName: "한국어", dir: "ltr", flag: "🇰🇷" },
+  uk: { code: "uk", name: "Ukrainian", nativeName: "Українська", dir: "ltr", flag: "🇺🇦" },
+  it: { code: "it", name: "Italian", nativeName: "Italiano", dir: "ltr", flag: "🇮🇹" },
 };
 
 export const LANGUAGE_COUNTRY_CODES: Record<Language, string> = {
   en: "GB", tr: "TR", ar: "SA", fr: "FR", ru: "RU", fa: "IR",
   zh: "CN", hi: "IN", es: "ES", id: "ID", ur: "PK", tk: "TM",
-  ky: "KG", kk: "KZ", uz: "UZ", tg: "TJ",
+  ky: "KG", kk: "KZ", uz: "UZ", tg: "TJ", bn: "BD", pt: "PT",
+  ne: "NP", vi: "VN", ko: "KR", uk: "UA", it: "IT",
 };
 
 /** Canonical options for every system-language selector. */
@@ -83,6 +92,13 @@ const translationLoaders: Record<Language, () => Promise<{ default: TranslationM
   kk: () => import("./translations/kk.json"),
   uz: () => import("./translations/uz.json"),
   tg: () => import("./translations/tg.json"),
+  bn: () => import("./translations/bn.json"),
+  pt: () => import("./translations/pt.json"),
+  ne: () => import("./translations/ne.json"),
+  vi: () => import("./translations/vi.json"),
+  ko: () => import("./translations/ko.json"),
+  uk: () => import("./translations/uk.json"),
+  it: () => import("./translations/it.json"),
 };
 
 function flattenObject(obj: Record<string, unknown>, prefix = ""): Record<string, string> {
@@ -189,6 +205,13 @@ const LOCALE_MAP: Record<Language, string> = {
   kk: "kk-KZ",
   uz: "uz-UZ",
   tg: "tg-TJ",
+  bn: "bn-BD",
+  pt: "pt-PT",
+  ne: "ne-NP",
+  vi: "vi-VN",
+  ko: "ko-KR",
+  uk: "uk-UA",
+  it: "it-IT",
 };
 
 export function getLocale(lang: Language): string {

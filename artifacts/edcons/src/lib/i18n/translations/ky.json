@@ -610,7 +610,8 @@
     "ourServices": "Кызматтарыбыз",
     "studentBlog": "Студенттердин блогу",
     "contactTitle": "Бийик конус",
-    "allRightsReserved": "Бардык укуктар корголгон."
+    "allRightsReserved": "Бардык укуктар корголгон.",
+    "becomePartner": "Өнөктөш болуңуз"
   },
   "common": {
     "latinOnlyName": "Латын тамгалары менен гана колдонуу керек. Латын эмес символдорду алып салыңыз (wn.g, Араб, Kiril).",
@@ -5049,7 +5050,7 @@
     "bulkDeleteFailedDesc": "{failed} of {total} could not be deleted. They may be in use.",
     "uniTypePublic": "Жалпы",
     "importCreatedUniversities": "{n} new universities were created: {names}",
-    "autoTranslationQueued": "Англис тилиндеги булак сакталып, 15 котормо баракчасы автоматтык түрдө сакталып калган.",
+    "autoTranslationQueued": "Англис тилиндеги булак сакталып, 22 котормо баракчасы автоматтык түрдө сакталып калган.",
     "translationsQueued": "Программанын котормолору кайрадан басылган.",
     "failedTranslationsQueued": "{n} failed translations were queued again.",
     "retryFailedTranslations": "Кошумча которуу ишке ашпады",

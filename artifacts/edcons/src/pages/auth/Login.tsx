@@ -6,7 +6,7 @@ import { setAuthCache, setStickyUser } from "@/lib/auth-cache";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useI18n } from "@/hooks/use-i18n";
 import { GraduationCap, Globe2, Star, ArrowRight, Loader2, Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ChevronDown } from "lucide-react";
-import { SUPPORTED_LANGUAGES, LANGUAGE_META, type Language, isValidLanguage } from "@/lib/i18n/index";
+import { SUPPORTED_LANGUAGES, LANGUAGE_META, LANGUAGE_COUNTRY_CODES, type Language, isValidLanguage } from "@/lib/i18n/index";
 import { storeLangHint, getLangHintByEmail } from "@/lib/i18n/context";
 import { PasswordStrengthIndicator } from "@/components/PasswordStrengthIndicator";
 import { validatePasswordPolicy } from "@/components/password-policy";
@@ -18,11 +18,6 @@ import { PhoneCodePicker } from "@/components/ui/phone-code-picker";
 import { CountryFlag } from "@/components/CountryFlag";
 
 import { motion, AnimatePresence } from "framer-motion";
-
-const LANG_COUNTRY: Record<string, string> = {
-  en: "GB", tr: "TR", ar: "SA", fr: "FR", ru: "RU",
-  fa: "IR", zh: "CN", hi: "IN", es: "ES", id: "ID",
-};
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -450,7 +445,7 @@ export default function Login() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-secondary/80 transition-colors text-sm font-medium"
             aria-label="Select language"
           >
-            <CountryFlag code={LANG_COUNTRY[lang] || "GB"} size="sm" />
+            <CountryFlag code={LANGUAGE_COUNTRY_CODES[lang]} size="sm" />
             <span className="text-foreground">{LANGUAGE_META[lang].code.toUpperCase()}</span>
             <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${langOpen ? "rotate-180" : ""}`} />
           </button>
@@ -467,7 +462,7 @@ export default function Login() {
                       code === lang ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
                     }`}
                   >
-                    <CountryFlag code={LANG_COUNTRY[code] || "GB"} size="md" />
+                    <CountryFlag code={LANGUAGE_COUNTRY_CODES[code]} size="md" />
                     <span>{meta.nativeName}</span>
                     <span className="text-muted-foreground text-xs ms-auto">{meta.code.toUpperCase()}</span>
                   </button>
@@ -529,7 +524,7 @@ export default function Login() {
                 onClick={() => setLocation(localePath("/agency/apply"))}
                 className="flex-1 py-2.5 px-3 rounded-lg text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-background/70 transition-all"
               >
-                {({ tr: "Acente Başvurusu", ar: "طلب وكالة", fr: "Candidature agence", ru: "Заявка агентства", es: "Solicitud de agencia", fa: "درخواست نمایندگی", zh: "代理申请", hi: "एजेंसी आवेदन", id: "Aplikasi agensi", en: "Agency Application" } as Record<string, string>)[lang] || "Agency Application"}
+                {t("footer.becomePartner")}
               </button>
             </div>
           )}

@@ -610,7 +610,8 @@
     "ourServices": "ہماری خدمت",
     "studentBlog": "طالبعلم بلوج",
     "contactTitle": "رابطہ",
-    "allRightsReserved": "تمام حقوق محفوظ ہیں ۔"
+    "allRightsReserved": "تمام حقوق محفوظ ہیں ۔",
+    "becomePartner": "ہمارے شراکت دار بنیں"
   },
   "common": {
     "latinOnlyName": "نام صرف لاطینی حرف استعمال کرنی چاہئیں. براہ مہربانی غیر لاطینی اکروں کو حذف کریں (اِن کے طور پر عربی، ريريريکل)۔",
@@ -5049,7 +5050,7 @@
     "bulkDeleteFailedDesc": "{failed} of {total} could not be deleted. They may be in use.",
     "uniTypePublic": "عوامی",
     "importCreatedUniversities": "{n} new universities were created: {names}",
-    "autoTranslationQueued": "انگریزی سروز محفوظ کر دیا گیا اور ۱۵ ترجمے خود ہی در قطرہ کئے گئے ۔",
+    "autoTranslationQueued": "انگریزی سروز محفوظ کر دیا گیا اور ۲۲ ترجمے خود ہی در قطرہ کئے گئے ۔",
     "translationsQueued": "پروگرام ترجمہ دوبارہ قطار کی گئی تھی.",
     "failedTranslationsQueued": "{n} ناکام ترجموں کو دوبارہ قطر میں دیا گیا تھا.",
     "retryFailedTranslations": "ٹرانسلیشن پھر ناکام ہوگی",

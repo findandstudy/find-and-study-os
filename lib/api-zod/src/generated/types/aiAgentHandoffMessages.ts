@@ -23,4 +23,11 @@ export interface AiAgentHandoffMessages {
   kk: string;
   uz: string;
   tg: string;
+  bn: string;
+  pt: string;
+  ne: string;
+  vi: string;
+  ko: string;
+  uk: string;
+  it: string;
 }

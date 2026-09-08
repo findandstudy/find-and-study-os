@@ -155,7 +155,7 @@ async function outboundCount(conversationId: number): Promise<number> {
 test("aiAgentConfigSchema accepts the defaults and rejects bad values", () => {
   assert.doesNotThrow(() => aiAgentConfigSchema.parse(DEFAULT_AI_AGENT_CONFIG));
   assert.equal(DEFAULT_AI_AGENT_CONFIG.externalAutoReplyEnabled, false);
-  assert.equal(DEFAULT_AI_AGENT_CONFIG.languages.length, 16);
+  assert.equal(DEFAULT_AI_AGENT_CONFIG.languages.length, 23);
   assert.deepEqual(
     Object.keys(DEFAULT_AI_AGENT_CONFIG.handoffMessages).sort(),
     [...DEFAULT_AI_AGENT_CONFIG.languages].sort(),

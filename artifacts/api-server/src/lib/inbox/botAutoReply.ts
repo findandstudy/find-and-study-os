@@ -165,7 +165,8 @@ export function detectDormBookingEscalation(
 
 // ---------------------------------------------------------------------------
 // Language detection (heuristic) — picks the reply language for the brain.
-// Supported intake languages: EN / TR / AR / FR / RU / FA / ZH / HI / ES / ID / UR / TK / KY / KK / UZ / TG.
+// Supported intake languages: EN / TR / AR / FR / RU / FA / ZH / HI / ES / ID /
+// UR / TK / KY / KK / UZ / TG / BN / PT / NE / VI / KO / UK / IT.
 // ---------------------------------------------------------------------------
 
 const TR_HINTS = [
@@ -196,6 +197,12 @@ const KY_HINTS = ["университет", "окуу", "тапшыруу", "с�
 const KK_HINTS = ["университет", "оқу", "өтініш", "шәкіртақы", "рақмет", "қалаймын", "мамандық"];
 const UZ_HINTS = ["universitet", "o‘qish", "o'qish", "ariza", "stipendiya", "rahmat", "xohlayman", "yo‘nalish", "yo'nalish"];
 const TG_HINTS = ["донишгоҳ", "таҳсил", "дархост", "стипендия", "ташаккур", "мехоҳам", "ихтисос"];
+// Nepali and Hindi share Devanagari. Keep only Nepali morphology/terms here;
+// generic words such as विश्वविद्यालय would incorrectly classify Hindi.
+const NE_HINTS = ["विश्वविद्यालयमा", "पढ्न", "पढाइ", "चाहन्छु", "गर्न", "नेपाली", "छात्रवृत्ति"];
+const VI_HINTS = ["xin chào", "đại học", "ngành học", "học bổng", "cảm ơn", "tôi muốn", "đăng ký"];
+const PT_HINTS = ["olá", "universidade", "curso", "candidatura", "bolsa", "obrigado", "obrigada", "quero", "estudar", "mestrado"];
+const IT_HINTS = ["ciao", "università", "corso", "domanda", "borsa", "grazie", "vorrei", "studiare", "laurea magistrale"];
 
 /**
  * Detect the student's language from their message text. Script ranges decide
@@ -204,17 +211,27 @@ const TG_HINTS = ["донишгоҳ", "таҳсил", "дархост", "сти�
  */
 export function detectLanguage(text: string, fallback: BotLanguage = "en"): BotLanguage {
   if (/[\u4E00-\u9FFF]/.test(text)) return "zh";
+  if (/[\u0980-\u09FF]/.test(text)) return "bn";
+  if (/[\u1100-\u11FF\uAC00-\uD7AF]/.test(text)) return "ko";
+  if (NE_HINTS.some((h) => text.includes(h))) return "ne";
   if (/[\u0900-\u097F]/.test(text)) return "hi";
   if (/[ٹڈڑںھۓے]/.test(text) || UR_HINTS.some((h) => text.includes(h))) return "ur";
   if (/[پچژگک‌ی]/.test(text) || FA_HINTS.some((h) => text.includes(h))) return "fa";
   if (/[\u0600-\u06FF]/.test(text)) return "ar";
   const lower = text.toLowerCase();
+  if (/[іїєґ]/.test(lower)) return "uk";
   if (TG_HINTS.some((h) => lower.includes(h)) || /[ҷӯӣ]/.test(lower)) return "tg";
   if (KK_HINTS.some((h) => lower.includes(h)) || /[әұі]/.test(lower)) return "kk";
   if (KY_HINTS.some((h) => lower.includes(h)) || /[ңөү]/.test(lower)) return "ky";
   if (/[\u0400-\u04FF]/.test(text)) return "ru";
   if (TK_HINTS.some((h) => lower.includes(h)) || /[äňýž]/.test(lower)) return "tk";
   if (UZ_HINTS.some((h) => lower.includes(h)) || /(?:o['ʻ’]q|g['ʻ’])/.test(lower)) return "uz";
+  // Only Vietnamese-specific letters/tone combinations are strong script
+  // evidence. Plain ê/ô/é/à also occur in French or Portuguese and must not
+  // steal those messages before their vocabulary checks run.
+  if (VI_HINTS.some((h) => lower.includes(h)) || /[ăđơư]|[ắằẳẵặấầẩẫậếềểễệốồổỗộớờởỡợứừửữự]|[ạảẹẻịỉọỏụủỵỷ]/.test(lower)) return "vi";
+  if (PT_HINTS.some((h) => lower.includes(h))) return "pt";
+  if (IT_HINTS.some((h) => lower.includes(h))) return "it";
   // Turkish-specific letters are a strong signal.
   if (/[ışğİ]/.test(text) || /[çöü]/.test(lower) && TR_HINTS.some((h) => lower.includes(h))) {
     return "tr";
@@ -236,6 +253,13 @@ function phoneLanguageHint(phone: string | null | undefined): BotLanguage {
   if (normalized.startsWith("996")) return "ky";
   if (normalized.startsWith("998")) return "uz";
   if (normalized.startsWith("992")) return "tg";
+  if (normalized.startsWith("880")) return "bn";
+  if (normalized.startsWith("351") || normalized.startsWith("55")) return "pt";
+  if (normalized.startsWith("977")) return "ne";
+  if (normalized.startsWith("84")) return "vi";
+  if (normalized.startsWith("82")) return "ko";
+  if (normalized.startsWith("380")) return "uk";
+  if (normalized.startsWith("39")) return "it";
   if (normalized.startsWith("7")) return "ru";
   return "en";
 }
@@ -256,7 +280,11 @@ export function resolveConversationLanguage(
   metadata: Record<string, unknown>,
   phone?: string | null,
 ): ConversationLanguageState {
-  const supported = new Set<BotLanguage>(["tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id", "ur", "tk", "ky", "kk", "uz", "tg"]);
+  const supported = new Set<BotLanguage>([
+    "tr", "en", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id",
+    "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+    "ko", "uk", "it",
+  ]);
   const locked = supported.has(metadata.botLanguage as BotLanguage)
     ? metadata.botLanguage as BotLanguage
     : null;

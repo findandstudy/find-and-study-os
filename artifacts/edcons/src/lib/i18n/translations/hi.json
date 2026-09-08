@@ -610,7 +610,8 @@
     "ourServices": "हमारी सेवाएँ",
     "studentBlog": "छात्र ब्लॉग",
     "contactTitle": "संपर्क",
-    "allRightsReserved": "सर्वाधिकार सुरक्षित।"
+    "allRightsReserved": "सर्वाधिकार सुरक्षित।",
+    "becomePartner": "हमारे भागीदार बनें"
   },
   "common": {
     "latinOnlyName": "Names must use Latin letters only. Please remove non-Latin characters (e.g. Arabic, Cyrillic).",
@@ -5109,7 +5110,7 @@
     "bulkDeleteFailedDesc": "{total} में से {failed} हटाए नहीं जा सके। वे उपयोग में हो सकते हैं।",
     "uniTypePublic": "सरकारी",
     "importCreatedUniversities": "{n} नए विश्वविद्यालय बनाए गए: {names}",
-    "autoTranslationQueued": "अंग्रेज़ी स्रोत सहेजा गया और 15 अनुवाद अपने-आप कतार में लगाए गए।",
+    "autoTranslationQueued": "अंग्रेज़ी स्रोत सहेजा गया और 22 अनुवाद अपने-आप कतार में लगाए गए।",
     "translationsQueued": "प्रोग्राम के अनुवाद फिर से कतार में लगाए गए।",
     "failedTranslationsQueued": "{n} विफल अनुवाद फिर से कतार में लगाए गए।",
     "retryFailedTranslations": "विफल अनुवाद फिर से आज़माएँ",

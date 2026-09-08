@@ -25,6 +25,13 @@ test("every supported language has its canonical flag country", () => {
     kk: "KZ",
     uz: "UZ",
     tg: "TJ",
+    bn: "BD",
+    pt: "PT",
+    ne: "NP",
+    vi: "VN",
+    ko: "KR",
+    uk: "UA",
+    it: "IT",
   });
   assert.deepEqual(Object.keys(LANGUAGE_COUNTRY_CODES), [...SUPPORTED_LANGUAGES]);
 });

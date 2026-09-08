@@ -5,15 +5,15 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
-import type { SocialAdOperationAttemptOutcome } from "./socialAdOperationAttemptOutcome";
-import type { SocialAdOperationAttemptProviderState } from "./socialAdOperationAttemptProviderState";
+import type { SocialAdOperationAttemptOutcome } from './socialAdOperationAttemptOutcome';
+import type { SocialAdOperationAttemptProviderState } from './socialAdOperationAttemptProviderState';
 
 export interface SocialAdOperationAttempt {
   id: string;
   /**
-   * @minimum 1
-   * @maximum 8
-   */
+     * @minimum 1
+     * @maximum 8
+     */
   attempt_number: number;
   worker_id: string;
   runtime_release_id: string;

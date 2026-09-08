@@ -610,7 +610,8 @@
     "ourServices": "Our Services",
     "studentBlog": "Student Blog",
     "contactTitle": "Contact",
-    "allRightsReserved": "All rights reserved."
+    "allRightsReserved": "All rights reserved.",
+    "becomePartner": "Become a Partner"
   },
   "common": {
     "latinOnlyName": "Names must use Latin letters only. Please remove non-Latin characters (e.g. Arabic, Cyrillic).",
@@ -5050,7 +5051,7 @@
     "bulkDeleteFailedDesc": "{failed} of {total} could not be deleted. They may be in use.",
     "uniTypePublic": "Public",
     "importCreatedUniversities": "{n} new universities were created: {names}",
-    "autoTranslationQueued": "The English source was saved and 15 translations were queued automatically.",
+    "autoTranslationQueued": "The English source was saved and 22 translations were queued automatically.",
     "translationsQueued": "Program translations were queued again.",
     "failedTranslationsQueued": "{n} failed translations were queued again.",
     "retryFailedTranslations": "Retry failed translations",

@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SocialAdOperationReviewResultStatus =
-  (typeof SocialAdOperationReviewResultStatus)[keyof typeof SocialAdOperationReviewResultStatus];
+export type SocialAdOperationReviewResultStatus = typeof SocialAdOperationReviewResultStatus[keyof typeof SocialAdOperationReviewResultStatus];
+
 
 export const SocialAdOperationReviewResultStatus = {
-  APPROVED: "APPROVED",
-  REJECTED: "REJECTED",
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
 } as const;

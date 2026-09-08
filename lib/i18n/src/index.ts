@@ -20,6 +20,19 @@ const BCP47: Record<string, string> = {
   hi: "hi-IN",
   es: "es-ES",
   id: "id-ID",
+  ur: "ur-PK",
+  tk: "tk-TM",
+  ky: "ky-KG",
+  kk: "kk-KZ",
+  uz: "uz-UZ",
+  tg: "tg-TJ",
+  bn: "bn-BD",
+  pt: "pt-PT",
+  ne: "ne-NP",
+  vi: "vi-VN",
+  ko: "ko-KR",
+  uk: "uk-UA",
+  it: "it-IT",
 };
 
 function toLocale(lang?: string | null): string {

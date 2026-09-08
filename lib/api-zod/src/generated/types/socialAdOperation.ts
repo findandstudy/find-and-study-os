@@ -5,7 +5,7 @@
  * Education Consultancy Operating System API
  * OpenAPI spec version: 0.1.0
  */
-import type { SocialAdOperationOperationType } from "./socialAdOperationOperationType";
+import type { SocialAdOperationOperationType } from './socialAdOperationOperationType';
 
 export interface SocialAdOperation {
   id: string;
@@ -13,4 +13,4 @@ export interface SocialAdOperation {
   operation_type: SocialAdOperationOperationType;
   status: string;
   [key: string]: unknown;
-}
+ }

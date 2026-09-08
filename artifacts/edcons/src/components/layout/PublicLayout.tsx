@@ -249,7 +249,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                 <li><Link href={localePath("/countries")} className="hover:text-primary transition-colors">{t("footer.studyDestinations")}</Link></li>
                 <li><Link href={localePath("/about")} className="hover:text-primary transition-colors">{t("footer.ourServices")}</Link></li>
                 <li><Link href={localePath("/blog")} className="hover:text-primary transition-colors">{t("footer.studentBlog")}</Link></li>
-                <li><Link href={localePath("/agency/apply")} className="hover:text-primary transition-colors">{({ tr: "İş Ortağımız Olun", ar: "كن شريكًا", fr: "Devenir partenaire", ru: "Стать партнёром", es: "Ser socio", fa: "همکار ما شوید", zh: "成为合作伙伴", hi: "हमारे भागीदार बनें", id: "Jadi mitra", en: "Become a Partner" } as Record<string, string>)[lang] || "Become a Partner"}</Link></li>
+                <li><Link href={localePath("/agency/apply")} className="hover:text-primary transition-colors">{t("footer.becomePartner")}</Link></li>
               </ul>
             </div>
             <div>

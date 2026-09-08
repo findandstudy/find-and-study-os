@@ -20,15 +20,18 @@ const source = normalizeProgramSourceContent({
   requirements: "IELTS 6.5",
 });
 
-test("the catalogue language contract has one English source and 15 unique targets", () => {
+test("the catalogue language contract has one English source and 22 unique targets", () => {
   assert.deepEqual(PROGRAM_SUPPORTED_LOCALES, [
     "en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id",
-    "ur", "tk", "ky", "kk", "uz", "tg",
+    "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+    "ko", "uk", "it",
   ]);
-  assert.equal(new Set(PROGRAM_TARGET_LOCALES).size, 15);
+  assert.equal(new Set(PROGRAM_TARGET_LOCALES).size, 22);
   assert.ok(!PROGRAM_TARGET_LOCALES.includes("en" as never));
   assert.equal(normalizeProgramLocale("UR-PK"), "ur");
   assert.equal(normalizeProgramLocale("uz_UZ"), "uz");
+  assert.equal(normalizeProgramLocale("bn-BD"), "bn");
+  assert.equal(normalizeProgramLocale("pt_BR"), "pt");
   assert.equal(normalizeProgramLocale("unsupported"), "en");
 });
 
@@ -76,18 +79,23 @@ test("null source fields stay null even if a provider tries to invent content", 
   });
 });
 
-test("migration owns durable queueing, stale-manual handling, and the 16-language setting", () => {
-  const migration = readFileSync(
+test("migrations own durable queueing, stale-manual handling, and the 23-language setting", () => {
+  const foundationMigration = readFileSync(
     new URL("../../../lib/db/drizzle/0107_program_content_translations.sql", import.meta.url),
     "utf8",
   );
-  assert.match(migration, /CREATE TABLE "program_translations"/);
-  assert.match(migration, /FOR EACH ROW\s+EXECUTE FUNCTION "fas_queue_program_translations"/);
-  assert.match(migration, /WHEN "program_translations"\."is_manual" THEN 'stale_manual'/);
-  assert.match(migration, /fas_program_content_source_hash/);
-  assert.match(migration, /en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg/);
+  const expansionMigration = readFileSync(
+    new URL("../../../lib/db/drizzle/0108_expand_system_and_program_locales.sql", import.meta.url),
+    "utf8",
+  );
+  assert.match(foundationMigration, /CREATE TABLE "program_translations"/);
+  assert.match(foundationMigration, /FOR EACH ROW\s+EXECUTE FUNCTION "fas_queue_program_translations"/);
+  assert.match(foundationMigration, /WHEN "program_translations"\."is_manual" THEN 'stale_manual'/);
+  assert.match(foundationMigration, /fas_program_content_source_hash/);
+  assert.match(expansionMigration, /bn.*pt.*ne.*vi.*ko.*uk.*it/s);
+  assert.match(expansionMigration, /en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg,bn,pt,ne,vi,ko,uk,it/);
   assert.doesNotMatch(
-    migration,
+    `${foundationMigration}\n${expansionMigration}`,
     /FROM\s+"programs"\s+p\s+CROSS JOIN/i,
     "schema migration must not create an unbounded historical translation backlog",
   );
@@ -99,4 +107,15 @@ test("the dedicated worker entry exists and API list cache varies by content loc
   assert.match(courseFinder, /locale=\$\{contentLocale\}/);
   assert.match(courseFinder, /programTranslationsTable\.status, "published"/);
   assert.match(courseFinder, /fallbackUsed:/);
+});
+
+test("historical catalogue reconciliation is cursor-bound and single-program retry inserts missing locales", () => {
+  const queue = readFileSync(new URL("../src/lib/programTranslationQueue.ts", import.meta.url), "utf8");
+  const routes = readFileSync(new URL("../src/routes/universities.ts", import.meta.url), "utf8");
+  assert.match(queue, /WHERE program\.id > \$1[\s\S]*ORDER BY program\.id[\s\S]*LIMIT \$2/);
+  assert.match(queue, /CROSS JOIN unnest\(\$3::text\[\]\) AS locale/);
+  assert.match(queue, /ON CONFLICT \(program_id, locale\) DO NOTHING/);
+  assert.match(queue, /WHERE program\.id = \$1[\s\S]*ON CONFLICT \(program_id, locale\) DO NOTHING/);
+  assert.match(routes, /limit < 1 \|\| limit > 200/);
+  assert.match(routes, /program_translations\.reconcile/);
 });

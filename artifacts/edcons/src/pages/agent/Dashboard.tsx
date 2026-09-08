@@ -5,7 +5,7 @@ import { QuickLinkLogo } from "@/components/QuickLinkLogo";
 import { useGetOverviewStats } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useI18n } from "@/hooks/use-i18n";
-import { formatTimeAgo } from "@/lib/i18n";
+import { formatTimeAgo, getLocale } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
@@ -28,11 +28,6 @@ import { localizeNotification } from "@/lib/notificationLocalization";
 import { UpcomingFollowUpsWidget } from "@/components/UpcomingFollowUpsWidget";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-
-const DATE_LOCALE: Record<string, string> = {
-  en: "en-US", tr: "tr-TR", ar: "ar-SA", fr: "fr-FR", ru: "ru-RU",
-  fa: "fa-IR", zh: "zh-CN", hi: "hi-IN", es: "es-ES", id: "id-ID",
-};
 
 const AVATAR_COLORS = [
   "bg-blue-500/15 text-blue-600",
@@ -75,7 +70,7 @@ const NOTIFICATION_ICONS: Record<string, typeof Bell> = {
 export default function AgentDashboard() {
   const { user } = useAuth(true);
   const { t, lang } = useI18n();
-  const dateLoc = DATE_LOCALE[lang] || "en-US";
+  const dateLoc = getLocale(lang);
   const [, setLocation] = useLocation();
   const [showAddLead, setShowAddLead] = useState(false);
   const [showAddStudent, setShowAddStudent] = useState(false);

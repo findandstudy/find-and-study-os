@@ -13,7 +13,8 @@ const trDir = join(root, "src/lib/i18n/translations");
 const en = JSON.parse(readFileSync(join(trDir, "en.json"), "utf8"));
 const expectedLanguages = [
   "en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id",
-  "ur", "tk", "ky", "kk", "uz", "tg",
+  "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+  "ko", "uk", "it",
 ];
 
 function flatten(obj, prefix = "", out = new Set()) {

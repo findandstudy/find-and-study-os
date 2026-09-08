@@ -610,7 +610,8 @@
     "ourServices": "Nos services",
     "studentBlog": "Blog étudiant",
     "contactTitle": "Contact",
-    "allRightsReserved": "Tous droits réservés."
+    "allRightsReserved": "Tous droits réservés.",
+    "becomePartner": "Devenir partenaire"
   },
   "common": {
     "latinOnlyName": "Names must use Latin letters only. Please remove non-Latin characters (e.g. Arabic, Cyrillic).",
@@ -5108,7 +5109,7 @@
     "bulkDeleteFailedDesc": "{failed} sur {total} n'ont pas pu être supprimés. Ils sont peut-être utilisés.",
     "uniTypePublic": "Publique",
     "importCreatedUniversities": "{n} nouvelles universités créées : {names}",
-    "autoTranslationQueued": "La source anglaise a été enregistrée et 15 traductions ont été mises en file d’attente automatiquement.",
+    "autoTranslationQueued": "La source anglaise a été enregistrée et 22 traductions ont été mises en file d’attente automatiquement.",
     "translationsQueued": "Les traductions du programme ont été remises en file d’attente.",
     "failedTranslationsQueued": "{n} traductions échouées ont été remises en file d’attente.",
     "retryFailedTranslations": "Réessayer les traductions échouées",

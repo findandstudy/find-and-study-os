@@ -10,7 +10,7 @@ export const settingsTable = pgTable("settings", {
   companyAddress: text("company_address"),
   companyWebsite: text("company_website"),
   defaultLanguage: text("default_language").notNull().default("en"),
-  supportedLanguages: text("supported_languages").notNull().default("en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg"),
+  supportedLanguages: text("supported_languages").notNull().default("en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg,bn,pt,ne,vi,ko,uk,it"),
   smtpHost: text("smtp_host"),
   smtpPort: integer("smtp_port"),
   smtpUser: text("smtp_user"),

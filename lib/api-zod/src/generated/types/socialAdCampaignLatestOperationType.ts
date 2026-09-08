@@ -6,13 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SocialAdCampaignLatestOperationType =
-  (typeof SocialAdCampaignLatestOperationType)[keyof typeof SocialAdCampaignLatestOperationType];
+export type SocialAdCampaignLatestOperationType = typeof SocialAdCampaignLatestOperationType[keyof typeof SocialAdCampaignLatestOperationType];
+
 
 export const SocialAdCampaignLatestOperationType = {
-  CREATE: "CREATE",
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  CREATE: 'CREATE',
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;

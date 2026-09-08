@@ -9,12 +9,11 @@
 /**
  * @nullable
  */
-export type SocialAdOperationAttemptProviderState =
-  | (typeof SocialAdOperationAttemptProviderState)[keyof typeof SocialAdOperationAttemptProviderState]
-  | null;
+export type SocialAdOperationAttemptProviderState = typeof SocialAdOperationAttemptProviderState[keyof typeof SocialAdOperationAttemptProviderState] | null;
+
 
 export const SocialAdOperationAttemptProviderState = {
-  PAUSED: "PAUSED",
-  ACTIVE: "ACTIVE",
-  COMPLETED: "COMPLETED",
+  PAUSED: 'PAUSED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
 } as const;

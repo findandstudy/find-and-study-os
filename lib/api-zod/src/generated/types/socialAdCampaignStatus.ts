@@ -6,17 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SocialAdCampaignStatus =
-  (typeof SocialAdCampaignStatus)[keyof typeof SocialAdCampaignStatus];
+export type SocialAdCampaignStatus = typeof SocialAdCampaignStatus[keyof typeof SocialAdCampaignStatus];
+
 
 export const SocialAdCampaignStatus = {
-  PENDING_APPROVAL: "PENDING_APPROVAL",
-  APPROVED: "APPROVED",
-  PROVISIONING: "PROVISIONING",
-  PAUSED: "PAUSED",
-  ACTIVE: "ACTIVE",
-  COMPLETED: "COMPLETED",
-  REJECTED: "REJECTED",
-  FAILED: "FAILED",
-  CANCELED: "CANCELED",
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPROVED: 'APPROVED',
+  PROVISIONING: 'PROVISIONING',
+  PAUSED: 'PAUSED',
+  ACTIVE: 'ACTIVE',
+  COMPLETED: 'COMPLETED',
+  REJECTED: 'REJECTED',
+  FAILED: 'FAILED',
+  CANCELED: 'CANCELED',
 } as const;

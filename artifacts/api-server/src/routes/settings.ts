@@ -53,7 +53,8 @@ const SETTINGS_PATCH_FIELDS = [
 const CREDENTIAL_FIELDS = ["smtpPassword", "whatsappToken", "n8nWebhookUrl"];
 const SYSTEM_LANGUAGE_CODES = [
   "en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id",
-  "ur", "tk", "ky", "kk", "uz", "tg",
+  "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+  "ko", "uk", "it",
 ] as const;
 const SYSTEM_LANGUAGE_SET = new Set<string>(SYSTEM_LANGUAGE_CODES);
 
@@ -142,7 +143,7 @@ router.get("/settings", requireAuth, requireRole(...MANAGER_ROLES), async (_req,
     // first explicit Super Admin PATCH owns creation and its audit receipt.
     res.json({
       defaultLanguage: "en",
-      supportedLanguages: "en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg",
+      supportedLanguages: SYSTEM_LANGUAGE_CODES.join(","),
       whatsappEnabled: false,
       metaLeadEnabled: false,
       dateFormat: "DD.MM.YYYY",
@@ -213,7 +214,7 @@ router.patch("/settings", requireAuth, requireRole("super_admin"), async (req, r
   if (!existing) {
     const [created] = await db.insert(settingsTable).values({
       defaultLanguage: "en",
-      supportedLanguages: "en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg",
+      supportedLanguages: SYSTEM_LANGUAGE_CODES.join(","),
       whatsappEnabled: false,
       metaLeadEnabled: false,
       ...updates,

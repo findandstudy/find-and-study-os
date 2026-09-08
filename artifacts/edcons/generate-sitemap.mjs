@@ -8,7 +8,8 @@ const BASE_URL = (process.env.BASE_URL || "https://findandstudy.com").replace(/\
 
 const LANGUAGES = [
   "en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id",
-  "ur", "tk", "ky", "kk", "uz", "tg",
+  "ur", "tk", "ky", "kk", "uz", "tg", "bn", "pt", "ne", "vi",
+  "ko", "uk", "it",
 ];
 
 const PUBLIC_PAGES = [

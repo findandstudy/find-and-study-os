@@ -6,13 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type SocialAdOperationOperationType =
-  (typeof SocialAdOperationOperationType)[keyof typeof SocialAdOperationOperationType];
+export type SocialAdOperationOperationType = typeof SocialAdOperationOperationType[keyof typeof SocialAdOperationOperationType];
+
 
 export const SocialAdOperationOperationType = {
-  CREATE: "CREATE",
-  PAUSE: "PAUSE",
-  RESUME: "RESUME",
-  UPDATE_BUDGET: "UPDATE_BUDGET",
-  END: "END",
+  CREATE: 'CREATE',
+  PAUSE: 'PAUSE',
+  RESUME: 'RESUME',
+  UPDATE_BUDGET: 'UPDATE_BUDGET',
+  END: 'END',
 } as const;

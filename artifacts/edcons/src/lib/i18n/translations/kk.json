@@ -610,7 +610,8 @@
     "ourServices": "Қызметтер",
     "studentBlog": "Студент Блогы",
     "contactTitle": "Коннахт",
-    "allRightsReserved": "Барлық құқықтарды сақтаған."
+    "allRightsReserved": "Барлық құқықтарды сақтаған.",
+    "becomePartner": "Серіктес болыңыз"
   },
   "common": {
     "latinOnlyName": "Атаулары латын әріптерімен ғана қолданылады. Латын таңбаларын кетіру үшін (мысалы, араб, араб).",
@@ -5049,7 +5050,7 @@
     "bulkDeleteFailedDesc": "{failed} of {total} could not be deleted. They may be in use.",
     "uniTypePublic": "Ашық",
     "importCreatedUniversities": "{n} new universities were created: {names}",
-    "autoTranslationQueued": "Ағылшындық көзі сақталды және 15 аудармашы автоматты түрде бағдарланған.",
+    "autoTranslationQueued": "Ағылшындық көзі сақталды және 22 аудармашы автоматты түрде бағдарланған.",
     "translationsQueued": "Бағдарламаның аудармалары енді бағдарланған.",
     "failedTranslationsQueued": "{n} failed translations were queued again.",
     "retryFailedTranslations": "Қадамдастыру жаңылысы",

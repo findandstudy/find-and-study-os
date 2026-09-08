@@ -27,8 +27,11 @@ test("offer expiry follows the active UI language instead of stored Turkish", ()
   assert.match(russian.body || "", /TEST STUDENT/);
 });
 
-test("all ten supported languages produce localized offer text", () => {
-  for (const lang of ["en", "tr", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id"]) {
+test("all native notification packs, including the seven new locales, produce localized offer text", () => {
+  for (const lang of [
+    "en", "tr", "ar", "fa", "fr", "es", "ru", "zh", "hi", "id",
+    "bn", "pt", "ne", "vi", "ko", "uk", "it",
+  ]) {
     const localized = localizeNotification(notification, lang);
     assert.ok(localized.title.length > 10, lang);
     assert.ok((localized.body || "").includes("TEST STUDENT"), lang);

@@ -23,7 +23,14 @@ export type BotLanguage =
   | "ky"
   | "kk"
   | "uz"
-  | "tg";
+  | "tg"
+  | "bn"
+  | "pt"
+  | "ne"
+  | "vi"
+  | "ko"
+  | "uk"
+  | "it";
 
 const LANGUAGE_NAME: Record<BotLanguage, string> = {
   tr: "Turkish",
@@ -42,6 +49,13 @@ const LANGUAGE_NAME: Record<BotLanguage, string> = {
   kk: "Kazakh",
   uz: "Uzbek",
   tg: "Tajik",
+  bn: "Bengali",
+  pt: "Portuguese",
+  ne: "Nepali",
+  vi: "Vietnamese",
+  ko: "Korean",
+  uk: "Ukrainian",
+  it: "Italian",
 };
 
 export type EscalationTopic =

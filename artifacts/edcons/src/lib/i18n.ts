@@ -12,4 +12,5 @@ export {
   formatTime,
   formatDateTime,
   getLocale,
+  isValidLanguage,
 } from "./i18n/index";

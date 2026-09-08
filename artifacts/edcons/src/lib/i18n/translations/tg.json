@@ -610,7 +610,8 @@
     "ourServices": "Хизматҳои мо",
     "studentBlog": "Блоги омӯзишӣ",
     "contactTitle": "Тамос",
-    "allRightsReserved": "Ҳамаи ҳуқуқҳо нигоҳ дошта мешаванд."
+    "allRightsReserved": "Ҳамаи ҳуқуқҳо нигоҳ дошта мешаванд.",
+    "becomePartner": "Шарики мо шавед"
   },
   "common": {
     "latinOnlyName": "Номҳо бояд танҳо ҳарфҳои Лотинӣ истифода бурда шаванд. Лутфан, аломатҳои ғайри латинӣро тоза кунед (масалан арабӣ, кирилика).",
@@ -5049,7 +5050,7 @@
     "bulkDeleteFailedDesc": "{failed} аз {total} нест карда нашуд. Онҳо метавонанд истифода шаванд.",
     "uniTypePublic": "Омма",
     "importCreatedUniversities": "{n} new universities were created: {names}",
-    "autoTranslationQueued": "Сарчашмаи англисӣ нигоҳ дошта шуд ва 15 тарҷумаҳо ба таври худкор сафбандӣ карда шуданд.",
+    "autoTranslationQueued": "Сарчашмаи англисӣ нигоҳ дошта шуд ва 22 тарҷумаҳо ба таври худкор сафбандӣ карда шуданд.",
     "translationsQueued": "Тарҷумаҳои барнома аз нав ба қатори тартиб дода шудаанд.",
     "failedTranslationsQueued": "{n} failed translations were queued again.",
     "retryFailedTranslations": "Аз нав тарҷума карда нашуд",

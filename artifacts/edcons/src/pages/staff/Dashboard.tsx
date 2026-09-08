@@ -11,17 +11,12 @@ import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useI18n } from "@/hooks/use-i18n";
 import { useToast } from "@/hooks/use-toast";
-import { formatTimeAgo } from "@/lib/i18n";
+import { formatTimeAgo, getLocale } from "@/lib/i18n";
 import { OfferDeadlinesWidget } from "@/components/OfferDeadlinesWidget";
 import { useSeason } from "@/contexts/SeasonContext";
 import { localizeNotification } from "@/lib/notificationLocalization";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
-
-const DATE_LOCALE: Record<string, string> = {
-  en: "en-US", tr: "tr-TR", ar: "ar-SA", fr: "fr-FR", ru: "ru-RU",
-  fa: "fa-IR", zh: "zh-CN", hi: "hi-IN", es: "es-ES", id: "id-ID",
-};
 
 const AVATAR_COLORS = [
   "bg-blue-500/15 text-blue-600",
@@ -68,7 +63,7 @@ export default function StaffDashboard() {
   const { user } = useAuth(true);
   const { t, lang } = useI18n();
   const { toast } = useToast();
-  const dateLoc = DATE_LOCALE[lang] || "en-US";
+  const dateLoc = getLocale(lang);
   const showOfferDeadlines = user?.role !== "super_admin";
   const { season } = useSeason();
   const { data: stats, isLoading } = useGetOverviewStats({ season });

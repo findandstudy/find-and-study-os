@@ -610,7 +610,8 @@
     "ourServices": "我们的服务",
     "studentBlog": "学生博客",
     "contactTitle": "联系方式",
-    "allRightsReserved": "版权所有。"
+    "allRightsReserved": "版权所有。",
+    "becomePartner": "成为合作伙伴"
   },
   "common": {
     "latinOnlyName": "Names must use Latin letters only. Please remove non-Latin characters (e.g. Arabic, Cyrillic).",
@@ -5108,7 +5109,7 @@
     "bulkDeleteFailedDesc": "{total} 项中有 {failed} 项无法删除，可能正在使用中。",
     "uniTypePublic": "公立",
     "importCreatedUniversities": "已创建 {n} 所新大学：{names}",
-    "autoTranslationQueued": "英文源内容已保存，其他 15 种语言的翻译已自动加入队列。",
+    "autoTranslationQueued": "英文源内容已保存，其他 22 种语言的翻译已自动加入队列。",
     "translationsQueued": "课程翻译已重新加入队列。",
     "failedTranslationsQueued": "{n} 条失败的翻译已重新加入队列。",
     "retryFailedTranslations": "重试失败的翻译",

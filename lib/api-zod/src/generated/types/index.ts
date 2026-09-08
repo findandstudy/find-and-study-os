@@ -175,6 +175,7 @@ export * from './listDocumentsParams';
 export * from './listInvoicesParams';
 export * from './listLeadsParams';
 export * from './listProgramFallbacksParams';
+export * from './listProgramsLocale';
 export * from './listProgramsParams';
 export * from './listServiceFees200';
 export * from './listServiceFees200Meta';

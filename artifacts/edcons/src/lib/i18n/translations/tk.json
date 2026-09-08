@@ -610,7 +610,8 @@
     "ourServices": "Servisleri",
     "studentBlog": "Syýasy Blogy",
     "contactTitle": "Tamas",
-    "allRightsReserved": "Ähli hukuklary saklanylýar."
+    "allRightsReserved": "Ähli hukuklary saklanylýar.",
+    "becomePartner": "Hyzmatdaş boluň"
   },
   "common": {
     "latinOnlyName": "Diller latyn hatlarynda ýöne bir latyn görnüşinde ýazylman Karakterleri aýyryň (wg, abr, latyn dili).",
@@ -5049,7 +5050,7 @@
     "bulkDeleteFailedDesc": "{failed} of {total} could not be deleted. They may be in use.",
     "uniTypePublic": "Aç",
     "importCreatedUniversities": "{n} new universities were created: {names}",
-    "autoTranslationQueued": "Iňlis dili bolsa gutuldy we 15 sany terjimesi diňe seýrek duş gelýärdi.",
+    "autoTranslationQueued": "Iňlis dili bolsa gutuldy we 22 sany terjimesi diňe seýrek duş gelýärdi.",
     "translationsQueued": "Programma görnüşleri ýene - de çap edildi.",
     "failedTranslationsQueued": "{n} failed translations were queued again.",
     "retryFailedTranslations": "Gaýd Etmek Opşenler",

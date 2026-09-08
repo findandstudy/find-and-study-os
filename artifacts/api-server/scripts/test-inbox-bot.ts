@@ -287,6 +287,13 @@ test("detectLanguage picks the student's language", () => {
   assert.equal(detectLanguage("你好，我想申请大学"), "zh");
   assert.equal(detectLanguage("नमस्ते, मैं विश्वविद्यालय में पढ़ना चाहता हूँ"), "hi");
   assert.equal(detectLanguage("Halo, saya ingin kuliah di universitas"), "id");
+  assert.equal(detectLanguage("হ্যালো, আমি বিশ্ববিদ্যালয়ে পড়তে চাই"), "bn");
+  assert.equal(detectLanguage("Olá, quero estudar na universidade"), "pt");
+  assert.equal(detectLanguage("नमस्ते, म विश्वविद्यालयमा पढ्न चाहन्छु"), "ne");
+  assert.equal(detectLanguage("Xin chào, tôi muốn học đại học"), "vi");
+  assert.equal(detectLanguage("안녕하세요, 대학교에서 공부하고 싶어요"), "ko");
+  assert.equal(detectLanguage("Вітаю, я хочу навчатися в університеті"), "uk");
+  assert.equal(detectLanguage("Ciao, vorrei studiare all'università"), "it");
   assert.equal(detectLanguage("Business administration", "es"), "es");
   assert.equal(detectLanguage("سلام"), "ar");
 });
