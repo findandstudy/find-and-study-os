@@ -14,7 +14,7 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed bottom-0 right-0 z-[100] flex max-h-screen w-full flex-col gap-2 p-4 sm:max-w-[400px]",
+      "fixed bottom-0 right-0 z-[100] flex max-h-screen w-full flex-col gap-2 p-4 sm:max-w-[460px]",
       className
     )}
     {...props}
@@ -26,7 +26,7 @@ const toastVariants = cva(
   [
     "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden",
     "rounded-xl border bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm",
-    "p-4 pr-10 shadow-xl shadow-black/10",
+    "p-4 pr-12 shadow-xl shadow-black/10",
     "transition-all duration-300",
     "data-[swipe=cancel]:translate-x-0",
     "data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)]",
@@ -92,13 +92,14 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-2.5 top-2.5 rounded-lg p-1 text-foreground/40 opacity-0 transition-all hover:text-foreground hover:bg-secondary focus:opacity-100 focus:outline-none group-hover:opacity-100",
+      "absolute right-2.5 top-2.5 inline-flex h-8 w-8 items-center justify-center rounded-lg text-foreground/60 opacity-100 transition-colors hover:bg-secondary hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       className
     )}
     toast-close=""
+    aria-label="Close notification"
     {...props}
   >
-    <X className="h-3.5 w-3.5" />
+    <X className="h-4 w-4" aria-hidden="true" />
   </ToastPrimitives.Close>
 ))
 ToastClose.displayName = ToastPrimitives.Close.displayName
@@ -121,7 +122,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn("text-xs text-muted-foreground mt-0.5 leading-relaxed", className)}
+    className={cn("mt-1 text-sm leading-relaxed text-muted-foreground break-words", className)}
     {...props}
   />
 ))

@@ -34,7 +34,7 @@ import {
   type ProposalFeeAdjustmentContext,
 } from "@/lib/proposalFeeAdjustment";
 import { createDocumentRecord, uploadDocumentFile } from "@/lib/uploadDocumentFile";
-import { applicationCreationErrorMessage } from "@/lib/applicationCreationError";
+import { applicationCreationErrorToast } from "@/components/ApplicationCreationErrorToast";
 import { useI18n } from "@/hooks/use-i18n";
 import {
   APPLICATION_DOCUMENT_HELP_TEXT,
@@ -2578,14 +2578,10 @@ function ApplyDialog({ program: p, onClose, currentUser, agentShareRate, hideSer
       toast({ title: t("courseFinderPage.applicationCreated"), description: t("courseFinderPage.applicationCreatedDesc", { student: `${selectedStudent.firstName} ${selectedStudent.lastName}`, program: p.name, docs: docMsg }) });
       setTimeout(() => handleClose(), 1500);
     } catch (err: any) {
-      toast({
-        title: t("common.error"),
-        description: applicationCreationErrorMessage(
-          err,
-          t("courseFinderPage.failedToCreateApplication"),
-        ),
-        variant: "destructive",
-      });
+      toast(applicationCreationErrorToast(
+        err,
+        t("courseFinderPage.failedToCreateApplication"),
+      ));
     } finally {
       setSubmitting(false);
     }

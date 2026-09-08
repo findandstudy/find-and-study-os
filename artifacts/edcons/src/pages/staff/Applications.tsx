@@ -66,7 +66,10 @@ import {
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { useI18n } from "@/hooks/use-i18n";
-import { applicationCreationErrorMessage } from "@/lib/applicationCreationError";
+import {
+  APPLICATION_CREATION_ERROR_TOAST_DURATION_MS,
+  applicationCreationErrorToast,
+} from "@/components/ApplicationCreationErrorToast";
 import { collectPortalPreflightIssueLabels } from "@/lib/portalBulkRunFeedback";
 import { useDateFormat } from "@/hooks/use-date-format";
 import { LinkedTableCell } from "@/components/LinkedTableCell";
@@ -1390,17 +1393,16 @@ function AddApplicationModal({ open, onClose, onSuccess, defaultStage }: { open:
     mutationFn: (payload: Record<string, unknown>) => apiFetch(`${BASE_URL}/api/applications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }),
     onSuccess: () => { toast({ title: "Application created" }); handleClose(); onSuccess(); },
     onError: (err: any) => {
-      const desc = applicationCreationErrorMessage(err, "Failed");
-      toast({ title: "Failed", description: desc, variant: "destructive" });
+      toast(applicationCreationErrorToast(err, "Failed to create application"));
     },
   });
 
   function handleClose() { setSelectedStudent(null); setForm({ country: "", universityId: "", universityName: "", programId: "", programName: "", level: "", instructionLanguage: "", intake: "", tuitionFee: "", notes: "" }); onClose(); }
 
   function handleSubmit() {
-    if (!selectedStudent) { toast({ title: "Select a student", variant: "destructive" }); return; }
-    if (!form.country) { toast({ title: "Select a country", variant: "destructive" }); return; }
-    if (!form.level) { toast({ title: "Select a level", variant: "destructive" }); return; }
+    if (!selectedStudent) { toast({ title: "Select a student", variant: "destructive", duration: APPLICATION_CREATION_ERROR_TOAST_DURATION_MS }); return; }
+    if (!form.country) { toast({ title: "Select a country", variant: "destructive", duration: APPLICATION_CREATION_ERROR_TOAST_DURATION_MS }); return; }
+    if (!form.level) { toast({ title: "Select a level", variant: "destructive", duration: APPLICATION_CREATION_ERROR_TOAST_DURATION_MS }); return; }
     const fee = parseFloat(form.tuitionFee);
     createApplication.mutate({
       studentId: selectedStudent.id, stage: defaultStage || "inquiry", season,
