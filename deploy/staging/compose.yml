@@ -71,6 +71,8 @@ services:
       traefik.http.routers.fasos-staging.entrypoints: "websecure"
       traefik.http.routers.fasos-staging.tls: "true"
       traefik.http.routers.fasos-staging.tls.certresolver: "mytlschallenge"
+      traefik.http.routers.fasos-staging.middlewares: "fasos-staging-noindex@docker"
+      traefik.http.middlewares.fasos-staging-noindex.headers.customresponseheaders.X-Robots-Tag: "noindex, nofollow"
       traefik.http.services.fasos-staging.loadbalancer.server.port: "5000"
 
   social-publication-worker:

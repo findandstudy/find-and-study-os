@@ -1228,6 +1228,14 @@ test("staging CI is isolated, exact-source and integration-disabled", () => {
     compose,
     /Host\(`\$\{FASOS_STAGING_LEGACY_HOST:\?set FASOS_STAGING_LEGACY_HOST\}`\)/,
   );
+  assert.match(
+    compose,
+    /traefik\.http\.routers\.fasos-staging\.middlewares: "fasos-staging-noindex@docker"/,
+  );
+  assert.match(
+    compose,
+    /traefik\.http\.middlewares\.fasos-staging-noindex\.headers\.customresponseheaders\.X-Robots-Tag: "noindex, nofollow"/,
+  );
   assert.match(composeEnv, /^FASOS_STAGING_HOST=staging\.findandstudy\.com$/m);
   assert.match(
     composeEnv,

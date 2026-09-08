@@ -140,6 +140,7 @@ Required acceptance evidence:
 - `GET /api/health` returns exact HTTP `200`, `dbConnected=true`, and the
   expected staging release ID;
 - TLS verification succeeds and HTTPS sends HSTS;
+- every staging response sends `X-Robots-Tag: noindex, nofollow`;
 - the migration ledger is exact `109/109`;
 - a server-side login / `auth/me` / logout smoke succeeds with the synthetic
   account without logging its password or session cookie;
