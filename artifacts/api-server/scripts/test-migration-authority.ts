@@ -941,7 +941,7 @@ test("comprehensive Control Plane gate is explicit and fixed to the disposable t
   );
   assert.match(
     source,
-    /verifyAtomicDdlRollback[\s\S]*?SELECT count\(\*\)::int AS count FROM drizzle\.__drizzle_migrations[\s\S]*?107/,
+    /verifyAtomicDdlRollback[\s\S]*?SELECT count\(\*\)::int AS count FROM drizzle\.__drizzle_migrations[\s\S]*?108/,
   );
   assert.match(
     source,

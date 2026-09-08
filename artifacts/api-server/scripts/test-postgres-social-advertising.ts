@@ -33,7 +33,7 @@ assert.equal(
       "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
     )
   ).rows[0]?.count,
-  107,
+  108,
 );
 await admin.query(`DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='fas_social_executor') THEN

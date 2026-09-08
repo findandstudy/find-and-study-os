@@ -141,7 +141,7 @@ try {
 
   await client.query("COMMIT");
   console.log(
-    `[operations-read-model] PASS ledger=107 indexes=13 visible=${first.summary.total} page=${first.items.length}`,
+    `[operations-read-model] PASS ledger=108 indexes=13 visible=${first.summary.total} page=${first.items.length}`,
   );
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);

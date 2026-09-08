@@ -217,7 +217,7 @@ directories. Restore into a new database with `--no-owner --no-privileges`,
 then verify at minimum:
 
 - database name is the drill-only name;
-- ledger count is exactly `107`;
+- ledger count is exactly `108`;
 - the attested synthetic denominator is exact: either the initial one-user
   state, or the accepted RBAC UAT state with 12 users, two active agent
   profiles and one active student profile;
