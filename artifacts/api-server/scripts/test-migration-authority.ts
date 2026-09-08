@@ -231,6 +231,7 @@ test("production prefix and canonical additive migration tail are pinned", () =>
       "0104_social_creative_orchestration",
       "0105_social_ad_control",
       "0106_activity_read_path_indexes",
+      "0107_program_content_translations",
     ],
   );
 
