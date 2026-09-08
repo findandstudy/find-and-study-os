@@ -354,6 +354,17 @@ test("U3b: credential mutation is rejected while an adapter submission is runnin
     assert.equal(blocked.body.error, "CREDENTIAL_CHANGE_IN_FLIGHT");
     const row = await findInList(server, TEST_KEY);
     assert.equal(row.hasCredentials, true, "rejected removal must preserve credentials");
+
+    const blockedRouting = await sendReq(server, "PATCH", `/api/portal-universities/${createdId}`, {
+      defaults: { intakeType: "spring" },
+    });
+    assert.equal(blockedRouting.status, 409);
+    assert.equal(blockedRouting.body.error, "ROUTING_CHANGE_IN_FLIGHT");
+
+    await db
+      .update(portalSubmissionsTable)
+      .set({ status: "canceled", lockedAt: null, lockedBy: null })
+      .where(eq(portalSubmissionsTable.id, submission.id));
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
   }

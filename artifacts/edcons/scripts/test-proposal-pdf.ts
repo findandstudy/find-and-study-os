@@ -17,6 +17,7 @@ import {
   collectProposalStudyLevels,
   loadProposalDocumentRequirements,
 } from "../src/lib/proposalDocumentRequirements";
+import { getProposalFeeAdjustmentContext } from "../src/lib/proposalFeeAdjustment";
 
 const sampleProgram: ProposalProgramData = {
   id: 1,
@@ -46,9 +47,62 @@ test("hide service fee always wins over an adjustment", () => {
   assert.equal(getProposalServiceFee(sampleProgram, 10_000, true), null);
 });
 
+test("flat PDF fee adjustment is blocked for mixed-currency selections", () => {
+  const context = getProposalFeeAdjustmentContext([
+    { currency: "gbp", serviceFeeAmount: null },
+    { currency: "CAD", serviceFeeAmount: 250 },
+    { currency: " cad ", serviceFeeAmount: 500 },
+  ]);
+
+  assert.deepEqual(context.currencies, ["GBP", "CAD"]);
+  assert.equal(context.hasMultipleCurrencies, true);
+  assert.equal(context.sampleFee, 250);
+});
+
+test("single-currency PDF fee adjustment uses the normalized selected currency", () => {
+  const context = getProposalFeeAdjustmentContext([
+    { currency: "usd", serviceFeeAmount: null },
+    { currency: " USD ", serviceFeeAmount: 300 },
+  ]);
+
+  assert.deepEqual(context.currencies, ["USD"]);
+  assert.equal(context.currency, "USD");
+  assert.equal(context.hasMultipleCurrencies, false);
+  assert.equal(context.sampleFee, 300);
+});
+
 test("hidden service fees cannot be inferred from a first-year total", () => {
   assert.equal(getProposalFirstYearTotal(sampleProgram, 100, true), null);
   assert.equal(getProposalFirstYearTotal(sampleProgram, 100, false), 5_550);
+});
+
+test("rendered PDF shows the adjusted fee and hide removes it plus the derived total", async () => {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  async function extractText(hideServiceFee: boolean): Promise<string> {
+    const document = await buildProposalPdf({
+      programs: [sampleProgram],
+      serviceFeeMarkup: 125,
+      hideServiceFee,
+      generatedAt: new Date("2026-09-08T08:00:00.000Z"),
+    });
+    const pdf = await getDocument({
+      data: new Uint8Array(document.output("arraybuffer")),
+      disableWorker: true,
+    }).promise;
+    const page = await pdf.getPage(1);
+    const content = await page.getTextContent();
+    return content.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ");
+  }
+
+  const visibleText = await extractText(false);
+  assert.match(visibleText, /Service fee \$375/);
+  assert.match(visibleText, /\$5,575 including visible fees/);
+
+  const hiddenText = await extractText(true);
+  assert.doesNotMatch(hiddenText, /Service fee/);
+  assert.doesNotMatch(hiddenText, /including visible fees/);
 });
 
 test("proposal date and time are rendered in Europe/Istanbul", () => {

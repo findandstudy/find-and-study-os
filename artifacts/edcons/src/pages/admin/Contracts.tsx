@@ -13,6 +13,7 @@ import { useI18n } from "@/hooks/use-i18n";
 import { Send, Loader2, FileSignature, RotateCw, Ban, Download, Trash2, ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle } from "lucide-react";
 import { ContractAssociationLink } from "@/components/contracts/ContractAssociationLink";
 import { ContractSubjectPicker, type ContractSubjectSearchResult } from "@/components/contracts/ContractSubjectPicker";
+import { SYSTEM_LANGUAGE_LABELS } from "@/lib/i18n";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -40,10 +41,7 @@ type Template = {
   signingPageConfig?: { requireEmailVerification?: boolean } | null;
 };
 
-const LANG_LABELS: Record<string, string> = {
-  en: "English", tr: "Türkçe", ar: "العربية", fr: "Français", ru: "Русский",
-  es: "Español", fa: "فارسی", hi: "हिन्दी", id: "Bahasa", zh: "中文",
-};
+const LANG_LABELS = SYSTEM_LANGUAGE_LABELS;
 
 const SUBJECT_TYPES = ["agent", "company", "university", "student", "lead", "application", "other"] as const;
 const SUBJECT_LABELS: Record<string, string> = {

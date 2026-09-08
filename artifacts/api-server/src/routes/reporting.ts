@@ -16,6 +16,11 @@ import {
   safeRate,
   type ReportingFilters,
 } from "../lib/reportingContract";
+import { duplicateCandidatesCte } from "../lib/reportingDuplicateSemantics";
+import {
+  reportingScopeWarnings,
+  reportingSmallCohortWarnings,
+} from "../lib/reportingWarnings";
 
 const router: IRouter = Router();
 const REPORTING_STATEMENT_TIMEOUT_MS = 8_000;
@@ -348,6 +353,14 @@ router.get(
       });
       res.json({
         meta: buildReportingMeta(filters, startedAt, [
+          ...reportingScopeWarnings(filters.allowedBranchIds),
+          ...reportingSmallCohortWarnings([
+            { label: "lead cohort", value: data.cards.leadsCreated },
+            {
+              label: "application cohort",
+              value: data.cards.applicationsCreated,
+            },
+          ]),
           "Conversion and win rates describe the selected creation cohort's current outcome, not event-time conversion throughput.",
           "Stale application inventory uses last record update as a stage-age proxy until canonical stage-transition events are fully wired.",
         ]),
@@ -501,6 +514,13 @@ router.get(
       });
       res.json({
         meta: buildReportingMeta(filters, startedAt, [
+          ...reportingScopeWarnings(filters.allowedBranchIds),
+          ...reportingSmallCohortWarnings([
+            {
+              label: "lead cohort",
+              value: data.stages.find((stage) => stage.key === "leads")?.value ?? 0,
+            },
+          ]),
           "Funnel membership is fixed by lead creation date; later student and application outcomes are current-state observations.",
           "Source uses UTM source first, then lead source and origin type; unattributed records remain visible as Unknown.",
         ]),
@@ -608,6 +628,13 @@ router.get(
       });
       res.json({
         meta: buildReportingMeta(filters, startedAt, [
+          ...reportingScopeWarnings(filters.allowedBranchIds),
+          ...reportingSmallCohortWarnings([
+            {
+              label: "application cohort",
+              value: data.totals.createdCohort,
+            },
+          ]),
           "Inventory counts are current-state totals; cohort counts use application creation date.",
           "Aging uses applications.updated_at as a temporary stage-age proxy and must not be interpreted as an SLA clock.",
         ]),
@@ -714,6 +741,7 @@ router.get(
       });
       res.json({
         meta: buildReportingMeta(filters, startedAt, [
+          ...reportingScopeWarnings(filters.allowedBranchIds),
           "Amounts remain in their original currency; the API never produces a mixed-currency grand total.",
           "Commission metrics use confirmed_at; service-fee metrics describe records created in the selected interval.",
         ]),
@@ -751,20 +779,10 @@ router.get(
             WHERE deleted_at IS NULL AND created_at >= $1::timestamptz AND created_at < $2::timestamptz
               AND ($3::text IS NULL OR season = $3::text)
               AND ($4::int[] IS NULL OR branch_id = ANY($4::int[]))
-          ), duplicate_groups AS (
-            SELECT count(*)::int AS groups, coalesce(sum(record_count), 0)::int AS affected
-            FROM (
-              SELECT count(*)::int AS record_count FROM students
-              WHERE deleted_at IS NULL AND nullif(lower(trim(email)), '') IS NOT NULL
-                AND ($4::int[] IS NULL OR branch_id = ANY($4::int[]))
-              GROUP BY lower(trim(email)) HAVING count(*) > 1
-              UNION ALL
-              SELECT count(*)::int FROM students
-              WHERE deleted_at IS NULL
-                AND nullif(coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')), '') IS NOT NULL
-                AND ($4::int[] IS NULL OR branch_id = ANY($4::int[]))
-              GROUP BY coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')) HAVING count(*) > 1
-            ) d
+          ), ${duplicateCandidatesCte("reporting")}, duplicate_groups AS (
+            SELECT count(*)::int AS groups,
+                   coalesce(sum(record_count), 0)::int AS affected
+            FROM duplicate_candidates
           )
           SELECT
             (SELECT count(*)::int FROM lead_cohort) AS lead_total,
@@ -841,22 +859,31 @@ router.get(
             label: "Active applications without an active student",
             severity: "critical",
             count: numberValue(row.orphan_applications),
-            scope: "global_snapshot",
+            scope:
+              filters.allowedBranchIds === null
+                ? "global_snapshot"
+                : "branch_snapshot",
           },
           {
             key: "branch_conflicts",
             label: "Application/student branch conflicts",
             severity: "critical",
             count: numberValue(row.branch_conflicts),
-            scope: "global_snapshot",
+            scope:
+              filters.allowedBranchIds === null
+                ? "global_snapshot"
+                : "branch_snapshot",
           },
           {
             key: "duplicate_groups",
-            label: "Potential duplicate student groups",
+            label: "Potential duplicate identity groups",
             severity: "warning",
             count: numberValue(row.duplicate_groups),
             affectedRecords: numberValue(row.duplicate_records),
-            scope: "global_snapshot",
+            scope:
+              filters.allowedBranchIds === null
+                ? "global_snapshot"
+                : "branch_snapshot",
           },
         ];
         return {
@@ -889,8 +916,9 @@ router.get(
       });
       res.json({
         meta: buildReportingMeta(filters, startedAt, [
+          ...reportingScopeWarnings(filters.allowedBranchIds),
           "Checks are read-only and aggregate-only; this endpoint never returns email, phone, passport or record identifiers.",
-          "Global integrity and duplicate checks are intentionally independent of the selected date range.",
+          "Snapshot integrity and duplicate checks are intentionally independent of the selected date range.",
         ]),
         data,
       });

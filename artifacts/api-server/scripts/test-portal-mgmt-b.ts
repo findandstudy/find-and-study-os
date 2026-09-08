@@ -7,13 +7,13 @@
  * TBB4: POST /portal-adapters creates a DB adapter row → 201
  * TBB5: PATCH /portal-adapters/:id updates fields
  * TBB6: DELETE /portal-adapters/:id soft-deletes; not in db list
- * TBB7: POST /portal-universities/:id/test-login — no-credentials → ok:false (never leaks creds)
+ * TBB7: POST /portal-universities/:id/test-login — no worker → fail-closed 503
  *
  * Run:
  *   pnpm --filter @workspace/api-server test:portal-mgmt-b
  */
 
-import { after, test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import http from "http";
 import express, { type Express } from "express";
@@ -23,6 +23,7 @@ import {
   portalProgramMappingTable,
   portalAdaptersTable,
   portalUniversitiesTable,
+  usersTable,
 } from "@workspace/db";
 import portalMgmtRouter from "../src/routes/portalMgmt.js";
 
@@ -39,6 +40,23 @@ const ADP_KEY = `adp_${RUN}`;
 const cleanupMappingKeys: string[] = [];
 const cleanupAdapterIds:  number[] = [];
 const cleanupUniIds:      number[] = [];
+let cleanupUserId: number | null = null;
+
+before(async () => {
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      email: `${RUN}.admin@example.test`,
+      firstName: "Portal",
+      lastName: "Management Admin",
+      role: "super_admin",
+      isActive: true,
+      emailVerified: true,
+    })
+    .returning({ id: usersTable.id });
+  cleanupUserId = user.id;
+  MOCK_USER.id = user.id;
+});
 
 after(async () => {
   for (const key of cleanupMappingKeys) {
@@ -61,13 +79,17 @@ after(async () => {
       .where(and(eq(portalUniversitiesTable.id, id), isNull(portalUniversitiesTable.deletedAt)))
       .catch(() => {});
   }
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  if (cleanupUserId !== null) {
+    await db.delete(usersTable).where(eq(usersTable.id, cleanupUserId)).catch(() => {});
+  }
   setImmediate(() => process.exit(process.exitCode ?? 0));
 });
 
 // ---------------------------------------------------------------------------
 // Auth stub
 // ---------------------------------------------------------------------------
-const MOCK_USER = { id: 1, role: "super_admin", isActive: true, emailVerified: true };
+const MOCK_USER = { id: 0, role: "super_admin", isActive: true, emailVerified: true };
 
 function buildApp(): Express {
   const app = express();
@@ -295,9 +317,9 @@ test("TBB6: DELETE /portal-adapters/:id soft-deletes; not returned in db list", 
 });
 
 // ---------------------------------------------------------------------------
-// TBB7 — POST /portal-universities/:id/test-login — no credentials → ok:false
+// TBB7 — POST /portal-universities/:id/test-login — no worker → 503
 // ---------------------------------------------------------------------------
-test("TBB7: test-login with no adapter/credentials returns ok:false without leaking creds", async () => {
+test("TBB7: test-login without a release-matched worker fails closed without leaking creds", async () => {
   // Create a test university with an adapter key that has NO env credentials
   const [uni] = await db
     .insert(portalUniversitiesTable)
@@ -314,11 +336,12 @@ test("TBB7: test-login with no adapter/credentials returns ok:false without leak
   const server = await listen(app);
   try {
     const res = await sendReq(server, "POST", `/api/portal-universities/${uni.id}/test-login`);
-    assert.equal(res.status, 200, `Expected 200 got ${res.status}: ${JSON.stringify(res.body)}`);
-    assert.equal(typeof res.body.ok, "boolean", "ok must be boolean");
-    // No credentials (adapter not registered + no env vars) → must be ok:false
-    assert.equal(res.body.ok, false, "Should fail without credentials/adapter");
-    assert.ok(typeof res.body.message === "string", "message must be a string");
+    assert.equal(res.status, 503, `Expected 503 got ${res.status}: ${JSON.stringify(res.body)}`);
+    assert.equal(res.body.accepted, false);
+    assert.ok(
+      ["PORTAL_WORKER_UNAVAILABLE", "PORTAL_WORKER_RELEASE_MISMATCH"].includes(res.body.error),
+      `Unexpected worker error: ${String(res.body.error)}`,
+    );
     // Ensure no actual credential VALUES appear in the response.
     // (The message may mention env-var NAME patterns like "_EMAIL" as guidance —
     //  what must never appear is an actual secret/password value.)

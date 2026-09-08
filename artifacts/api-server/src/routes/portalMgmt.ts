@@ -17,6 +17,7 @@
  */
 
 import { Router, type IRouter } from "express";
+import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -27,6 +28,7 @@ import {
   portalProgramMappingTable,
   portalCredentialsTable,
   portalSubmissionsTable,
+  portalWorkerJobsTable,
   pipelineStagesTable,
   universitiesTable,
   programsTable,
@@ -37,8 +39,6 @@ import {
   resolveAdapterForUniversity,
   adapterMetadata,
   isExperimentalAdapterKey,
-  setCredsOverride,
-  clearCredsOverride,
   invalidateDeclarativeAdapterCache,
 } from "@workspace/portal-adapters";
 import { getSuccessCounts, isExperimentalDynamic, GRADUATION_THRESHOLD } from "../lib/adapterGraduation.js";
@@ -46,10 +46,15 @@ import { buildPageMeta, parsePaginationParams } from "@workspace/pagination";
 import { logAudit, requireAuth, requireRole } from "../lib/auth";
 import { ADMIN_ROLES, STAFF_ROLES } from "../lib/roles";
 import { getValidated, validate } from "../middlewares/validate";
-import { batchPortalCredentialKeys, checkHasPortalCredentials, resolvePortalCreds } from "../lib/portalCreds";
+import { batchPortalCredentialKeys } from "../lib/portalCreds";
 import { setPortalCredentials } from "../lib/portalCredentials.js";
 import { buildPortalTriggerStageSnapshot } from "../lib/portalTriggerStagePolicy.js";
 import { loadPortalPartnerOnboardingSnapshot } from "../lib/portalPartnerOnboarding.js";
+import {
+  enqueuePortalWorkerJob,
+  PortalWorkerJobIdempotencyConflictError,
+  PortalWorkerUnavailableError,
+} from "@workspace/portal-runner";
 
 const router: IRouter = Router();
 
@@ -69,11 +74,19 @@ class PortalCredentialsInFlightError extends Error {
   }
 }
 
+class PortalPartnerRoutingInFlightError extends Error {
+  constructor(readonly runningCount: number) {
+    super("Portal partner routing cannot change while submissions are running");
+    this.name = "PortalPartnerRoutingInFlightError";
+  }
+}
+
 type PortalMgmtTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-async function resetPortalCredentialExecutionStateTx(
+async function resetPortalAdapterExecutionStateTx(
   tx: PortalMgmtTx,
   storageKey: string,
+  queueError: string,
 ): Promise<{ partners: number; pendingSubmissions: number }> {
   // Lock and quarantine queued work before credentials can change. A claim
   // racing this update either observes canceled after commit or becomes
@@ -82,7 +95,7 @@ async function resetPortalCredentialExecutionStateTx(
     .update(portalSubmissionsTable)
     .set({
       status: "canceled",
-      error: "PORTAL_CREDENTIALS_CHANGED_REVIEW_REQUIRED",
+      error: queueError,
       lockedAt: null,
       lockedBy: null,
       updatedAt: new Date(),
@@ -111,6 +124,7 @@ async function resetPortalCredentialExecutionStateTx(
       isActive: false,
       autoProcess: false,
       fanOutMode: "off",
+      verificationGeneration: sql`${portalUniversitiesTable.verificationGeneration} + 1`,
       updatedAt: new Date(),
     })
     .where(and(
@@ -120,6 +134,54 @@ async function resetPortalCredentialExecutionStateTx(
     .returning({ id: portalUniversitiesTable.id });
 
   return { partners: partners.length, pendingSubmissions: pending.length };
+}
+
+async function resetPortalCredentialExecutionStateTx(
+  tx: PortalMgmtTx,
+  storageKey: string,
+): Promise<{ partners: number; pendingSubmissions: number }> {
+  return resetPortalAdapterExecutionStateTx(
+    tx,
+    storageKey,
+    "PORTAL_CREDENTIALS_CHANGED_REVIEW_REQUIRED",
+  );
+}
+
+async function quarantinePortalPartnerRoutingWorkTx(
+  tx: PortalMgmtTx,
+  universityKey: string,
+): Promise<{ pendingSubmissions: number }> {
+  // Route identity, adapter selection, defaults and catalog linkage are part
+  // of the execution binding. Quarantine the exact partner queue before a
+  // binding change and reject the mutation when a browser run is in flight.
+  const pending = await tx
+    .update(portalSubmissionsTable)
+    .set({
+      status: "canceled",
+      error: "PORTAL_PARTNER_ROUTING_CHANGED_REVIEW_REQUIRED",
+      lockedAt: null,
+      lockedBy: null,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(portalSubmissionsTable.universityKey, universityKey),
+      eq(portalSubmissionsTable.status, "queued"),
+      isNull(portalSubmissionsTable.deletedAt),
+    ))
+    .returning({ id: portalSubmissionsTable.id });
+
+  const [inFlight] = await tx
+    .select({ total: count(portalSubmissionsTable.id) })
+    .from(portalSubmissionsTable)
+    .where(and(
+      eq(portalSubmissionsTable.universityKey, universityKey),
+      eq(portalSubmissionsTable.status, "running"),
+      isNull(portalSubmissionsTable.deletedAt),
+    ));
+  const runningCount = Number(inFlight?.total ?? 0);
+  if (runningCount > 0) throw new PortalPartnerRoutingInFlightError(runningCount);
+
+  return { pendingSubmissions: pending.length };
 }
 
 // ===========================================================================
@@ -743,7 +805,7 @@ router.patch(
       const readiness = (await loadPortalPartnerOnboardingSnapshot([id])).partners[0];
       const eligible = fanOutMode === "auto"
         ? readiness?.readiness.automaticEligible
-        : readiness?.readiness.configurationReady;
+        : readiness?.readiness.manualPilotEligible;
       if (!readiness?.isActive || !eligible) {
         res.status(409).json({
           error: "FAN_OUT_NOT_READY",
@@ -807,11 +869,11 @@ router.patch(
 
     if (isActive) {
       const readiness = (await loadPortalPartnerOnboardingSnapshot([id])).partners[0];
-      if (!readiness?.readiness.configurationReady) {
+      if (!readiness?.readiness.activationEligible) {
         res.status(409).json({
           error: "ONBOARDING_NOT_READY",
           message: "Complete the partner configuration before activation.",
-          blockers: readiness?.readiness.blockers ?? ["PARTNER_NOT_FOUND"],
+          blockers: readiness?.readiness.activationBlockers ?? ["PARTNER_NOT_FOUND"],
         });
         return;
       }
@@ -911,14 +973,16 @@ router.patch(
     const disabledMultiPortal = body.isMultiPortal === false;
     const routingChanged =
       keyRenamed ||
+      (body.universityName !== undefined && body.universityName !== row.universityName) ||
       (body.adapterKey !== undefined && body.adapterKey !== row.adapterKey) ||
       ("crmUniversityId" in body && body.crmUniversityId !== row.crmUniversityId) ||
+      "defaults" in body ||
       (body.isMultiPortal !== undefined && body.isMultiPortal !== row.isMultiPortal);
     if (!routingChanged && body.fanOutMode && body.fanOutMode !== "off") {
       const readiness = (await loadPortalPartnerOnboardingSnapshot([id])).partners[0];
       const eligible = body.fanOutMode === "auto"
         ? readiness?.readiness.automaticEligible
-        : readiness?.readiness.configurationReady;
+        : readiness?.readiness.manualPilotEligible;
       if (!readiness?.isActive || !eligible) {
         res.status(409).json({
           error: "FAN_OUT_NOT_READY",
@@ -935,46 +999,74 @@ router.patch(
       patch.fanOutMode = "off";
     }
 
-    const updated = await db.transaction(async (tx) => {
-      const [u] = await tx
-        .update(portalUniversitiesTable)
-        .set(patch)
-        .where(eq(portalUniversitiesTable.id, id))
-        .returning();
+    let safetyReset: { pendingSubmissions: number } | null = null;
+    let updated;
+    try {
+      updated = await db.transaction(async (tx) => {
+        if (routingChanged) {
+          safetyReset = await quarantinePortalPartnerRoutingWorkTx(
+            tx,
+            row.universityKey,
+          );
+        }
+        const [u] = await tx
+          .update(portalUniversitiesTable)
+          .set({
+            ...patch,
+            ...(routingChanged
+              ? {
+                  verificationGeneration:
+                    sql`${portalUniversitiesTable.verificationGeneration} + 1`,
+                }
+              : {}),
+          })
+          .where(eq(portalUniversitiesTable.id, id))
+          .returning();
 
-      // If the multi-portal flag was turned OFF, detach its members so their
-      // routes_via no longer dangles on a non-portal company. The edited
-      // partner itself was already returned to inert mode by the safety reset.
-      if (disabledMultiPortal) {
-        await tx
-          .update(portalUniversitiesTable)
-          .set({ routesVia: null, updatedAt: new Date() })
-          .where(and(
-            eq(portalUniversitiesTable.routesVia, row.universityKey),
-            isNull(portalUniversitiesTable.deletedAt),
-          ));
-      } else if (keyRenamed) {
-        // Renaming the company's key would orphan members whose routes_via
-        // still points at the OLD key (resolveAdapterKey would fall back to
-        // their own adapter). Propagate the rename so routing continuity holds.
-        await tx
-          .update(portalUniversitiesTable)
-          .set({ routesVia: body.universityKey!, updatedAt: new Date() })
-          .where(and(
-            eq(portalUniversitiesTable.routesVia, row.universityKey),
-            isNull(portalUniversitiesTable.deletedAt),
-          ));
+        // If the multi-portal flag was turned OFF, detach its members so their
+        // routes_via no longer dangles on a non-portal company. The edited
+        // partner itself was already returned to inert mode by the safety reset.
+        if (disabledMultiPortal) {
+          await tx
+            .update(portalUniversitiesTable)
+            .set({ routesVia: null, updatedAt: new Date() })
+            .where(and(
+              eq(portalUniversitiesTable.routesVia, row.universityKey),
+              isNull(portalUniversitiesTable.deletedAt),
+            ));
+        } else if (keyRenamed) {
+          // Renaming the company's key would orphan members whose routes_via
+          // still points at the OLD key (resolveAdapterKey would fall back to
+          // their own adapter). Propagate the rename so routing continuity holds.
+          await tx
+            .update(portalUniversitiesTable)
+            .set({ routesVia: body.universityKey!, updatedAt: new Date() })
+            .where(and(
+              eq(portalUniversitiesTable.routesVia, row.universityKey),
+              isNull(portalUniversitiesTable.deletedAt),
+            ));
+        }
+
+        return u;
+      });
+    } catch (error) {
+      if (error instanceof PortalPartnerRoutingInFlightError) {
+        res.status(409).json({
+          error: "ROUTING_CHANGE_IN_FLIGHT",
+          message: "Wait for running submissions to finish before changing partner routing.",
+          runningCount: error.runningCount,
+        });
+        return;
       }
-
-      return u;
-    });
+      throw error;
+    }
 
     logAudit(
       user.id,
       "update_portal_university",
       "portal_university",
       id,
-      { ...body, safetyReset: routingChanged },
+      { ...body, safetyReset },
       req.ip,
     );
 
@@ -1056,7 +1148,7 @@ router.post(
       const snapshot = await loadPortalPartnerOnboardingSnapshot(eligibleIds);
       const readyIds = new Set(
         snapshot.partners
-          .filter((partner) => partner.readiness.configurationReady)
+          .filter((partner) => partner.readiness.activationEligible)
           .map((partner) => partner.id),
       );
       eligibleIds = eligibleIds.filter((id) => readyIds.has(id));
@@ -1203,20 +1295,10 @@ router.post(
 // TEST LOGIN
 // ===========================================================================
 
-const PORTAL_LOGIN_TIMEOUT_MS = 30_000;
-
-function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(msg)), ms);
-    p.then(
-      (v) => { clearTimeout(t); resolve(v); },
-      (e) => { clearTimeout(t); reject(e); },
-    );
-  });
-}
-
-// Credentials check now delegated to lib/portalCreds (DB-first + env fallback).
-// The local env-only helper is removed; callers use checkHasPortalCredentials().
+const testLoginBodySchema = z.object({
+  requestKey: z.string().min(1).max(100).regex(/^[A-Za-z0-9._:-]+$/).optional(),
+}).strict().default({});
+type TestLoginSchemas = { params: typeof idParamsSchema; body: typeof testLoginBodySchema };
 
 // ---------------------------------------------------------------------------
 // POST /portal-universities/:id/test-login
@@ -1225,9 +1307,11 @@ router.post(
   "/portal-universities/:id/test-login",
   requireAuth,
   requireRole(...STAFF_ROLES, ...ADMIN_ROLES),
-  validate({ params: idParamsSchema }),
+  validate({ params: idParamsSchema, body: testLoginBodySchema }),
   async (req, res): Promise<void> => {
-    const { id } = getValidated<IdSchemas>(req).params;
+    const { id } = getValidated<TestLoginSchemas>(req).params;
+    const { requestKey: suppliedRequestKey } = getValidated<TestLoginSchemas>(req).body;
+    const requestKey = suppliedRequestKey ?? randomUUID();
 
     const [uni] = await db
       .select()
@@ -1239,46 +1323,79 @@ router.post(
       return;
     }
 
-    // Gate 1: credentials configured? (DB-first, then env)
-    if (!await checkHasPortalCredentials(uni.universityKey, uni.adapterKey)) {
-      res.json({
-        ok: false,
-        message: `Kimlik bilgileri yapılandırılmamış — panelden ekleyin veya .env'de ${uni.adapterKey.toUpperCase()}_EMAIL/_USER + _PASSWORD ayarlayın`,
-      });
-      return;
-    }
-
-    // Gate 2: adapter registered? (code adapters + DB declarative adapters)
-    const adapter = await resolveAdapterByKey(uni.adapterKey);
-    if (!adapter) {
-      res.json({
-        ok: false,
-        message: `Adapter bulunamadı: '${uni.adapterKey}' — önce portal adapter kaydı gerekli`,
-      });
-      return;
-    }
-
-    // Gate 3: resolve creds + headless login attempt
-    let session: Awaited<ReturnType<typeof adapter.login>> | null = null;
     try {
-      const creds = await resolvePortalCreds(uni.universityKey, uni.adapterKey);
-      setCredsOverride(adapter.key, { user: creds.user, password: creds.password });
-      session = await withTimeout(
-        adapter.login({ headless: true }),
-        PORTAL_LOGIN_TIMEOUT_MS,
-        "Login zaman aşımına uğradı (30s)",
-      );
-      res.json({ ok: true, message: "Login başarılı" });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const safe = msg.replace(/password[^\s]*/gi, "***").replace(/token[^\s]*/gi, "***");
-      res.json({ ok: false, message: safe });
-    } finally {
-      clearCredsOverride(adapter.key);
-      session?.close().catch(() => {});
+      const job = await enqueuePortalWorkerJob({
+        kind: "test_login",
+        portalUniversityId: id,
+        requestKey,
+        requestedBy: req.user!.id,
+      });
+      logAudit(req.user!.id, "queue_portal_test_login", "portal_university", id, {
+        adapterKey: uni.adapterKey,
+        requestKey,
+        workerJobId: job.id,
+        replay: job.replay,
+      }, req.ip);
+      res.status(202).json({
+        accepted: true,
+        jobId: job.id,
+        requestKey,
+        replay: job.replay,
+        statusUrl: job.statusUrl,
+      });
+    } catch (error) {
+      if (error instanceof PortalWorkerJobIdempotencyConflictError) {
+        res.status(409).json({
+          accepted: false,
+          error: "PORTAL_WORKER_JOB_IDEMPOTENCY_CONFLICT",
+        });
+        return;
+      }
+      if (error instanceof PortalWorkerUnavailableError) {
+        res.status(503).json({
+          accepted: false,
+          error: error.code,
+        });
+        return;
+      }
+      throw error;
     }
+  },
+);
 
-    logAudit(req.user!.id, "test_portal_login", "portal_university", id, { adapterKey: uni.adapterKey }, req.ip);
+// API clients poll this safe projection. Payloads, credentials and provider
+// page content are intentionally absent from the response.
+router.get(
+  "/portal-worker-jobs/:id",
+  requireAuth,
+  requireRole(...STAFF_ROLES, ...ADMIN_ROLES),
+  validate({ params: idParamsSchema }),
+  async (req, res): Promise<void> => {
+    const { id } = getValidated<IdSchemas>(req).params;
+    const [job] = await db
+      .select({
+        id: portalWorkerJobsTable.id,
+        jobKind: portalWorkerJobsTable.jobKind,
+        portalUniversityId: portalWorkerJobsTable.portalUniversityId,
+        requestKey: portalWorkerJobsTable.requestKey,
+        status: portalWorkerJobsTable.status,
+        attempts: portalWorkerJobsTable.attempts,
+        maxAttempts: portalWorkerJobsTable.maxAttempts,
+        lastErrorCode: portalWorkerJobsTable.lastErrorCode,
+        result: portalWorkerJobsTable.result,
+        createdAt: portalWorkerJobsTable.createdAt,
+        updatedAt: portalWorkerJobsTable.updatedAt,
+        finishedAt: portalWorkerJobsTable.finishedAt,
+      })
+      .from(portalWorkerJobsTable)
+      .where(eq(portalWorkerJobsTable.id, id))
+      .limit(1);
+    if (!job) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(job);
   },
 );
 
@@ -1363,19 +1480,41 @@ router.put(
       countryOverrides: body.countryOverrides ?? existing?.countryOverrides ?? {},
     };
 
-    let row;
-    if (existing) {
-      [row] = await db
-        .update(portalProgramMappingTable)
-        .set({ ...next, updatedAt: new Date() })
-        .where(eq(portalProgramMappingTable.id, existing.id))
-        .returning();
-    } else {
-      [row] = await db
+    const row = await db.transaction(async (tx) => {
+      const affected = await tx
+        .select({ adapterKey: portalUniversitiesTable.adapterKey })
+        .from(portalUniversitiesTable)
+        .where(
+          universityKey === GENERAL_MAPPING_KEY
+            ? isNull(portalUniversitiesTable.deletedAt)
+            : and(
+                or(
+                  eq(portalUniversitiesTable.universityKey, universityKey),
+                  eq(portalUniversitiesTable.adapterKey, universityKey),
+                ),
+                isNull(portalUniversitiesTable.deletedAt),
+              ),
+        );
+      for (const adapterKey of new Set(affected.map((partner) => partner.adapterKey))) {
+        await resetPortalAdapterExecutionStateTx(
+          tx,
+          adapterKey,
+          "PORTAL_PROGRAM_MAPPING_CHANGED_REVIEW_REQUIRED",
+        );
+      }
+
+      if (existing) {
+        return (await tx
+          .update(portalProgramMappingTable)
+          .set({ ...next, updatedAt: new Date() })
+          .where(eq(portalProgramMappingTable.id, existing.id))
+          .returning())[0];
+      }
+      return (await tx
         .insert(portalProgramMappingTable)
         .values({ universityKey, ...next })
-        .returning();
-    }
+        .returning())[0];
+    });
 
     logAudit(
       user.id,
@@ -1641,7 +1780,7 @@ router.patch(
     const user   = req.user!;
 
     const [row] = await db
-      .select({ id: portalAdaptersTable.id })
+      .select({ id: portalAdaptersTable.id, key: portalAdaptersTable.key })
       .from(portalAdaptersTable)
       .where(and(eq(portalAdaptersTable.id, id), isNull(portalAdaptersTable.deletedAt)));
 
@@ -1658,11 +1797,18 @@ router.patch(
     if ("configJson" in body)          patch.configJson = body.configJson ?? null;
     if (body.isActive   !== undefined) patch.isActive   = body.isActive;
 
-    const [updated] = await db
-      .update(portalAdaptersTable)
-      .set(patch)
-      .where(eq(portalAdaptersTable.id, id))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      await resetPortalAdapterExecutionStateTx(
+        tx,
+        row.key,
+        "ADAPTER_CONFIGURATION_CHANGED_REVIEW_REQUIRED",
+      );
+      return (await tx
+        .update(portalAdaptersTable)
+        .set(patch)
+        .where(eq(portalAdaptersTable.id, id))
+        .returning())[0];
+    });
 
     logAudit(user.id, "update_portal_adapter", "portal_adapter", id, body, req.ip);
 
@@ -1685,7 +1831,7 @@ router.delete(
     const user   = req.user!;
 
     const [row] = await db
-      .select({ id: portalAdaptersTable.id })
+      .select({ id: portalAdaptersTable.id, key: portalAdaptersTable.key })
       .from(portalAdaptersTable)
       .where(and(eq(portalAdaptersTable.id, id), isNull(portalAdaptersTable.deletedAt)));
 
@@ -1694,10 +1840,17 @@ router.delete(
       return;
     }
 
-    await db
-      .update(portalAdaptersTable)
-      .set({ deletedAt: new Date() })
-      .where(eq(portalAdaptersTable.id, id));
+    await db.transaction(async (tx) => {
+      await resetPortalAdapterExecutionStateTx(
+        tx,
+        row.key,
+        "ADAPTER_CONFIGURATION_CHANGED_REVIEW_REQUIRED",
+      );
+      await tx
+        .update(portalAdaptersTable)
+        .set({ deletedAt: new Date() })
+        .where(eq(portalAdaptersTable.id, id));
+    });
 
     logAudit(user.id, "delete_portal_adapter", "portal_adapter", id, {}, req.ip);
 

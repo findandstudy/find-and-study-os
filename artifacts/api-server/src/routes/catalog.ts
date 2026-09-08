@@ -266,7 +266,7 @@ router.post("/universities/bulk", bulkJson, requireAuth, requireRole(...MANAGER_
  * Auth: manager+; katalog hassas yapılandırma, dış istemcilere açmıyoruz.
  */
 const PROGRAM_TEMPLATE_FIXED_COLUMNS = [
-  "universityId", "universityName", "name", "degree", "field", "language",
+  "universityId", "universityName", "name", "description", "degree", "field", "language",
   "duration", "tuitionFee", "currency", "scholarship", "intakes",
   "requirements", "commissionRate", "applicationFee", "advancedFee",
   "depositFee", "serviceFeeAmount", "discountedFee", "languageFee",
@@ -295,7 +295,8 @@ router.get("/programs/import-template", requireAuth, requireRole(...MANAGER_ROLE
     const notesRows: Record<string, string>[] = [
       { Column: "universityName", Required: "Yes (or universityId)", Notes: "Exact name as it appears in the Universities tab. Case-insensitive but spelling must match." },
       { Column: "universityId", Required: "Yes (or universityName)", Notes: "Numeric university id (alternative to universityName)." },
-      { Column: "name", Required: "Yes", Notes: "Program name (e.g. Computer Engineering)." },
+      { Column: "name", Required: "Yes", Notes: "Canonical English program name (e.g. Computer Engineering)." },
+      { Column: "description", Required: "No", Notes: "Canonical English description. The system automatically queues all 15 translations." },
       { Column: "degree / field / language / duration", Required: "No", Notes: "Free text." },
       { Column: "tuitionFee / scholarship / applicationFee / advancedFee / depositFee / serviceFeeAmount / discountedFee / languageFee", Required: "No", Notes: "Numeric (no currency symbol)." },
       { Column: "currency", Required: "No", Notes: "ISO code: USD, EUR, TRY, GBP. Defaults to USD." },
@@ -328,7 +329,7 @@ router.get("/programs/import-template", requireAuth, requireRole(...MANAGER_ROLE
 router.post("/programs/bulk", bulkJson, requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
   try {
   const rows: ({
-    universityId?: number; universityName?: string; name: string;
+    universityId?: number; universityName?: string; name: string; description?: string;
     degree?: string; field?: string; language?: string;
     duration?: string; tuitionFee?: number; currency?: string;
     scholarship?: number; intakes?: string; requirements?: string;
@@ -400,7 +401,7 @@ router.post("/programs/bulk", bulkJson, requireAuth, requireRole(...MANAGER_ROLE
   // anything that's neither a known doc key nor one of these gets flagged
   // as an unknown doc-column candidate.
   const NON_DOC_COLUMNS = new Set<string>([
-    "universityId", "universityName", "name", "degree", "field", "language",
+    "universityId", "universityName", "name", "description", "degree", "field", "language",
     "duration", "tuitionFee", "currency", "scholarship", "intakes",
     "requirements", "commissionRate", "applicationFee", "advancedFee",
     "depositFee", "serviceFeeAmount", "discountedFee", "languageFee",
@@ -466,7 +467,7 @@ router.post("/programs/bulk", bulkJson, requireAuth, requireRole(...MANAGER_ROLE
     if (sawAnyDocCol) docColsByRowIdx.set(rowIdx, docList ?? []);
     rowIdxByParsedIdx.push(rowIdx);
     return {
-      universityId: uid, name: r.name, degree: r.degree ?? null,
+      universityId: uid, name: r.name, description: r.description ?? null, degree: r.degree ?? null,
       field: r.field ?? null, language: r.language ?? null,
       duration: r.duration ?? null,
       tuitionFee: r.tuitionFee ? Number(r.tuitionFee) : null,

@@ -13,6 +13,7 @@ import { encryptConfig, decryptConfig } from "../lib/encryption";
 import { maskSecrets, mergeConfig } from "../lib/configMasking";
 import { META_API_VERSION } from "../lib/inbox/channels/meta-shared";
 import { clearDocumentAiConnectionCache, isAnthropicConnectionKey } from "../lib/documentAiConnection";
+import { simulatedIntegrationTestResult, unsupportedIntegrationTestResult } from "../lib/integrationTestResult";
 
 const router: IRouter = Router();
 
@@ -251,7 +252,7 @@ router.post("/integrations/:key/test", requireAuth, requireRole(...ADMIN_ROLES),
 
   if (String(req.params.key) === "whatsapp") {
     if (!isLiveIntegrationsEnabled()) {
-      res.json({ success: true, message: "Test skipped — running in simulated mode (set ALLOW_LIVE_INTEGRATIONS=true to test live)" });
+      res.json(simulatedIntegrationTestResult("Live credential check was skipped; simulated mode is not health evidence."));
       return;
     }
     if (!config.phoneNumberId || !config.accessToken) {
@@ -277,7 +278,7 @@ router.post("/integrations/:key/test", requireAuth, requireRole(...ADMIN_ROLES),
 
   if (String(req.params.key) === "facebook_messenger") {
     if (!isLiveIntegrationsEnabled()) {
-      res.json({ success: true, message: "Test skipped — running in simulated mode (set ALLOW_LIVE_INTEGRATIONS=true to test live)" });
+      res.json(simulatedIntegrationTestResult("Live credential check was skipped; simulated mode is not health evidence."));
       return;
     }
     if (!config.pageId || !config.pageAccessToken) {
@@ -306,7 +307,7 @@ router.post("/integrations/:key/test", requireAuth, requireRole(...ADMIN_ROLES),
 
   if (String(req.params.key) === "instagram") {
     if (!isLiveIntegrationsEnabled()) {
-      res.json({ success: true, message: "Test skipped — running in simulated mode (set ALLOW_LIVE_INTEGRATIONS=true to test live)" });
+      res.json(simulatedIntegrationTestResult("Live credential check was skipped; simulated mode is not health evidence."));
       return;
     }
     if (!config.igBusinessAccountId || !config.pageAccessToken) {
@@ -338,12 +339,11 @@ router.post("/integrations/:key/test", requireAuth, requireRole(...ADMIN_ROLES),
       res.json({ success: false, message: "Web form has no formId/secret yet — save first to generate" });
       return;
     }
-    res.json({
-      success: true,
-      message: isLiveIntegrationsEnabled()
-        ? "Web form is live — submissions will be accepted."
-        : "Web form configured — set ALLOW_LIVE_INTEGRATIONS=true (or deploy) to accept submissions.",
-    });
+    if (!isLiveIntegrationsEnabled()) {
+      res.json(simulatedIntegrationTestResult("Web form configuration exists, but live submission was not verified."));
+      return;
+    }
+    res.json({ success: true, verified: true, simulated: false, status: "verified", message: "Web form is live — submissions will be accepted." });
     return;
   }
 
@@ -353,7 +353,7 @@ router.post("/integrations/:key/test", requireAuth, requireRole(...ADMIN_ROLES),
       return;
     }
     if (!isLiveIntegrationsEnabled()) {
-      res.json({ success: true, message: "Test skipped — running in simulated mode (set ALLOW_LIVE_INTEGRATIONS=true to test live)" });
+      res.json(simulatedIntegrationTestResult("Live credential check was skipped; simulated mode is not health evidence."));
       return;
     }
     try {
@@ -377,7 +377,7 @@ router.post("/integrations/:key/test", requireAuth, requireRole(...ADMIN_ROLES),
     return;
   }
 
-  res.json({ success: true, message: "Connection test passed (simulated)" });
+  res.json(unsupportedIntegrationTestResult("No real connection verifier is implemented for this integration."));
 });
 
 export default router;

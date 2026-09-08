@@ -30,6 +30,7 @@ import {
   portalSubmissionsTable,
   portalProgramFallbacksTable,
   portalAutomationSettingsTable,
+  portalUniversitiesTable,
   auditLogsTable,
   notificationsTable,
 } from "@workspace/db";
@@ -42,6 +43,7 @@ import {
   type ProgramCandidate,
 } from "@workspace/portal-adapters";
 import { loadProgramMapping } from "./programMappingLoader.js";
+import { createPortalSubmissionIntentFromSnapshot } from "./submissionIntent.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -533,6 +535,20 @@ export async function handleNeedsFallback(
       ? "Program portalda bulunamadı"
       : "Kontenjan dolu";
   const reason = `${triggerReason} — ${srcApp.programName ?? srcApp.programId} → ${fallbackProgram.name}`;
+  const [portalUniversity] = await db
+    .select({
+      id: portalUniversitiesTable.id,
+      universityKey: portalUniversitiesTable.universityKey,
+      adapterKey: portalUniversitiesTable.adapterKey,
+      verificationGeneration: portalUniversitiesTable.verificationGeneration,
+    })
+    .from(portalUniversitiesTable)
+    .where(and(
+      eq(portalUniversitiesTable.universityKey, sub.universityKey),
+      isNull(portalUniversitiesTable.deletedAt),
+    ))
+    .limit(1);
+  if (!portalUniversity) return { status: "no_rule" };
 
   const txResult = await db.transaction(async (tx) => {
     const now = new Date();
@@ -576,6 +592,7 @@ export async function handleNeedsFallback(
         agentId:             srcApp.agentId,
         assignedToId:        srcApp.assignedToId,
         season:              srcApp.season,
+        intake:              srcApp.intake,
         stage:               "inquiry",
         level:               fallbackProgram.degree ?? null,
         instructionLanguage: fallbackProgram.language ?? null,
@@ -609,7 +626,20 @@ export async function handleNeedsFallback(
         createdAt:           now,
         updatedAt:           now,
       })
-      .returning({ id: applicationsTable.id });
+      .returning({
+        id: applicationsTable.id,
+        universityId: applicationsTable.universityId,
+        programId: applicationsTable.programId,
+        intake: applicationsTable.intake,
+        season: applicationsTable.season,
+      });
+
+    const intent = createPortalSubmissionIntentFromSnapshot({
+      application: newApp,
+      portalUniversity,
+      targetCatalogUniversityId: srcApp.universityId,
+      source: "fallback",
+    });
 
     // c. Back-link the old application to the new one.
     await tx
@@ -629,6 +659,10 @@ export async function handleNeedsFallback(
         adapterKey:     sub.adapterKey ?? null,
         mode:           newMode,
         status:         "queued",
+        submitIntentKey: intent.submitIntentKey,
+        targetIdentitySha256: intent.targetIdentitySha256,
+        targetIdentity: intent.targetIdentity,
+        submissionAction: "submit",
         meta:           {
           note:          `auto-fallback from #${srcApp.id}`,
           fallbackSource: matchSource,

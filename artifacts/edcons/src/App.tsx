@@ -79,6 +79,7 @@ const StaffAgencyApplications = lazyRetry(() => import("@/pages/staff/AgencyAppl
 const StaffAgentDetail = lazyRetry(() => import("@/pages/staff/AgentDetail"));
 const StaffMessages = lazyRetry(() => import("@/pages/staff/Messages"));
 const StaffTasks = lazyRetry(() => import("@/pages/staff/Tasks"));
+const StaffOperationsCenter = lazyRetry(() => import("@/pages/staff/OperationsCenter"));
 
 const AdminDashboard = lazyRetry(() => import("@/pages/admin/Dashboard"));
 const AdminUsers = lazyRetry(() => import("@/pages/admin/Users"));
@@ -100,6 +101,7 @@ const AdminQualityReport = lazyRetry(() => import("@/pages/admin/QualityReport")
 const AdminSystemHealth = lazyRetry(() => import("@/pages/admin/SystemHealth"));
 const AdminDataQuality = lazyRetry(() => import("@/pages/admin/DataQuality"));
 const AdminReports = lazyRetry(() => import("@/pages/admin/Reports"));
+const AdminSocialOperations = lazyRetry(() => import("@/pages/admin/SocialOperations"));
 const AdminStaffCardDetail = lazyRetry(() => import("@/pages/admin/StaffCardDetail"));
 const AdminContractTemplates = lazyRetry(() => import("@/pages/admin/ContractTemplates"));
 const AdminContracts = lazyRetry(() => import("@/pages/admin/Contracts"));
@@ -381,6 +383,12 @@ function StaffAdminShell() {
           <Route path="/admin/reports">
             <ProtectedRoute requiredPermission="reporting.view"><AdminReports /></ProtectedRoute>
           </Route>
+          <Route path="/admin/operations">
+            <ProtectedRoute allowedRoles={ADMIN_ROLES}><StaffOperationsCenter /></ProtectedRoute>
+          </Route>
+          <Route path="/admin/social">
+            <ProtectedRoute requiredPermission="social.view"><AdminSocialOperations /></ProtectedRoute>
+          </Route>
           <Route path="/admin/contract-templates">
             <ProtectedRoute allowedRoles={[...ADMIN_ROLES, "staff", "consultant", "accountant", "editor", "agent_staff"]} requiredPermission="contract_templates.view"><AdminContractTemplates /></ProtectedRoute>
           </Route>
@@ -473,6 +481,7 @@ function StaffAdminShell() {
           </Route>
           <Route path="/staff/settings" component={StaffSettings} />
           <Route path="/staff/tasks" component={StaffTasks} />
+          <Route path="/staff/work" component={StaffOperationsCenter} />
           <Route component={NotFound} />
         </Switch>
         </Suspense>

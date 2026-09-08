@@ -67,8 +67,11 @@ export async function writebackResult(
   // ----- 1. Load submission to get applicationId --------------------------
   const [sub] = await db
     .select({
-      id:            portalSubmissionsTable.id,
-      applicationId: portalSubmissionsTable.applicationId,
+      id:                  portalSubmissionsTable.id,
+      applicationId:       portalSubmissionsTable.applicationId,
+      mode:                portalSubmissionsTable.mode,
+      submissionAction:    portalSubmissionsTable.submissionAction,
+      providerCommittedAt: portalSubmissionsTable.providerCommittedAt,
     })
     .from(portalSubmissionsTable)
     .where(eq(portalSubmissionsTable.id, submissionId));
@@ -78,11 +81,21 @@ export async function writebackResult(
     return;
   }
 
+  // A provider commitment is deliberately separate from the mutable local
+  // status enum. Dry runs never set it. Once set, migration 0095 makes the
+  // timestamp immutable and its partial unique index prevents another REAL
+  // submit intent for the same canonical application target from also being
+  // recorded as provider-committed.
+  const providerCommitted =
+    sub.mode === "real" &&
+    sub.submissionAction === "submit" &&
+    (result?.submitted === true || result?.alreadyExists === true);
+
   // ----- 2. Update portal_submissions -------------------------------------
   // If workerId is provided we guard with locked_by = workerId so that a
   // stale background write (from an inline process that timed out and was
   // requeued) cannot clobber a row that has since been re-claimed.
-  await db
+  const updated = await db
     .update(portalSubmissionsTable)
     .set({
       status:         submissionStatus,
@@ -104,6 +117,9 @@ export async function writebackResult(
       // Persist the portal-assigned reference (e.g. Topkapı success-page uuid)
       // only when present so a later non-submitted run never clobbers it.
       ...(result?.externalRef ? { externalRef: result.externalRef } : {}),
+      ...(providerCommitted && sub.providerCommittedAt === null
+        ? { providerCommittedAt: new Date() }
+        : {}),
       // Structured quota-full context (Phase 2) → meta jsonb. Only set on
       // programFull so other flows never clobber the meta column.
       ...(result?.programFull
@@ -171,7 +187,12 @@ export async function writebackResult(
             eq(portalSubmissionsTable.lockedBy, workerId),
           )
         : eq(portalSubmissionsTable.id, submissionId),
-    );
+    )
+    .returning({ id: portalSubmissionsTable.id });
+
+  if (workerId !== undefined && updated.length === 0) {
+    throw new Error("PORTAL_SUBMISSION_LEASE_LOST");
+  }
 
   // ----- 3. Best-effort canonical application reference sync -------------
   // external_ref is an adapter-defined locator and never becomes the canonical

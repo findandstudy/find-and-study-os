@@ -308,7 +308,7 @@ function SubmissionRow({
   const isDiagnosing = diagnosingId === sub.id;
 
   const canRetry   = sub.status === "failed" || sub.status === "canceled" || sub.status === "dry_run";
-  const canCancel  = sub.status === "queued"  || sub.status === "running";
+  const canCancel  = sub.status === "queued";
   const canProcess = sub.status === "queued";
   const canDiagnose = ["failed", "program_missing", "program_full"].includes(sub.status);
   const guardian = sub.resultJson?.aiGuardian;
@@ -662,7 +662,6 @@ export default function PortalSubmissionsTab() {
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [diagnosingId, setDiagnosingId] = useState<number | null>(null);
   const [processingAll, setProcessingAll] = useState(false);
-  const [resetingStuck, setResetingStuck] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
 
   // Confirmation targets for destructive / live actions.
@@ -825,26 +824,15 @@ export default function PortalSubmissionsTab() {
     setProcessingId(id);
     try {
       interface ProcessResult {
-        processed: number;
-        results: { id: number; status: string; error?: string }[];
+        accepted: true;
+        submissionId: number;
+        statusUrl: string;
       }
-      const data = await customFetch<ProcessResult>(
+      await customFetch<ProcessResult>(
         `/api/portal-submissions/${id}/process`,
         { method: "POST" },
       );
-      const requeued = data.results.find(r => r.status === "requeued");
-      const failed = data.results.find(r => r.status === "failed");
-      if (requeued) {
-        toast({ title: t("portalAutomation.submissions.requeuedMessage") });
-      } else if (failed) {
-        toast({
-          title: t("portalAutomation.submissions.processError"),
-          description: failed.error ? failed.error.slice(0, 120) : undefined,
-          variant: "destructive",
-        });
-      } else {
-        toast({ title: t("portalAutomation.submissions.processSuccess") });
-      }
+      toast({ title: t("portalAutomation.submissions.processSuccess") });
       await load();
     } catch (err: unknown) {
       const body = err && typeof err === "object" && "error" in err
@@ -864,29 +852,17 @@ export default function PortalSubmissionsTab() {
     setProcessingAll(true);
     try {
       interface ProcessAllResult {
-        processed: number;
-        results: { id: number; status: string; error?: string }[];
+        accepted: true;
+        queued: number;
+        statusUrl: string;
       }
       const data = await customFetch<ProcessAllResult>(
         "/api/portal-submissions/process-queued",
         { method: "POST" },
       );
-      const failedCount   = data.results.filter(r => r.status === "failed").length;
-      const requeuedCount = data.results.filter(r => r.status === "requeued").length;
-      const firstErr = data.results.find(r => r.status === "failed")?.error;
-      if (failedCount > 0) {
-        toast({
-          title: t("portalAutomation.submissions.processAllError"),
-          description: firstErr ? firstErr.slice(0, 120) : `${failedCount} failed`,
-          variant: "destructive",
-        });
-      } else if (requeuedCount > 0) {
-        toast({ title: t("portalAutomation.submissions.requeuedMessage") });
-      } else {
-        toast({
-          title: t("portalAutomation.submissions.processAllSuccess", { count: String(data.processed) }),
-        });
-      }
+      toast({
+        title: t("portalAutomation.submissions.processAllSuccess", { count: String(data.queued) }),
+      });
       await load();
     } catch (err: unknown) {
       const body = err && typeof err === "object" && "error" in err
@@ -903,41 +879,20 @@ export default function PortalSubmissionsTab() {
     }
   };
 
-  const handleResetStuck = async () => {
-    setResetingStuck(true);
-    try {
-      interface ResetResult { reset: number; ids: number[] }
-      const data = await customFetch<ResetResult>(
-        "/api/portal-submissions/reset-stuck",
-        { method: "POST" },
-      );
-      if (data.reset > 0) {
-        toast({ title: t("portalAutomation.submissions.resetStuckSuccess", { count: String(data.reset) }) });
-      } else {
-        toast({ title: t("portalAutomation.submissions.resetStuckNone") });
-      }
-      await load();
-    } catch {
-      toast({ title: t("portalAutomation.submissions.resetStuckError"), variant: "destructive" });
-    } finally {
-      setResetingStuck(false);
-    }
-  };
-
   const bulkRetryableIds  = selectedOnPage.filter((s) => s.status === "failed" || s.status === "canceled" || s.status === "dry_run").map((s) => s.id);
-  const bulkCancelableIds = selectedOnPage.filter((s) => s.status === "queued" || s.status === "running").map((s) => s.id);
+  const bulkCancelableIds = selectedOnPage.filter((s) => s.status === "queued").map((s) => s.id);
   const bulkProcessableIds = selectedOnPage.filter((s) => s.status === "queued").map((s) => s.id);
 
   const handleBulkRetry = async () => {
     if (bulkRetryableIds.length === 0) return;
     setBulkBusy(true);
     try {
-      interface BulkResult { updated: number; ids: number[] }
+      interface BulkResult { retried: number; ids: number[] }
       const data = await customFetch<BulkResult>("/api/portal-submissions/bulk-retry", {
         method: "POST",
         body: JSON.stringify({ ids: bulkRetryableIds }),
       });
-      toast({ title: t("portalAutomation.submissions.bulkRetrySuccess", { count: String(data.updated) }) });
+      toast({ title: t("portalAutomation.submissions.bulkRetrySuccess", { count: String(data.retried) }) });
       clearSelection();
       await load();
     } catch {
@@ -951,12 +906,12 @@ export default function PortalSubmissionsTab() {
     if (bulkCancelableIds.length === 0) return;
     setBulkBusy(true);
     try {
-      interface BulkResult { updated: number; ids: number[] }
+      interface BulkResult { canceled: number; ids: number[] }
       const data = await customFetch<BulkResult>("/api/portal-submissions/bulk-cancel", {
         method: "POST",
         body: JSON.stringify({ ids: bulkCancelableIds }),
       });
-      toast({ title: t("portalAutomation.submissions.bulkCancelSuccess", { count: String(data.updated) }) });
+      toast({ title: t("portalAutomation.submissions.bulkCancelSuccess", { count: String(data.canceled) }) });
       clearSelection();
       await load();
     } catch {
@@ -971,22 +926,16 @@ export default function PortalSubmissionsTab() {
     setBulkBusy(true);
     try {
       interface BulkProcessResult {
-        processed: number;
-        results: { id: number; status: string; error?: string }[];
+        accepted: number;
+        ids: number[];
+        skipped: number[];
+        statusUrl: string;
       }
       const data = await customFetch<BulkProcessResult>("/api/portal-submissions/bulk-process", {
         method: "POST",
         body: JSON.stringify({ ids: bulkProcessableIds }),
       });
-      const failedCount = data.results.filter((r) => r.status === "failed").length;
-      if (failedCount > 0) {
-        toast({
-          title: t("portalAutomation.submissions.bulkProcessPartial", { count: String(data.processed - failedCount), failed: String(failedCount) }),
-          variant: "destructive",
-        });
-      } else {
-        toast({ title: t("portalAutomation.submissions.bulkProcessSuccess", { count: String(data.processed) }) });
-      }
+      toast({ title: t("portalAutomation.submissions.bulkProcessSuccess", { count: String(data.accepted) }) });
       clearSelection();
       await load();
     } catch (err: unknown) {
@@ -1005,7 +954,6 @@ export default function PortalSubmissionsTab() {
 
   const totalPages = Math.ceil(total / limit);
   const hasQueued  = subs.some((s) => s.status === "queued");
-  const hasRunning = subs.some((s) => s.status === "running");
 
   return (
     <div className="space-y-4 py-2">
@@ -1112,20 +1060,6 @@ export default function PortalSubmissionsTab() {
             <Plus className="w-3.5 h-3.5" />
             {t("portalAutomation.manualSubmit.newButton")}
           </Button>
-          {hasRunning && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 gap-1.5 text-amber-600 border-amber-300 hover:bg-amber-50"
-              onClick={handleResetStuck}
-              disabled={resetingStuck || loading}
-            >
-              {resetingStuck
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <RotateCcw className="w-3.5 h-3.5" />}
-              {t("portalAutomation.submissions.resetStuckButton")}
-            </Button>
-          )}
           {hasQueued && (
             <Button
               variant="default"

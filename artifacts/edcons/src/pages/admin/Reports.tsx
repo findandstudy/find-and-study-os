@@ -194,139 +194,84 @@ type DataQualityData = {
   mutationAvailable: false;
 };
 
-const COPY = {
-  en: {
-    title: "Reporting & Intelligence Center",
-    description:
-      "A single, governed view of growth, applications, finance and data quality.",
-    overview: "Executive overview",
-    funnel: "Lead funnel",
-    applications: "Applications",
-    finance: "Finance",
-    quality: "Data quality",
-    apply: "Apply filters",
-    refresh: "Refresh",
-    allBranches: "All branches",
-    from: "From",
-    to: "To",
-    season: "Season",
-    branch: "Branch",
-    live: "Live operational data",
-    failed:
-      "This report could not be loaded. Existing values were not replaced with zero.",
-    retry: "Try again",
-    leads: "Leads created",
-    students: "Students created",
-    apps: "Applications created",
-    activeApps: "Active inventory",
-    staleApps: "Not updated for 14+ days",
-    conversion: "Lead conversion",
-    winRate: "Application win rate",
-    periodComparison: "vs previous equal period",
-    noBaseline: "No comparison baseline",
-    trend: "Growth trend",
-    cohort: "selected creation cohort",
-    inventory: "current inventory",
-    sourcePerformance: "Acquisition source performance",
-    source: "Source",
-    converted: "Converted",
-    submitted: "Submitted",
-    won: "Won",
-    lost: "Lost",
-    stageDistribution: "Application stage distribution",
-    aging: "Active inventory — last update aging",
-    destinations: "Destination performance",
-    destination: "Destination",
-    gross: "Gross commission",
-    liability: "Agent liability",
-    net: "Net commission",
-    collected: "Collected",
-    outstanding: "Outstanding",
-    billed: "Billed",
-    serviceFees: "Service fees",
-    transactions: "Transaction flow",
-    transactionType: "Transaction type",
-    currencyRule:
-      "Amounts are shown separately in their original currency. No mixed-currency total is calculated.",
-    coverage: "Data coverage",
-    checks: "Read-only quality checks",
-    critical: "Critical",
-    warnings: "Warnings",
-    metricDictionary: "Metric dictionary",
-    metricVersion: "Metric version",
-    calculatedAt: "Calculated",
-    semantics: "Time basis",
-    exportDisabled:
-      "Export is locked until field-level audit and approval are complete.",
-    openRecords: "Open records",
-    noData: "There is no data for this selection.",
-  },
-  tr: {
-    title: "Raporlama & Analiz",
-    description:
-      "Büyüme, başvurular, finans ve veri kalitesini tek bir görünümde takip edin.",
-    overview: "Yönetim özeti",
-    funnel: "Lead funnel",
-    applications: "Başvurular",
-    finance: "Finans",
-    quality: "Veri kalitesi",
-    apply: "Filtreleri uygula",
-    refresh: "Yenile",
-    allBranches: "Tüm şubeler",
-    from: "Başlangıç",
-    to: "Bitiş",
-    season: "Sezon",
-    branch: "Şube",
-    live: "Canlı operasyon verisi",
-    failed: "Bu rapor yüklenemedi. Mevcut değerler sıfırla değiştirilmedi.",
-    retry: "Tekrar dene",
-    leads: "Oluşturulan lead",
-    students: "Oluşturulan öğrenci",
-    apps: "Oluşturulan başvuru",
-    activeApps: "Aktif başvuru stoğu",
-    staleApps: "14+ gündür güncellenmeyen",
-    conversion: "Lead dönüşümü",
-    winRate: "Başvuru kazanım oranı",
-    periodComparison: "önceki eşit döneme göre",
-    noBaseline: "Karşılaştırma tabanı yok",
-    trend: "Büyüme trendi",
-    cohort: "seçili oluşturma kohortu",
-    inventory: "güncel stok",
-    sourcePerformance: "Kazanım kaynağı performansı",
-    source: "Kaynak",
-    converted: "Dönüşen",
-    submitted: "Gönderilen",
-    won: "Kazanılan",
-    lost: "Kaybedilen",
-    stageDistribution: "Başvuru aşaması dağılımı",
-    aging: "Aktif stok — son güncelleme yaşı",
-    destinations: "Destinasyon performansı",
-    destination: "Destinasyon",
-    gross: "Brüt komisyon",
-    liability: "Acente yükümlülüğü",
-    net: "Net komisyon",
-    collected: "Tahsil edilen",
-    outstanding: "Bekleyen",
-    billed: "Faturalanan",
-    serviceFees: "Hizmet ücretleri",
-    transactions: "İşlem akışı",
-    transactionType: "İşlem türü",
-    currencyRule:
-      "Tutarlar özgün para biriminde ayrı gösterilir. Karışık para birimi toplamı hesaplanmaz.",
-    coverage: "Veri kapsama oranı",
-    checks: "Salt-okunur kalite kontrolleri",
-    critical: "Kritik",
-    warnings: "Uyarılar",
-    metricDictionary: "Metrik sözlüğü",
-    metricVersion: "Metrik sürümü",
-    calculatedAt: "Hesaplanma",
-    semantics: "Zaman temeli",
-    exportDisabled:
-      "Alan bazlı denetim ve onay tamamlanana kadar dışa aktarma kilitlidir.",
-    openRecords: "Kayıtları aç",
-    noData: "Bu seçim için veri bulunmuyor.",
-  },
+const COPY_KEYS = {
+  title: "reporting.title",
+  description: "reporting.description",
+  overview: "reporting.overview",
+  funnel: "reporting.funnel",
+  applications: "reporting.applications",
+  finance: "reporting.finance",
+  quality: "reporting.quality",
+  apply: "reporting.apply",
+  refresh: "reporting.refresh",
+  allBranches: "reporting.allBranches",
+  from: "reporting.from",
+  to: "reporting.to",
+  season: "reporting.season",
+  branch: "reporting.branch",
+  live: "reporting.live",
+  failed: "reporting.failed",
+  retry: "reporting.retry",
+  leads: "reporting.leads",
+  students: "reporting.students",
+  apps: "reporting.apps",
+  activeApps: "reporting.activeApps",
+  staleApps: "reporting.staleApps",
+  conversion: "reporting.conversion",
+  winRate: "reporting.winRate",
+  periodComparison: "reporting.periodComparison",
+  noBaseline: "reporting.noBaseline",
+  trend: "reporting.trend",
+  cohort: "reporting.cohort",
+  inventory: "reporting.inventory",
+  sourcePerformance: "reporting.sourcePerformance",
+  source: "reporting.source",
+  converted: "reporting.converted",
+  submitted: "reporting.submitted",
+  won: "reporting.won",
+  lost: "reporting.lost",
+  stageDistribution: "reporting.stageDistribution",
+  aging: "reporting.aging",
+  destinations: "reporting.destinations",
+  destination: "reporting.destination",
+  gross: "reporting.gross",
+  liability: "reporting.liability",
+  net: "reporting.net",
+  collected: "reporting.collected",
+  outstanding: "reporting.outstanding",
+  billed: "reporting.billed",
+  serviceFees: "reporting.serviceFees",
+  transactions: "reporting.transactions",
+  transactionType: "reporting.transactionType",
+  currencyRule: "reporting.currencyRule",
+  coverage: "reporting.coverage",
+  checks: "reporting.checks",
+  critical: "reporting.critical",
+  warnings: "reporting.warnings",
+  metricDictionary: "reporting.metricDictionary",
+  metricVersion: "reporting.metricVersion",
+  calculatedAt: "reporting.calculatedAt",
+  semantics: "reporting.semantics",
+  exportDisabled: "reporting.exportDisabled",
+  openRecords: "reporting.openRecords",
+  noData: "reporting.noData",
+  affectedRecords: "reporting.affectedRecords",
+  denominator: "reporting.denominator",
+  leadSource: "reporting.leadSource",
+  applicationLead: "reporting.applicationLead",
+  applicationCatalog: "reporting.applicationCatalog",
 } as const;
+
+type ReportingCopy = Record<keyof typeof COPY_KEYS, string>;
+
+function buildCopy(translate: (key: string) => string): ReportingCopy {
+  return Object.fromEntries(
+    Object.entries(COPY_KEYS).map(([key, translationKey]) => [
+      key,
+      translate(translationKey),
+    ]),
+  ) as ReportingCopy;
+}
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -350,7 +295,7 @@ function Change({
   copy,
 }: {
   value: number | null;
-  copy: typeof COPY.en | typeof COPY.tr;
+  copy: ReportingCopy;
 }) {
   if (value === null)
     return (
@@ -431,7 +376,7 @@ function ReportError({
   copy,
 }: {
   retry: () => void;
-  copy: typeof COPY.en | typeof COPY.tr;
+  copy: ReportingCopy;
 }) {
   return (
     <Card className="border-destructive/40">
@@ -470,7 +415,7 @@ function OverviewPanel({
   retry,
 }: {
   report?: ReportResponse<CommandCenterData>;
-  copy: typeof COPY.en | typeof COPY.tr;
+  copy: ReportingCopy;
   locale: string;
   retry: () => void;
 }) {
@@ -633,7 +578,7 @@ function FunnelPanel({
   retry,
 }: {
   report?: ReportResponse<FunnelData>;
-  copy: typeof COPY.en | typeof COPY.tr;
+  copy: ReportingCopy;
   locale: string;
   retry: () => void;
 }) {
@@ -726,7 +671,7 @@ function ApplicationsPanel({
   retry,
 }: {
   report?: ReportResponse<ApplicationData>;
-  copy: typeof COPY.en | typeof COPY.tr;
+  copy: ReportingCopy;
   locale: string;
   retry: () => void;
 }) {
@@ -863,7 +808,7 @@ function FinancePanel({
   retry,
 }: {
   report?: ReportResponse<FinanceData>;
-  copy: typeof COPY.en | typeof COPY.tr;
+  copy: ReportingCopy;
   locale: string;
   retry: () => void;
 }) {
@@ -1001,18 +946,18 @@ function DataQualityPanel({
   retry,
 }: {
   report?: ReportResponse<DataQualityData>;
-  copy: typeof COPY.en | typeof COPY.tr;
+  copy: ReportingCopy;
   retry: () => void;
 }) {
   if (!report) return <ReportError retry={retry} copy={copy} />;
   const coverage = [
-    { label: "Lead source", value: report.data.coverage.leadSourcePercent },
+    { label: copy.leadSource, value: report.data.coverage.leadSourcePercent },
     {
-      label: "Application → lead",
+      label: copy.applicationLead,
       value: report.data.coverage.applicationLeadLineagePercent,
     },
     {
-      label: "Application → catalog",
+      label: copy.applicationCatalog,
       value: report.data.coverage.applicationCatalogLinkPercent,
     },
   ];
@@ -1064,7 +1009,7 @@ function DataQualityPanel({
                   <p className="text-xs text-muted-foreground">
                     {check.scope.replaceAll("_", " ")}
                     {check.affectedRecords !== undefined
-                      ? ` · ${check.affectedRecords} affected records`
+                      ? ` · ${check.affectedRecords} ${copy.affectedRecords}`
                       : ""}
                   </p>
                 </div>
@@ -1082,11 +1027,11 @@ function DataQualityPanel({
 }
 
 export default function ReportsPage() {
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const { hasPermission } = useAuth(true);
   const { season, setSeason, availableYears } = useSeason();
   const queryClient = useQueryClient();
-  const copy = lang === "tr" ? COPY.tr : COPY.en;
+  const copy = useMemo(() => buildCopy(t), [lang, t]);
   const locale = getLocale(lang);
   const initial = useMemo(defaultDates, []);
   const [draft, setDraft] = useState({ ...initial, branchId: "all", season });
@@ -1156,13 +1101,18 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6" data-testid="page-reporting-center">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">
-            {copy.title}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {copy.description}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+            <BarChart3 className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-display font-bold text-foreground">
+              {copy.title}
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {copy.description}
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <Badge
@@ -1379,7 +1329,7 @@ export default function ReportsPage() {
                 <p className="mt-2 text-[10px] uppercase tracking-wide text-muted-foreground">
                   {copy.semantics}: {metric.timeSemantics.replaceAll("_", " ")}
                   {metric.denominator
-                    ? ` · denominator: ${metric.denominator}`
+                    ? ` · ${copy.denominator}: ${metric.denominator}`
                     : ""}
                 </p>
               </div>

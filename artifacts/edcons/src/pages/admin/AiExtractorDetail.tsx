@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/hooks/use-i18n";
 import { ArrowLeft, Plus, Trash2, Play, Save } from "lucide-react";
+import { SUPPORTED_LANGUAGES } from "@/lib/i18n";
 
 type FieldType = "string" | "number" | "date" | "boolean" | "enum";
 interface Field {
@@ -47,7 +48,7 @@ interface Extractor {
 }
 
 const SCOPES = ["public_apply", "embed", "staff", "agent"] as const;
-const LANGS = ["en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id"] as const;
+const LANGS = SUPPORTED_LANGUAGES;
 const FIELD_TYPES: FieldType[] = ["string", "number", "date", "boolean", "enum"];
 
 const EMPTY: Extractor = {

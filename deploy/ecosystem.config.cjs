@@ -10,6 +10,8 @@ const path = require("node:path");
 
 const API_PROCESS_NAME = "fasos-apply-api";
 const PORTAL_WORKER_PROCESS_NAME = "findandstudy-portal-worker";
+const PORTAL_STATUS_WORKER_PROCESS_NAME = "findandstudy-portal-status-worker";
+const PORTAL_LIFECYCLE_WORKER_PROCESS_NAME = "findandstudy-portal-lifecycle-worker";
 const API_PORT = process.env.PORT || "5000";
 const RELEASE_CWD = process.env.CURRENT_RELEASE_LINK
   ? path.resolve(process.env.CURRENT_RELEASE_LINK)
@@ -118,9 +120,67 @@ module.exports = {
       restart_delay: 5000,
       min_uptime: "10s",
     },
+    {
+      name: PORTAL_STATUS_WORKER_PROCESS_NAME,
+      cwd: RELEASE_CWD,
+      script: "./artifacts/api-server/src/workers/portalStatusWorker.ts",
+      interpreter: path.join(
+        RELEASE_CWD,
+        "artifacts/api-server/node_modules/.bin/tsx",
+      ),
+      exec_mode: "fork",
+      instances: 1,
+      max_memory_restart: "768M",
+      watch: false,
+      env_production: {
+        NODE_ENV: "production",
+        PORT: "",
+        NODE_OPTIONS: "--max-old-space-size=512 --enable-source-maps",
+      },
+      out_file: path.join(LOG_DIR, "portal-status-worker-out.log"),
+      error_file: path.join(LOG_DIR, "portal-status-worker-error.log"),
+      merge_logs: true,
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      kill_timeout: 130000,
+      autorestart: true,
+      exp_backoff_restart_delay: 100,
+      max_restarts: 10,
+      restart_delay: 5000,
+      min_uptime: "10s",
+    },
+    {
+      name: PORTAL_LIFECYCLE_WORKER_PROCESS_NAME,
+      cwd: RELEASE_CWD,
+      script: "./artifacts/api-server/src/workers/portalLifecycleWorker.ts",
+      interpreter: path.join(
+        RELEASE_CWD,
+        "artifacts/api-server/node_modules/.bin/tsx",
+      ),
+      exec_mode: "fork",
+      instances: 1,
+      max_memory_restart: "512M",
+      watch: false,
+      env_production: {
+        NODE_ENV: "production",
+        PORT: "",
+        NODE_OPTIONS: "--max-old-space-size=384 --enable-source-maps",
+      },
+      out_file: path.join(LOG_DIR, "portal-lifecycle-worker-out.log"),
+      error_file: path.join(LOG_DIR, "portal-lifecycle-worker-error.log"),
+      merge_logs: true,
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      kill_timeout: 30000,
+      autorestart: true,
+      exp_backoff_restart_delay: 100,
+      max_restarts: 10,
+      restart_delay: 5000,
+      min_uptime: "10s",
+    },
   ],
   processNames: {
     api: API_PROCESS_NAME,
     portalWorker: PORTAL_WORKER_PROCESS_NAME,
+    portalStatusWorker: PORTAL_STATUS_WORKER_PROCESS_NAME,
+    portalLifecycleWorker: PORTAL_LIFECYCLE_WORKER_PROCESS_NAME,
   },
 };

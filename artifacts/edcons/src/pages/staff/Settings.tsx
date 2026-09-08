@@ -42,21 +42,11 @@ import { IntegrationsManager } from "@/components/IntegrationsManager";
 import { ApiTokensManager } from "@/pages/admin/ApiTokens";
 import { usePipelineStages } from "@/hooks/use-pipeline-stages";
 import { EditStagesDialog } from "@/components/EditStagesDialog";
+import { SYSTEM_LANGUAGE_OPTIONS } from "@/lib/i18n";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
-const LANGUAGES = [
-  { code: "en", label: "English", country: "GB" },
-  { code: "tr", label: "Türkçe", country: "TR" },
-  { code: "ar", label: "العربية", country: "SA" },
-  { code: "fr", label: "Français", country: "FR" },
-  { code: "ru", label: "Русский", country: "RU" },
-  { code: "fa", label: "فارسی", country: "IR" },
-  { code: "zh", label: "中文", country: "CN" },
-  { code: "hi", label: "हिन्दी", country: "IN" },
-  { code: "es", label: "Español", country: "ES" },
-  { code: "id", label: "Bahasa", country: "ID" },
-];
+const LANGUAGES = SYSTEM_LANGUAGE_OPTIONS;
 
 const PHONE_CODES = [
   { code: "+90", country: "TR" }, { code: "+1", country: "US" }, { code: "+44", country: "GB" },

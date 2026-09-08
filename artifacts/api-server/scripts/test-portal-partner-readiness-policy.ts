@@ -15,6 +15,10 @@ const READY: PortalPartnerReadinessInput = {
   graduationRequired: true,
   successCount: 0,
   graduationThreshold: 3,
+  runtimeIdentityReady: true,
+  testLoginPassed: true,
+  strictDryRunCapable: true,
+  strictDryRunPassed: true,
   isActive: true,
   autoProcess: false,
 };
@@ -27,6 +31,7 @@ test("PPR1: missing setup facts fail closed with every actionable blocker", () =
     hasCredentials: false,
     catalogLinked: false,
     activeProgramCount: 0,
+    runtimeIdentityReady: false,
     isActive: false,
   });
   assert.equal(result.configurationReady, false);
@@ -39,6 +44,7 @@ test("PPR1: missing setup facts fail closed with every actionable blocker", () =
     "CREDENTIALS_REQUIRED",
     "CATALOG_LINK_REQUIRED",
     "ACTIVE_PROGRAM_REQUIRED",
+    "RUNTIME_IDENTITY_REQUIRED",
   ]);
 });
 
@@ -106,4 +112,39 @@ test("PPR8: negative counters cannot manufacture or over-require proof", () => {
     computePortalPartnerReadiness({ ...READY, successCount: 99 }).successProofsRemaining,
     0,
   );
+});
+
+test("PPR9: configuration never substitutes for a current test-login receipt", () => {
+  const result = computePortalPartnerReadiness({
+    ...READY,
+    testLoginPassed: false,
+    strictDryRunPassed: false,
+    isActive: false,
+  });
+  assert.equal(result.configurationReady, true);
+  assert.equal(result.activationEligible, false);
+  assert.equal(result.phase, "test_login_required");
+  assert.deepEqual(result.activationBlockers, ["TEST_LOGIN_REQUIRED"]);
+});
+
+test("PPR10: activation after login permits only strict dry-run onboarding", () => {
+  const result = computePortalPartnerReadiness({
+    ...READY,
+    strictDryRunPassed: false,
+  });
+  assert.equal(result.activationEligible, true);
+  assert.equal(result.manualPilotEligible, false);
+  assert.equal(result.automaticEligible, false);
+  assert.equal(result.phase, "strict_dry_run_required");
+  assert.deepEqual(result.executionBlockers, ["STRICT_DRY_RUN_REQUIRED"]);
+});
+
+test("PPR11: a non-strict adapter cannot mint the required dry-run proof", () => {
+  const result = computePortalPartnerReadiness({
+    ...READY,
+    strictDryRunCapable: false,
+    strictDryRunPassed: false,
+  });
+  assert.equal(result.manualPilotEligible, false);
+  assert.deepEqual(result.executionBlockers, ["STRICT_DRY_RUN_ADAPTER_REQUIRED"]);
 });

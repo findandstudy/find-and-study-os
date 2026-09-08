@@ -1,8 +1,9 @@
 /**
  * force-drain-one.ts
  *
- * ONE-SHOT manual override: processes a single portal_submission by ID,
- * bypassing the auto-process gate entirely.
+ * ONE-SHOT manual recovery: processes one exact portal_submission by ID.
+ * It bypasses the auto-process scheduling gate, but never the version-bound
+ * partner verification or strict dry-run execution gates.
  *
  * Usage:
  *   FORCE_SUBMISSION_ID=3 \
@@ -12,7 +13,7 @@
  * What it does:
  *   1. Resets attempts=0, status=queued, locked_at=NULL for the target row
  *      (handles the exhausted-attempts case).
- *   2. Claims the submission via claimNext (universityKeys filter: none → claims any).
+ *   2. Claims exactly that submission via claimById.
  *   3. Runs the portal adapter (login + submit).
  *   4. Writes result back to portal_submissions + updates application stage.
  *
@@ -20,20 +21,22 @@
  */
 
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import {
-  claimNext,
-  releaseStale,
+  claimById,
   heartbeat,
   buildStudentProfile,
   runSubmission,
   writebackResult,
+  resolveAdapterKey,
+  getPortalExecutionVerification,
+  recordPortalPartnerVerificationReceipt,
+  samePortalPartnerVerificationBinding,
 } from "@workspace/portal-runner";
 import { resolvePortalCreds } from "../src/lib/portalCreds.js";
-import { db, pool, portalUniversitiesTable } from "@workspace/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { pool } from "@workspace/db";
 
 const WORKER_ID = `force-drain-${os.hostname()}-${process.pid}`;
-const STALE_MS  = 5 * 60 * 1000;
 
 const rawId = process.env.FORCE_SUBMISSION_ID;
 if (!rawId) {
@@ -92,25 +95,14 @@ async function run(): Promise<void> {
   console.log(`[force-drain] Reset complete.`);
 
   // -------------------------------------------------------------------------
-  // Step 3: Release any other stale locks (crash recovery)
+  // Step 3: Claim exactly the requested row. A force operation must never
+  // release unrelated locks or fall through to a different queued submission.
   // -------------------------------------------------------------------------
-  const staleIds = await releaseStale(STALE_MS);
-  if (staleIds.length > 0) {
-    console.log(`[force-drain] Released ${staleIds.length} other stale submission(s): ${staleIds.join(",")}`);
-  }
-
-  // -------------------------------------------------------------------------
-  // Step 4: Claim — pass no universityKeys filter so any university works
-  // -------------------------------------------------------------------------
-  const sub = await claimNext(WORKER_ID);
+  const sub = await claimById(FORCE_ID, WORKER_ID);
   if (!sub) {
-    console.error(`[force-drain] claimNext returned null — submission #${FORCE_ID} was not picked up.`);
+    console.error(`[force-drain] claimById returned null — submission #${FORCE_ID} was not picked up.`);
     console.error(`[force-drain] Possible reasons: another worker claimed it, or status/attempts still blocking.`);
     process.exit(1);
-  }
-
-  if (sub.id !== FORCE_ID) {
-    console.warn(`[force-drain] WARNING: claimNext returned #${sub.id} instead of #${FORCE_ID}. Processing the claimed one anyway.`);
   }
 
   console.log(`[force-drain] Claimed #${sub.id} — uni=${sub.universityKey}, mode=${sub.mode}, attempt=${sub.attempts}/${sub.maxAttempts}`);
@@ -122,6 +114,14 @@ async function run(): Promise<void> {
     heartbeat(sub.id, WORKER_ID).catch(() => {});
   }, 30_000);
 
+  let verificationBefore: Awaited<ReturnType<typeof getPortalExecutionVerification>> = null;
+  let adapterRunStarted = false;
+  let executionUniversityKey = sub.universityKey;
+  let executionAdapterKey = sub.adapterKey;
+  const dryRunRequestKey = sub.mode === "dry"
+    ? `dry-run:${sub.id}:${randomUUID()}`
+    : null;
+
   try {
     // -----------------------------------------------------------------------
     // Step 6: Build student profile + resolve portal credentials
@@ -130,20 +130,28 @@ async function run(): Promise<void> {
     const profileResult = await buildStudentProfile(sub.id);
     console.log(`[force-drain] Profile built — ${Object.keys(profileResult.files ?? {}).length} file(s) staged`);
 
-    let adapterKey = sub.universityKey;
-    try {
-      const [uniRow] = await db
-        .select({ adapterKey: portalUniversitiesTable.adapterKey })
-        .from(portalUniversitiesTable)
-        .where(and(eq(portalUniversitiesTable.universityKey, sub.universityKey), isNull(portalUniversitiesTable.deletedAt)))
-        .limit(1);
-      if (uniRow) adapterKey = uniRow.adapterKey;
-    } catch {}
+    const { adapterKey, routedVia } = await resolveAdapterKey(sub.universityKey);
+    executionUniversityKey = routedVia ?? sub.universityKey;
+    executionAdapterKey = adapterKey;
+    verificationBefore = await getPortalExecutionVerification({
+      universityKey: executionUniversityKey,
+      adapterKey,
+    });
+    const verified = sub.mode === "dry"
+      ? verificationBefore?.testLoginPassed === true && verificationBefore.binding?.strictDryRunCapable === true
+      : verificationBefore?.testLoginPassed === true && verificationBefore.strictDryRunPassed === true;
+    if (!verified) {
+      throw new Error(
+        sub.mode === "dry"
+          ? "PORTAL_TEST_LOGIN_OR_STRICT_ADAPTER_REQUIRED"
+          : "PARTNER_VERIFICATION_REQUIRED",
+      );
+    }
 
     console.log(`[force-drain] Resolving credentials — adapterKey=${adapterKey}`);
     let creds: { user: string; password: string } | undefined;
     try {
-      creds = await resolvePortalCreds(sub.universityKey, adapterKey);
+      creds = await resolvePortalCreds(routedVia ?? sub.universityKey, adapterKey);
       console.log(`[force-drain] Credentials resolved (user: ${creds?.user ?? "none"})`);
     } catch (credsErr) {
       if (sub.mode === "real") {
@@ -157,7 +165,39 @@ async function run(): Promise<void> {
     // Step 7: Run portal adapter (login + document uploads + application submit)
     // -----------------------------------------------------------------------
     console.log(`[force-drain] Running portal adapter — this will open Chromium…`);
+    adapterRunStarted = true;
     const runResult = await runSubmission(sub, profileResult.profile, profileResult.files, profileResult.tempDir, creds);
+
+    if (sub.mode === "dry" && runResult.meta["dryRun"] === true) {
+      const verificationAfter = await getPortalExecutionVerification({
+        universityKey: executionUniversityKey,
+        adapterKey: executionAdapterKey,
+      });
+      if (
+        !verificationBefore?.binding ||
+        !samePortalPartnerVerificationBinding(
+          verificationBefore.binding,
+          verificationAfter?.binding ?? null,
+        )
+      ) {
+        throw new Error("STRICT_DRY_RUN_BINDING_CHANGED");
+      }
+      await recordPortalPartnerVerificationReceipt({
+        binding: verificationBefore.binding,
+        verificationType: "STRICT_DRY_RUN",
+        outcome: "PASSED",
+        requestKey: dryRunRequestKey!,
+        performedBy: sub.enqueuedBy,
+        applicationId: sub.applicationId,
+        portalSubmissionId: sub.id,
+        evidence: {
+          mode: "dry",
+          status: "dry_run",
+          mutationBoundary: "strict",
+          executor: "force-drain-one",
+        },
+      });
+    }
 
     // -----------------------------------------------------------------------
     // Step 8: Write back result to DB + update application stage
@@ -183,6 +223,33 @@ async function run(): Promise<void> {
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (sub.mode === "dry" && adapterRunStarted && verificationBefore?.binding) {
+      const verificationAfter = await getPortalExecutionVerification({
+        universityKey: executionUniversityKey,
+        adapterKey: executionAdapterKey,
+      }).catch(() => null);
+      if (samePortalPartnerVerificationBinding(
+        verificationBefore.binding,
+        verificationAfter?.binding ?? null,
+      )) {
+        await recordPortalPartnerVerificationReceipt({
+          binding: verificationBefore.binding,
+          verificationType: "STRICT_DRY_RUN",
+          outcome: "FAILED",
+          requestKey: dryRunRequestKey!,
+          performedBy: sub.enqueuedBy,
+          failureCode: "STRICT_DRY_RUN_FAILED",
+          applicationId: sub.applicationId,
+          portalSubmissionId: sub.id,
+          evidence: {
+            mode: "dry",
+            status: "failed",
+            mutationBoundary: "strict",
+            executor: "force-drain-one",
+          },
+        }).catch(() => undefined);
+      }
+    }
     console.error(`[force-drain] Adapter threw: ${msg}`);
     await writebackResult(sub.id, null, msg, WORKER_ID).catch(() => {});
   } finally {

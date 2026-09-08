@@ -7,6 +7,7 @@
  * F4  PATCH reorder + toggle → 200, reflects new fallbackProgramIds/enabled
  * F5  RBAC — non-admin role (agent) → 403 on GET/POST/PATCH/DELETE
  * F6  DELETE soft-delete → 200, then GET no longer lists the rule
+ * F7  Concurrent same-key POSTs → exactly one 201 and one controlled 409
  *
  * Program-name resolution hits the catalog `programs` table; ids without a
  * matching program simply resolve to null names (covered, not asserted).
@@ -14,12 +15,17 @@
  * Run:
  *   pnpm --filter @workspace/api-server exec tsx scripts/test-portal-fallbacks.ts
  */
-import { after, test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import http from "http";
 import express, { type Express } from "express";
 import { eq } from "drizzle-orm";
-import { db, portalProgramFallbacksTable } from "@workspace/db";
+import {
+  auditLogsTable,
+  db,
+  portalProgramFallbacksTable,
+  usersTable,
+} from "@workspace/db";
 import fallbacksRouter from "../src/routes/portalProgramFallbacks.js";
 
 // ---------------------------------------------------------------------------
@@ -28,12 +34,37 @@ import fallbacksRouter from "../src/routes/portalProgramFallbacks.js";
 const RUN_ID = `pf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 const TEST_UNI_KEY = `test_uni_${RUN_ID}`;
 const SOURCE_ID = 900000 + Math.floor(Math.random() * 90000);
+let testUserId: number | null = null;
+
+before(async () => {
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      email: `${RUN_ID}.admin@example.test`,
+      firstName: "Portal",
+      lastName: "Fallback Admin",
+      role: "super_admin",
+      isActive: true,
+      emailVerified: true,
+    })
+    .returning({ id: usersTable.id });
+  testUserId = user.id;
+  currentUser.id = user.id;
+});
 
 after(async () => {
   await db
     .delete(portalProgramFallbacksTable)
     .where(eq(portalProgramFallbacksTable.universityKey, TEST_UNI_KEY))
     .catch(() => {});
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  if (testUserId !== null) {
+    await db
+      .delete(auditLogsTable)
+      .where(eq(auditLogsTable.userId, testUserId))
+      .catch(() => {});
+    await db.delete(usersTable).where(eq(usersTable.id, testUserId)).catch(() => {});
+  }
   setImmediate(() => process.exit(process.exitCode ?? 0));
 });
 
@@ -45,7 +76,7 @@ let currentUser: {
   role: string;
   isActive: boolean;
   emailVerified?: boolean;
-} = { id: 1, role: "super_admin", isActive: true, emailVerified: true };
+} = { id: 0, role: "super_admin", isActive: true, emailVerified: true };
 
 function buildApp(): Express {
   const app = express();
@@ -111,7 +142,12 @@ function listen(app: Express): Promise<http.Server> {
 }
 
 const admin = () => {
-  currentUser = { id: 1, role: "super_admin", isActive: true, emailVerified: true };
+  currentUser = {
+    id: testUserId ?? 0,
+    role: "super_admin",
+    isActive: true,
+    emailVerified: true,
+  };
 };
 const agent = () => {
   currentUser = { id: 2, role: "agent", isActive: true, emailVerified: true };
@@ -282,6 +318,35 @@ test("F6: DELETE soft-deletes and GET omits the rule", async () => {
     });
     assert.equal(recreate.status, 201, `Re-create expected 201 got ${recreate.status}: ${JSON.stringify(recreate.body)}`);
     assert.notEqual(recreate.body.id, createdId, "recreate must produce a new row id");
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// F7 — concurrent same-key create is serialized and never leaks a DB 500
+// ---------------------------------------------------------------------------
+test("F7: concurrent same-key POSTs return one 201 and one 409", async () => {
+  admin();
+  const server = await listen(buildApp());
+  try {
+    const sourceProgramId = SOURCE_ID + 2;
+    const payload = {
+      universityKey: TEST_UNI_KEY,
+      sourceProgramId,
+      fallbackProgramIds: [444],
+    };
+    const results = await Promise.all([
+      sendReq(server, "POST", "/api/portal-program-fallbacks", payload),
+      sendReq(server, "POST", "/api/portal-program-fallbacks", payload),
+    ]);
+
+    assert.deepEqual(
+      results.map((result) => result.status).sort(),
+      [201, 409],
+    );
+    const duplicate = results.find((result) => result.status === 409);
+    assert.equal(duplicate?.body.error, "DUPLICATE_SOURCE");
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
   }

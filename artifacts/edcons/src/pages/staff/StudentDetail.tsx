@@ -44,6 +44,7 @@ import { requiredEducationLevels, academicFieldsForLevel, academicGroupForLevel,
 import { usePipelineStages } from "@/hooks/use-pipeline-stages";
 import { humanizePipelineStageKey } from "@/lib/pipelineStageLabel";
 import { invalidateAssignmentWorkspaceQueries, invalidateFollowUpWorkspaceQueries } from "@/lib/workspaceQueryInvalidation";
+import { applicationCreationErrorToast } from "@/components/ApplicationCreationErrorToast";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -783,31 +784,7 @@ export default function StudentDetail({ id, basePath = "/staff" }: Props) {
       setShowNewApp(false);
       setAppCountry(""); setAppUniversityId(""); setAppProgramId(""); setAppIntake("");
     } catch (err: any) {
-      let desc = err.message || "Could not create application";
-      const errData = err?.data;
-      if (errData?.code === "QUOTA_FULL") {
-        toast({
-          title: errData.error || "Program quota is full for this year",
-          variant: "destructive",
-          duration: 10000,
-        });
-      } else if (errData?.code === "ELIGIBILITY_FAILED" && errData?.eligibilityErrors) {
-        desc = errData.eligibilityErrors.join("\n");
-        toast({
-          title: "Eligibility Requirements Not Met",
-          description: desc,
-          variant: "destructive",
-          duration: 10000,
-        });
-      } else if (errData?.missingFields) {
-        desc = `Student is missing required fields: ${errData.missingFields.join(", ")}. Please complete the student profile first.`;
-        toast({ title: "Failed", description: desc, variant: "destructive" });
-      } else if (errData?.error) {
-        desc = errData.error;
-        toast({ title: "Failed", description: desc, variant: "destructive" });
-      } else {
-        toast({ title: "Failed", description: desc, variant: "destructive" });
-      }
+      toast(applicationCreationErrorToast(err, "Could not create application"));
     } finally {
       setAppSubmitting(false);
     }

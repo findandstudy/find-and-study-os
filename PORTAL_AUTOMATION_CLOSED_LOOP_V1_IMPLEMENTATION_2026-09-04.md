@@ -311,6 +311,71 @@ permission and credential entry through the encrypted UI. Credentials must not
 be sent through chat. Production, `Next`, merge, external delivery, fan-out and
 fallback remain NO-GO.
 
+## 5 September 2026 local execution-verification hardening
+
+This section records uncommitted, local-only work on
+`codex/reporting-intelligence-center-20260903`. It supersedes the local ledger
+count in earlier sections but does not describe a staging or production
+release.
+
+- Additive migrations `0092_portal_partner_verification_receipts.sql` and
+  `0093_portal_program_fallback_active_uniqueness.sql` raise the canonical
+  local ledger to `94/94`. Test Login and Strict Dry Run results are
+  append-only receipts bound to the exact portal partner generation, adapter
+  key, enabled spec ID/version/SHA-256, encrypted credential row/update time and
+  runtime release identity. Historical activity is not promoted into a pass.
+- A newer failed receipt revokes an older pass. An idempotency key permits only
+  an exact replay; reuse with different evidence is a hard conflict. Strict
+  dry-run evidence must carry a database-enforced matching
+  `(portal_submission_id, application_id)` pair.
+- Manual enqueue, per-application enqueue, automatic trigger, inline drain,
+  dedicated worker, fallback and status monitoring now re-check current
+  execution evidence. Dry execution requires current Test Login plus a strict
+  v2 adapter; real execution, fallback and polling additionally require a
+  current Strict Dry Run receipt.
+- Credential, enabled adapter version and partner routing changes cancel queued
+  work, set a stable review-required reason, make affected partners inactive,
+  disable auto-process and fan-out, and increment their verification
+  generation. A change that overlaps a running browser submission is rejected
+  with `409` and rolled back.
+- The application Submit selector returns only active partners with current
+  evidence and exposes explicit `dryRunReady`/`realRunReady` booleans without
+  credentials. Environment-only credentials and orphan adapter registrations
+  cannot make a new partner selectable.
+- Partner Setup is now a server-authoritative guided workflow: configuration,
+  Test Login, activation for strict verification, Strict Dry Run, manual pilot,
+  automation rules and Operations are separate phases with direct next actions.
+  Application trigger options continue to come from the live Application
+  Pipeline catalog; new/drifted/terminal stages are never selected implicitly.
+- Uploaded adapter specs are resolved by the common asynchronous runner in the
+  inline and worker diagnostic paths. Legacy scripts whose name promises a dry
+  run now force both dry-run flags, and the historical record-specific
+  `complete-1959` command is no longer exposed as a package operation.
+
+Local evidence after a clean disposable PostgreSQL 16 reset:
+
+- `0 → 94` migration application, clean `94 → 94` replay and production-prefix
+  `66 → 94 → 94` adoption: PASS;
+- static package/migration/portal contracts: `6 + 31(+1 expected Bash skip) +
+  61` PASS;
+- PostgreSQL portal sequence covering receipt constraints, observation store,
+  lane lease, lifecycle Guardian, graduation, adapter admin, management,
+  manual/automatic enqueue, generic API, routing, Operations and artifact
+  intake plus fallback API: `91/91` PASS;
+- workspace TypeScript, ten-language i18n, API production build and Edcons
+  production build: PASS;
+- fallback API delete/re-create and concurrent same-key serialization is
+  included in the database suite; worker lane/target/queue/writeback:
+  `4/4 + 2/2 + 5/5 + 9/9` PASS;
+  fallback runner: `31/31` PASS;
+- `git diff --check`: PASS (line-ending conversion warnings only).
+
+No browser contacted a partner portal during these tests. No staging,
+production, GitHub, credential, worker or external-delivery state was changed.
+Because adoption starts with no inferred receipt, every existing partner must
+be moved through Test Login and Strict Dry Run deliberately before it can
+execute on the new version.
+
 ## Code-free Partner Setup staging adoption
 
 The fail-closed Partner Setup control plane was frozen in code-bearing commit

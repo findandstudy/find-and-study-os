@@ -39,8 +39,14 @@ function isWithin(parent, candidate) {
 }
 
 function validate(processes, options = {}) {
-  const { api, portalWorker } = ecosystem.processNames;
+  const {
+    api,
+    portalWorker,
+    portalStatusWorker,
+    portalLifecycleWorker,
+  } = ecosystem.processNames;
   const expected = new Set([api, portalWorker]);
+  const optionalWorkers = new Set([portalStatusWorker, portalLifecycleWorker]);
   const legacy = processes.map(processName).filter((name) => LEGACY_NAMES.has(name));
   if (legacy.length) fail(`legacy process name(s) detected: ${[...new Set(legacy)].join(", ")}`);
 
@@ -49,6 +55,13 @@ function validate(processes, options = {}) {
     const count = matches.length;
     if (count !== 1) fail(`expected exactly one existing ${name} process; found ${count}`);
     if (matches[0].pm2_env?.exec_mode !== "fork_mode") {
+      fail(`${name} must already use PM2 fork mode`);
+    }
+  }
+  for (const name of optionalWorkers) {
+    const matches = processes.filter((process) => processName(process) === name);
+    if (matches.length > 1) fail(`expected at most one existing ${name} process; found ${matches.length}`);
+    if (matches[0] && matches[0].pm2_env?.exec_mode !== "fork_mode") {
       fail(`${name} must already use PM2 fork mode`);
     }
   }
@@ -73,9 +86,28 @@ function validate(processes, options = {}) {
     fail(`expected one canonical portal worker; found ${workerLike.length}`);
   }
 
+  const statusWorkerLike = processes.filter((process) =>
+    /api-server\/.*portalStatusWorker\.(?:ts|js)$/.test(processScript(process)),
+  );
+  if (
+    statusWorkerLike.length > 1 ||
+    statusWorkerLike.some((process) => processName(process) !== portalStatusWorker)
+  ) {
+    fail(`expected at most one canonical portal status worker; found ${statusWorkerLike.length}`);
+  }
+  const lifecycleWorkerLike = processes.filter((process) =>
+    /api-server\/.*portalLifecycleWorker\.(?:ts|js)$/.test(processScript(process)),
+  );
+  if (
+    lifecycleWorkerLike.length > 1 ||
+    lifecycleWorkerLike.some((process) => processName(process) !== portalLifecycleWorker)
+  ) {
+    fail(`expected at most one canonical portal lifecycle worker; found ${lifecycleWorkerLike.length}`);
+  }
+
   if (options.releaseLink) {
     const releaseLink = path.resolve(options.releaseLink);
-    for (const process of [apiProcess, workerLike[0]]) {
+    for (const process of [apiProcess, workerLike[0], ...statusWorkerLike, ...lifecycleWorkerLike]) {
       const script = path.resolve(processScript(process));
       if (!isWithin(releaseLink, script)) {
         fail(
@@ -86,7 +118,15 @@ function validate(processes, options = {}) {
     }
   }
 
-  return { api, portalWorker, apiPort };
+  return {
+    api,
+    portalWorker,
+    portalStatusWorker,
+    portalLifecycleWorker,
+    statusWorkerPresent: statusWorkerLike.length === 1,
+    lifecycleWorkerPresent: lifecycleWorkerLike.length === 1,
+    apiPort,
+  };
 }
 
 try {
@@ -97,7 +137,12 @@ try {
   const releaseLink = releaseLinkIndex === -1 ? undefined : process.argv[releaseLinkIndex + 1];
   if (releaseLinkIndex !== -1 && !releaseLink) fail("--release-link requires a path");
   const result = validate(readProcessList(inputPath), { releaseLink });
-  console.log(`[pm2-preflight] OK: ${result.api} (fork/1, port ${result.apiPort}); ${result.portalWorker} (fork/1)`);
+  console.log(
+    `[pm2-preflight] OK: ${result.api} (fork/1, port ${result.apiPort}); ` +
+    `${result.portalWorker} (fork/1); ` +
+    `${result.portalStatusWorker} (${result.statusWorkerPresent ? "fork/1" : "not adopted"}); ` +
+    `${result.portalLifecycleWorker} (${result.lifecycleWorkerPresent ? "fork/1" : "not adopted"})`,
+  );
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

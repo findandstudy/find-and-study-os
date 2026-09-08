@@ -25,7 +25,7 @@
  * swallowed so the HTTP response is never blocked.
  */
 
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   db,
   applicationsTable,
@@ -51,6 +51,10 @@ import {
 } from "./mandatoryDocs.js";
 import { prepareApplicationPortalPreflight } from "./portalApplicationPreflight.js";
 import { buildPortalTriggerStageSnapshot } from "./portalTriggerStagePolicy.js";
+import {
+  buildPortalSubmissionIntent,
+  getPortalExecutionVerification,
+} from "@workspace/portal-runner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,9 +122,11 @@ export type SkipReason =
   | "out_of_scope"
   | "no_credentials"
   | "duplicate"
+  | "reconciliation_required"
   | "max_failures"
   | "missing_mandatory_documents"
   | "preflight_not_ready"
+  | "partner_verification_required"
   /** mode=real submission blocked due to invalid/placeholder identity fields. */
   | "invalid_identity_fields";
 
@@ -128,7 +134,7 @@ export type EnqueueOutcome =
   | { status: "queued"; submissionId: number; universityKey: string }
   | { status: "skipped"; reason: SkipReason };
 
-const ACTIVE_STATUSES = ["queued", "running", "submitted"] as const;
+const ACTIVE_STATUSES = ["queued", "running", "submitted", "already_exists", "accepted"] as const;
 
 /**
  * Cross-row automatic retry budget per application × university pair.
@@ -511,7 +517,19 @@ export async function enqueueIfEligible(
     return { status: "skipped", reason: "no_credentials" };
   }
 
-  // ----- Gate 7: identity field validation (mode=real only) ----------------
+  // ----- Gate 7: current, version-bound partner verification -------------
+  // Automatic execution is stricter than the guided onboarding dry run: both
+  // the login and strict dry-run receipts must match the current adapter,
+  // credential, routing generation and runtime release.
+  const verification = await getPortalExecutionVerification({
+    universityKey: portalUni.universityKey,
+    adapterKey: portalUni.adapterKey,
+  });
+  if (!verification?.testLoginPassed || !verification.strictDryRunPassed) {
+    return { status: "skipped", reason: "partner_verification_required" };
+  }
+
+  // ----- Gate 8: identity field validation (mode=real only) ----------------
   // We never enqueue a real submission when critical identity fields are
   // missing, placeholder, or logically inconsistent — a wrong passport number
   // or garbled name is worse than no submission at all (it can block the
@@ -549,7 +567,7 @@ export async function enqueueIfEligible(
     }
   }
 
-  // ----- Gate 8: dedup + enqueue (atomic) -------------------------------
+  // ----- Gate 9: dedup + enqueue (atomic) -------------------------------
   // A plain SELECT-then-INSERT is racy: multiple callers (creation hook, PATCH
   // hook, Run Now scan, or multiple server instances) can fire for the same
   // application concurrently, all pass the read, and all insert duplicate
@@ -558,25 +576,54 @@ export async function enqueueIfEligible(
   // lock keyed by (applicationId, universityKey).  The lock is released
   // automatically on commit/rollback, guaranteeing at most one active
   // submission per application × university pair.
+  const intent = await buildPortalSubmissionIntent({
+    applicationId,
+    portalUniversity: portalUni,
+    targetCatalogUniversityId: target?.catalogUniversityId ?? universityId,
+    source: "automatic",
+  });
   const outcome = await db.transaction(async (tx): Promise<EnqueueOutcome> => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(${applicationId}, hashtext(${portalUni.universityKey}))`,
     );
 
     const [existing] = await tx
-      .select({ id: portalSubmissionsTable.id })
+      .select({
+        id: portalSubmissionsTable.id,
+        status: portalSubmissionsTable.status,
+        externalRef: portalSubmissionsTable.externalRef,
+        targetIdentitySha256: portalSubmissionsTable.targetIdentitySha256,
+        providerCommittedAt: portalSubmissionsTable.providerCommittedAt,
+      })
       .from(portalSubmissionsTable)
       .where(
         and(
           eq(portalSubmissionsTable.applicationId, applicationId),
-          eq(portalSubmissionsTable.universityKey, portalUni.universityKey),
-          inArray(portalSubmissionsTable.status, [...ACTIVE_STATUSES]),
+          or(
+            eq(portalSubmissionsTable.targetIdentitySha256, intent.targetIdentitySha256),
+            and(
+              isNull(portalSubmissionsTable.targetIdentitySha256),
+              eq(portalSubmissionsTable.universityKey, portalUni.universityKey),
+            ),
+          ),
+          or(
+            inArray(portalSubmissionsTable.status, [...ACTIVE_STATUSES]),
+            isNotNull(portalSubmissionsTable.providerCommittedAt),
+          ),
           isNull(portalSubmissionsTable.deletedAt),
         ),
       )
       .limit(1);
 
     if (existing) {
+      if (
+        existing.providerCommittedAt !== null ||
+        (existing.targetIdentitySha256 === null &&
+          ["submitted", "already_exists", "accepted"].includes(existing.status) &&
+          existing.externalRef)
+      ) {
+        return { status: "skipped", reason: "reconciliation_required" };
+      }
       return { status: "skipped", reason: "duplicate" };
     }
 
@@ -616,6 +663,10 @@ export async function enqueueIfEligible(
         mode:           settings.mode,
         status:         "queued",
         enqueuedBy:     actorUserId,
+        submitIntentKey: intent.submitIntentKey,
+        targetIdentitySha256: intent.targetIdentitySha256,
+        targetIdentity: intent.targetIdentity,
+        submissionAction: "submit",
         meta: {
           preflight,
           ...(routingMeta ?? {}),

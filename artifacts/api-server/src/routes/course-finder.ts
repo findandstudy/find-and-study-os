@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, programsTable, universitiesTable, wishlistsTable, applicationsTable, commissionsTable, serviceFeesTable, studentsTable, pipelineStagesTable, settingsTable, documentsTable } from "@workspace/db";
+import { db, programsTable, programTranslationsTable, universitiesTable, wishlistsTable, applicationsTable, commissionsTable, serviceFeesTable, studentsTable, pipelineStagesTable, settingsTable, documentsTable } from "@workspace/db";
 import { eq, ilike, sql, and, inArray, isNull, desc, or, notInArray } from "drizzle-orm";
 import { requireAuth, requireRole, requireAgentStaffPermission, logAudit } from "../lib/auth";
 import { STAFF_ROLES, AGENT_ROLES, ADMIN_ROLES, isAgentRole } from "../lib/roles";
@@ -37,6 +37,7 @@ import {
 } from "../lib/publicCatalogPolicy";
 import { resolveResidenceAddress } from "../lib/studentAddressDefaults";
 import { coalesceRead } from "../lib/readPathCoalescing";
+import { normalizeProgramLocale } from "../lib/programTranslationContract";
 
 const router: IRouter = Router();
 
@@ -217,7 +218,9 @@ function parseNonNegativeInt(raw: string | undefined): number | null {
 }
 
 router.get("/course-finder", async (req, res): Promise<void> => {
-  const { country, city, universityType, universityId, programId, level, language, field, search, intake, feeMin, feeMax, sort, page = "1", limit = "24" } = req.query as Record<string, string>;
+  const { country, city, universityType, universityId, programId, level, language, locale, field, search, intake, feeMin, feeMax, sort, page = "1", limit = "24" } = req.query as Record<string, string>;
+  const contentLocale = normalizeProgramLocale(locale);
+  const localizedProgramName = sql<string>`COALESCE(${programTranslationsTable.name}, ${programsTable.name})`;
   // Cap at 500 (was 1000). Lowering further requires StudentDetail.tsx:319
   // to be paginated — currently it requests `limit=500` for a single
   // university's program list. Invalid values fall back safely instead of
@@ -277,7 +280,7 @@ router.get("/course-finder", async (req, res): Promise<void> => {
   if (search) {
     const escaped = escapeLikePattern(search);
     conditions.push(
-      sql`(${ilike(programsTable.name, `%${escaped}%`)} OR ${ilike(universitiesTable.name, `%${escaped}%`)})`
+      sql`(${ilike(programsTable.name, `%${escaped}%`)} OR ${ilike(programTranslationsTable.name, `%${escaped}%`)} OR ${ilike(programsTable.field, `%${escaped}%`)} OR ${ilike(programTranslationsTable.field, `%${escaped}%`)} OR ${ilike(universitiesTable.name, `%${escaped}%`)})`
     );
   }
 
@@ -287,7 +290,7 @@ router.get("/course-finder", async (req, res): Promise<void> => {
     ? [sql`${effectiveFee} ASC NULLS LAST`, universitiesTable.name, programsTable.name]
     : sort === "price_desc"
       ? [sql`${effectiveFee} DESC NULLS LAST`, universitiesTable.name, programsTable.name]
-      : [universitiesTable.name, programsTable.name];
+      : [universitiesTable.name, localizedProgramName];
 
   const user = (req as any).user;
   const canSeeContacts = user && ([...STAFF_ROLES, ...AGENT_ROLES] as string[]).includes(user.role);
@@ -328,7 +331,7 @@ router.get("/course-finder", async (req, res): Promise<void> => {
     page: String(pageNum),
     limit: String(limitNum),
   });
-  const cacheKey = `${policyKey}:${visibilityKey}:${requestKey}`;
+  const cacheKey = `${policyKey}:${visibilityKey}:locale=${contentLocale}:${requestKey}`;
   const cached = courseFinderListCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     res.setHeader("Cache-Control", "private, max-age=10, stale-while-revalidate=30");
@@ -346,20 +349,27 @@ router.get("/course-finder", async (req, res): Promise<void> => {
         .select({ count: sql<number>`count(*)` })
         .from(programsTable)
         .innerJoin(universitiesTable, eq(programsTable.universityId, universitiesTable.id))
+        .leftJoin(programTranslationsTable, and(
+          eq(programTranslationsTable.programId, programsTable.id),
+          eq(programTranslationsTable.locale, contentLocale),
+          eq(programTranslationsTable.status, "published"),
+        ))
         .where(where);
       const rowsQuery = db
         .select({
           id: programsTable.id,
-          name: programsTable.name,
+          name: localizedProgramName,
+          description: sql<string | null>`COALESCE(${programTranslationsTable.description}, ${programsTable.description})`,
           degree: programsTable.degree,
-          field: programsTable.field,
+          field: sql<string | null>`COALESCE(${programTranslationsTable.field}, ${programsTable.field})`,
           language: programsTable.language,
-          duration: programsTable.duration,
+          duration: sql<string | null>`COALESCE(${programTranslationsTable.duration}, ${programsTable.duration})`,
           tuitionFee: programsTable.tuitionFee,
           currency: programsTable.currency,
           scholarship: programsTable.scholarship,
-          intakes: programsTable.intakes,
-          requirements: programsTable.requirements,
+          intakes: sql<string | null>`COALESCE(${programTranslationsTable.intakes}, ${programsTable.intakes})`,
+          requirements: sql<string | null>`COALESCE(${programTranslationsTable.requirements}, ${programsTable.requirements})`,
+          translatedLocale: programTranslationsTable.locale,
           commissionRate: programsTable.commissionRate,
           applicationFee: programsTable.applicationFee,
           advancedFee: programsTable.advancedFee,
@@ -392,6 +402,11 @@ router.get("/course-finder", async (req, res): Promise<void> => {
         })
         .from(programsTable)
         .innerJoin(universitiesTable, eq(programsTable.universityId, universitiesTable.id))
+        .leftJoin(programTranslationsTable, and(
+          eq(programTranslationsTable.programId, programsTable.id),
+          eq(programTranslationsTable.locale, contentLocale),
+          eq(programTranslationsTable.status, "published"),
+        ))
         .where(where)
         .orderBy(...orderBy)
         .limit(limitNum)
@@ -403,6 +418,9 @@ router.get("/course-finder", async (req, res): Promise<void> => {
       const sanitizedRows = rows.map(({ universityHasLogo, ...row }) =>
         sanitizeCourseFinderProgram({
           ...row,
+          contentLocale,
+          fallbackUsed: contentLocale !== "en" && row.translatedLocale !== contentLocale,
+          translatedLocale: undefined,
           universityLogoUrl: courseFinderUniversityLogoUrl(
             row.universityId,
             universityHasLogo,

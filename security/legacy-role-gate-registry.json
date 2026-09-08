@@ -8,10 +8,10 @@
     "defaultEnforcement": "legacy_quarantine"
   },
   "totals": {
-    "routeRegistrations": 805,
-    "requireAuth": 721,
-    "requireRole": 481,
-    "requirePermission": 47,
+    "routeRegistrations": 844,
+    "requireAuth": 763,
+    "requireRole": 489,
+    "requirePermission": 78,
     "requireScope": 0,
     "directRoleChecks": 29,
     "authOnlyRouteCandidates": 128,
@@ -35,7 +35,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/activity.ts",
-      "sha256": "9956467475d126f7fefb16767655cb2b1b2d4fd1645b39e8a471662347fb3409",
+      "sha256": "8dbd5e09a6d255f721015117931334c02299cb87fe1f33aba465eb0d3014b8e3",
       "routeRegistrations": 11,
       "requireAuth": 12,
       "requireRole": 5,
@@ -50,7 +50,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/activityV1.ts",
-      "sha256": "a2ad5ad663413c67fddd6e9ee21f8d8cc8df9a61eb8c5c6b1e66b4ab9e60de38",
+      "sha256": "4c661c211ffcd05e44c89c3d0d4573332d470e0d8306eae07e7b27337f94dac4",
       "routeRegistrations": 2,
       "requireAuth": 3,
       "requireRole": 1,
@@ -305,7 +305,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/catalog.ts",
-      "sha256": "849c63e677a2af7545bf68f39a17f184ee89be2ffd03e40de8f22234279b139b",
+      "sha256": "682c9241dd503e98bcb3797b1361e5f8e6073654bf6902d22fe7ae55ea196c05",
       "routeRegistrations": 21,
       "requireAuth": 19,
       "requireRole": 17,
@@ -320,7 +320,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/channelAccounts.ts",
-      "sha256": "ac947916b4231a6262b9ceb017e9af9f04de9819a0ceb4bf31844d87c203843e",
+      "sha256": "a58cfe9f0fd390e26cc01054d28c39e28c12fb54eed07b318c7a59fb98a0f562",
       "routeRegistrations": 7,
       "requireAuth": 8,
       "requireRole": 7,
@@ -425,7 +425,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/course-finder.ts",
-      "sha256": "ad402b6bae5f71554ea20bd1ce2bcc99408638be3325f1087ca7db6ed27209cf",
+      "sha256": "3300f8595d669414ec5b6478e6eb39d6f62b263fa7cde9ee023d42fc4d5edd46",
       "routeRegistrations": 10,
       "requireAuth": 9,
       "requireRole": 3,
@@ -440,7 +440,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/dataQuality.ts",
-      "sha256": "3c45b3bd3503a269a00d659902056a0b3ae49fbdf15a76c383fd8fcd81f2e1e4",
+      "sha256": "6c69bb19494b4929a48a444b8567e76adf415adbfaf9bc0503d6c5957025edf3",
       "routeRegistrations": 4,
       "requireAuth": 5,
       "requireRole": 4,
@@ -530,7 +530,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/embed.ts",
-      "sha256": "9d7e29f5358dde6ce971a253b4b6553cebb8bd779965f66abeeba9dd03a5b1a5",
+      "sha256": "598fa7745182dddddaabab23bb2a6b415ffeea4df103f85e15a789f2634befb0",
       "routeRegistrations": 29,
       "requireAuth": 14,
       "requireRole": 13,
@@ -605,7 +605,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/inbox.ts",
-      "sha256": "f4e9e9a9da7efb4b41313f0636fa9c4532d45fe6f0e40f34fa5e5494d59947ce",
+      "sha256": "25c4443ebdd6e4c31244303fa11b39a2fc26881f377d27a0b8a794c53baa2544",
       "routeRegistrations": 55,
       "requireAuth": 56,
       "requireRole": 54,
@@ -620,7 +620,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/index.ts",
-      "sha256": "038bada8222178c0d4bcc02a3fc0c581d262ac441e2ddcc2ecd2de051224466b",
+      "sha256": "eed3dd2f2d692174376e0212e7eb662001779bb43eb233d8aad4fd64b6b50a36",
       "routeRegistrations": 0,
       "requireAuth": 0,
       "requireRole": 0,
@@ -635,7 +635,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/institutionAdmissions.ts",
-      "sha256": "7104646ba5ff68da900090d55fad054c33c0368519cdc6f4b00b1947a1cc0a62",
+      "sha256": "fb69b6573b3759a4ddbc4f83ffd07f64a41b795a407efd5b57975e6524765d80",
       "routeRegistrations": 31,
       "requireAuth": 2,
       "requireRole": 0,
@@ -650,7 +650,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/integrations.ts",
-      "sha256": "bc3805273c966a2d55e92a7181f8b053c2bf5d4b0f47f6f4715ac50b175b9f00",
+      "sha256": "0c54dd8da10c8307ac2e1aef5c3c2668ab6a84b92f97005f059fe86c39d94445",
       "routeRegistrations": 6,
       "requireAuth": 7,
       "requireRole": 6,
@@ -739,6 +739,21 @@
       "note": "Route-local review required before corridor migration."
     },
     {
+      "path": "artifacts/api-server/src/routes/operations.ts",
+      "sha256": "f33695618de727b658c2abcecc4fab2477107518f8fee37e29996eaab72ab038",
+      "routeRegistrations": 1,
+      "requireAuth": 2,
+      "requireRole": 1,
+      "requirePermission": 0,
+      "requireScope": 0,
+      "directRoleChecks": 0,
+      "authOnlyRouteCandidates": 0,
+      "publicRouteCandidates": 0,
+      "enforcement": "legacy_quarantine",
+      "owner": "Operations",
+      "note": "Unified work actions remain quarantined until signed active-context authorization replaces route-local role checks."
+    },
+    {
       "path": "artifacts/api-server/src/routes/personFeed.ts",
       "sha256": "86fc64b702b82d080d98a903c6c4b5832b7ff1693779efa0618f0c89492240b4",
       "routeRegistrations": 6,
@@ -785,10 +800,10 @@
     },
     {
       "path": "artifacts/api-server/src/routes/portalAutomation.ts",
-      "sha256": "d57bf443e7ba160f81d8530c4c591de14fe6064482bb3cd3464043e593a4ed23",
-      "routeRegistrations": 42,
-      "requireAuth": 43,
-      "requireRole": 38,
+      "sha256": "430875b8e2018fd14044e582124d5f7c46ee223bac3ec700074ebabdd032d583",
+      "routeRegistrations": 44,
+      "requireAuth": 45,
+      "requireRole": 40,
       "requirePermission": 0,
       "requireScope": 0,
       "directRoleChecks": 0,
@@ -800,10 +815,10 @@
     },
     {
       "path": "artifacts/api-server/src/routes/portalMgmt.ts",
-      "sha256": "a0f16f0ef0900e25e3e505b33c719eb88f931324145c97ebbd8692c7a323e7a7",
-      "routeRegistrations": 24,
-      "requireAuth": 25,
-      "requireRole": 25,
+      "sha256": "25ac81861f73196c90709fc89ecd1c00f98d714069cc7861fbb6c9427ee38daa",
+      "routeRegistrations": 25,
+      "requireAuth": 26,
+      "requireRole": 26,
       "requirePermission": 0,
       "requireScope": 0,
       "directRoleChecks": 0,
@@ -815,7 +830,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/portalProgramFallbacks.ts",
-      "sha256": "2256b07b13fa1880f9be5fdf57a6f286804a454e8b3637b438c245ae405e3636",
+      "sha256": "dd58327526b1fe6b9b738175808a0f14be4d7739e222a5122321d855a318a0f2",
       "routeRegistrations": 4,
       "requireAuth": 5,
       "requireRole": 5,
@@ -920,7 +935,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/reporting.ts",
-      "sha256": "0019a591cc43c55f3b3ed748e5e1e4e7d36d141ec1ab3b366f90a9df708ae805",
+      "sha256": "473eb470d90d966fc77dc808ff3a921274c51cf191d06020ba1311bceed3dc07",
       "routeRegistrations": 6,
       "requireAuth": 7,
       "requireRole": 0,
@@ -950,7 +965,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/settings.ts",
-      "sha256": "ae48ab96ddc96358ea9f4285689709916d6897c60201acf40ce38f016e1de544",
+      "sha256": "8239165a921c392d54c91bc138bccb6f629e26128a2ecdacb6c0b23af3152e05",
       "routeRegistrations": 8,
       "requireAuth": 7,
       "requireRole": 4,
@@ -962,6 +977,36 @@
       "enforcement": "legacy_quarantine",
       "owner": "Platform Engineering",
       "note": "Route-local review required before corridor migration."
+    },
+    {
+      "path": "artifacts/api-server/src/routes/socialAdvertising.ts",
+      "sha256": "0fd001f85aae28853f0260ba8cc0d9089b9f97f6c68128b1a0239ae394709a9d",
+      "routeRegistrations": 6,
+      "requireAuth": 7,
+      "requireRole": 0,
+      "requirePermission": 6,
+      "requireScope": 0,
+      "directRoleChecks": 0,
+      "authOnlyRouteCandidates": 0,
+      "publicRouteCandidates": 0,
+      "enforcement": "legacy_quarantine",
+      "owner": "Growth & Social",
+      "note": "Ads Control has explicit view/manage/approve permissions and maker-checker, but remains quarantined until the signed active-context corridor is adopted."
+    },
+    {
+      "path": "artifacts/api-server/src/routes/socialOperations.ts",
+      "sha256": "c5c567735508d8eaa51d9ab1e1075441c2b3b19c881197eaa6763a1814ed3892",
+      "routeRegistrations": 25,
+      "requireAuth": 26,
+      "requireRole": 0,
+      "requirePermission": 25,
+      "requireScope": 0,
+      "directRoleChecks": 0,
+      "authOnlyRouteCandidates": 0,
+      "publicRouteCandidates": 0,
+      "enforcement": "legacy_quarantine",
+      "owner": "Growth & Social",
+      "note": "Social management uses explicit permissions but remains quarantined until the signed active-context corridor is adopted."
     },
     {
       "path": "artifacts/api-server/src/routes/staffCards.ts",
@@ -995,7 +1040,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/storage.ts",
-      "sha256": "e1c6b9faa35fefb667da8cdd117d0d69c05aadecc6905dfe35601bb693c8d05e",
+      "sha256": "a569c9f7000f477b2ba982bd483151761ef3f4c06cee6463e7eaafc82a9936ce",
       "routeRegistrations": 5,
       "requireAuth": 5,
       "requireRole": 0,
@@ -1040,10 +1085,10 @@
     },
     {
       "path": "artifacts/api-server/src/routes/universities.ts",
-      "sha256": "3c317ab055f38b0fa3bc3a9a1fe6d1c3c520b49e6e0c894c20311f5b9e8cc078",
-      "routeRegistrations": 18,
-      "requireAuth": 12,
-      "requireRole": 10,
+      "sha256": "1ecfd7691448e8fdfd5c8d3071759ab766efc132c3e537d3518b7be020bcdaff",
+      "routeRegistrations": 22,
+      "requireAuth": 16,
+      "requireRole": 14,
       "requirePermission": 0,
       "requireScope": 0,
       "directRoleChecks": 0,

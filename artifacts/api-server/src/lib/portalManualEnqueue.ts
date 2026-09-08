@@ -8,7 +8,7 @@
  * via resolvePortalRouting, never hardcoded, and the duplicate guard is the
  * single source of truth for "already queued/running".
  */
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, applicationsTable, portalSubmissionsTable } from "@workspace/db";
 import {
   resolvePortalRouting,
@@ -23,13 +23,19 @@ import {
   prepareApplicationPortalPreflight,
   type PreparedPortalPreflight,
 } from "./portalApplicationPreflight.js";
+import {
+  buildPortalSubmissionIntent,
+  getPortalExecutionVerification,
+} from "@workspace/portal-runner";
 
 export type PortalEnqueueSkipReason =
   | "NOT_FOUND"
   | "NO_PORTAL"
   | "ALREADY_QUEUED"
+  | "RECONCILIATION_REQUIRED"
   | "MISSING_MANDATORY_DOCUMENTS"
-  | "PREFLIGHT_NOT_READY";
+  | "PREFLIGHT_NOT_READY"
+  | "PARTNER_VERIFICATION_REQUIRED";
 
 export interface PortalEnqueueQueuedRow {
   applicationId: number;
@@ -126,6 +132,20 @@ export async function enqueuePortalSubmissions(opts: {
       continue;
     }
     const { portalUni, target, submissionUniversityName, routingMeta } = routing;
+    const verification = await getPortalExecutionVerification({
+      universityKey: portalUni.universityKey,
+      adapterKey: portalUni.adapterKey,
+    });
+    const verificationReady = opts.mode === "dry"
+      ? verification?.testLoginPassed === true && verification.binding?.strictDryRunCapable === true
+      : verification?.testLoginPassed === true && verification.strictDryRunPassed === true;
+    if (!verificationReady) {
+      skipped.push({
+        applicationId: appId,
+        reason: "PARTNER_VERIFICATION_REQUIRED",
+      });
+      continue;
+    }
     const preflight = await prepareApplicationPortalPreflight({
       applicationId: appId,
       adapterKey: portalUni.adapterKey,
@@ -145,6 +165,12 @@ export async function enqueuePortalSubmissions(opts: {
       continue;
     }
 
+    const intent = await buildPortalSubmissionIntent({
+      applicationId: appId,
+      portalUniversity: portalUni,
+      targetCatalogUniversityId: target?.catalogUniversityId ?? app.universityId,
+      source: "manual",
+    });
     const outcome = await db.transaction(async (tx) => {
       // The former read-then-insert guard raced when the user clicked Run
       // again before the first request committed. An xact advisory lock makes
@@ -163,7 +189,14 @@ export async function enqueuePortalSubmissions(opts: {
         .where(
           and(
             eq(portalSubmissionsTable.applicationId, appId),
-            eq(portalSubmissionsTable.universityKey, portalUni.universityKey),
+            or(
+              eq(portalSubmissionsTable.targetIdentitySha256, intent.targetIdentitySha256),
+              and(
+                isNull(portalSubmissionsTable.targetIdentitySha256),
+                eq(portalSubmissionsTable.universityKey, portalUni.universityKey),
+              ),
+            ),
+            eq(portalSubmissionsTable.mode, opts.mode),
             inArray(portalSubmissionsTable.status, ["queued", "running"]),
             isNull(portalSubmissionsTable.deletedAt),
           ),
@@ -172,6 +205,35 @@ export async function enqueuePortalSubmissions(opts: {
 
       if (existing) {
         return { kind: "existing" as const, id: existing.id };
+      }
+
+      if (opts.mode === "real") {
+        const [submitted] = await tx
+          .select({ id: portalSubmissionsTable.id })
+          .from(portalSubmissionsTable)
+          .where(and(
+            eq(portalSubmissionsTable.applicationId, appId),
+            or(
+              eq(portalSubmissionsTable.targetIdentitySha256, intent.targetIdentitySha256),
+              and(
+                isNull(portalSubmissionsTable.targetIdentitySha256),
+                eq(portalSubmissionsTable.universityKey, portalUni.universityKey),
+              ),
+            ),
+            eq(portalSubmissionsTable.mode, "real"),
+            eq(portalSubmissionsTable.submissionAction, "submit"),
+            or(
+              isNotNull(portalSubmissionsTable.providerCommittedAt),
+              and(
+                isNull(portalSubmissionsTable.targetIdentitySha256),
+                inArray(portalSubmissionsTable.status, ["submitted", "already_exists", "accepted"]),
+                isNotNull(portalSubmissionsTable.externalRef),
+              ),
+            ),
+            isNull(portalSubmissionsTable.deletedAt),
+          ))
+          .limit(1);
+        if (submitted) return { kind: "reconciliation" as const, id: submitted.id };
       }
 
       const [row] = await tx
@@ -187,6 +249,10 @@ export async function enqueuePortalSubmissions(opts: {
           mode: opts.mode,
           status: "queued",
           enqueuedBy: opts.userId,
+          submitIntentKey: intent.submitIntentKey,
+          targetIdentitySha256: intent.targetIdentitySha256,
+          targetIdentity: intent.targetIdentity,
+          submissionAction: "submit",
           // manual:true marks this row as a deliberate user-selected submission
           // (Applications bulk "Run" action / admin Manual Submit dialog — the
           // only two callers of this shared enqueue loop). claimNext() uses this
@@ -214,6 +280,14 @@ export async function enqueuePortalSubmissions(opts: {
       skipped.push({
         applicationId: appId,
         reason: "ALREADY_QUEUED",
+        submissionId: outcome.id,
+      });
+      continue;
+    }
+    if (outcome.kind === "reconciliation") {
+      skipped.push({
+        applicationId: appId,
+        reason: "RECONCILIATION_REQUIRED",
         submissionId: outcome.id,
       });
       continue;

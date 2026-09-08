@@ -1,9 +1,6 @@
 name: Staging Adoption Gate
 
 on:
-  push:
-    branches:
-      - "codex/staging-adoption-runner-20260901"
   workflow_dispatch:
 
 permissions:
@@ -116,8 +113,9 @@ jobs:
         run: |
           image="findandstudy-staging-app:${GITHUB_SHA::12}"
           test "$(docker image inspect "$image" --format '{{.Config.User}}')" = "findandstudy"
-          docker run --rm --entrypoint /bin/sh "$image" -c \
-            'test ! -e /app/.git && test ! -e /app/.github && test -f /app/artifacts/api-server/dist/index.cjs'
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m \
+            --entrypoint /bin/sh "$image" -c \
+            'test ! -e /app/.git && test ! -e /app/.github && test -f /app/artifacts/api-server/dist/index.cjs && test "$(pnpm --version)" = "10.33.2"'
 
   windows-portability:
     name: Windows locked install and typecheck

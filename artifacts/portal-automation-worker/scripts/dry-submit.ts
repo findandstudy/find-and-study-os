@@ -1,3 +1,8 @@
+// This legacy diagnostic must never inherit a live mutation mode from the
+// surrounding shell. Real submissions go through the version-bound queue.
+process.env.PORTAL_DRYRUN = "1";
+process.env.SF_DRYRUN = "1";
+
 import { adapterForUniversity } from "@workspace/portal-adapters";
 import { resolvePortalCreds } from "../src/credResolver.js";
 (async () => {

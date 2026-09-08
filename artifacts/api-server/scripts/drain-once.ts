@@ -46,6 +46,8 @@ import {
   writebackResult,
   portalEvidenceFromError,
   getNonGraduatedExperimentalAdapterKeys,
+  getPortalExecutionVerification,
+  loadPortalPartnerVerificationStates,
 } from "@workspace/portal-runner";
 import { resolvePortalCreds } from "../src/lib/portalCreds.js";
 import { db, pool, portalUniversitiesTable, portalAutomationSettingsTable } from "@workspace/db";
@@ -175,8 +177,10 @@ async function drain(): Promise<void> {
   try {
     const unis = await db
       .select({
+        id: portalUniversitiesTable.id,
         universityKey: portalUniversitiesTable.universityKey,
         adapterKey:    portalUniversitiesTable.adapterKey,
+        verificationGeneration: portalUniversitiesTable.verificationGeneration,
       })
       .from(portalUniversitiesTable)
       .where(and(
@@ -191,8 +195,16 @@ async function drain(): Promise<void> {
     const nonGraduated = await getNonGraduatedExperimentalAdapterKeys(
       unis.map((u) => u.adapterKey),
     );
+    const verificationStates = await loadPortalPartnerVerificationStates(unis);
     autoProcessKeys = unis
-      .filter((u) => !nonGraduated.has(u.adapterKey))
+      .filter((u) => {
+        const verification = verificationStates.get(u.id);
+        return (
+          !nonGraduated.has(u.adapterKey) &&
+          verification?.testLoginPassed === true &&
+          verification.strictDryRunPassed === true
+        );
+      })
       .map((u) => u.universityKey);
   } catch (err) {
     console.error("[drain-once] Fatal: failed to load auto-process universities:", err instanceof Error ? err.message : err);
@@ -271,6 +283,16 @@ async function drain(): Promise<void> {
           .limit(1);
         if (uniRow) adapterKey = uniRow.adapterKey;
       } catch {}
+
+      const verification = await getPortalExecutionVerification({
+        universityKey: sub.universityKey,
+        adapterKey,
+      });
+      if (!verification?.testLoginPassed || !verification.strictDryRunPassed) {
+        throw new Error(
+          "PARTNER_VERIFICATION_REQUIRED: current test-login and strict dry-run receipts are required",
+        );
+      }
 
       let creds: { user: string; password: string } | undefined;
       try {

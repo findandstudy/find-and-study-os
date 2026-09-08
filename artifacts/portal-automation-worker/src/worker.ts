@@ -15,15 +15,17 @@
  */
 
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { db, pool, pipelineStagesTable, portalUniversitiesTable, portalAutomationSettingsTable } from "@workspace/db";
-import { claimNextWithLaneLease, type ClaimedSubmission, type ClaimedSubmissionLease, cancelStaleIneligibleQueued, releaseStale, requeueStuck, buildStudentProfile, runSubmission, writebackResult, handleNeedsFallback, resolveAdapterKey, getNonGraduatedExperimentalAdapterKeys, portalEvidenceFromError, getApplicationMandatoryDocumentStatus } from "@workspace/portal-runner";
+import { claimNextWithLaneLease, type ClaimedSubmission, type ClaimedSubmissionLease, cancelStaleIneligibleQueued, releaseStale, requeueStuck, buildStudentProfile, runSubmission, writebackResult, handleNeedsFallback, resolveAdapterKey, getNonGraduatedExperimentalAdapterKeys, portalEvidenceFromError, getApplicationMandatoryDocumentStatus, getPortalExecutionVerification, loadPortalPartnerVerificationStates, recordPortalPartnerVerificationReceipt, samePortalPartnerVerificationBinding, claimNextPortalWorkerJob, currentPortalRuntimeReleaseId, parsePortalWorkerExecutionModes, recordPortalWorkerHeartbeat } from "@workspace/portal-runner";
 import { isSitFamilyKey } from "@workspace/portal-adapters";
 import { resolvePortalCreds } from "./credResolver.js";
 import { loadPortalLanePolicy } from "./portalLanePolicy.js";
 import { buildPortalWorkerTargetSets } from "./targetPolicy.js";
+import { processPortalManagementJob } from "./managementJobs.js";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -41,11 +43,25 @@ const LANE_POLICY = loadPortalLanePolicy(process.env, STALE_MS);
 const QUEUE_RECONCILE_MS = positiveInt(process.env.WORKER_QUEUE_RECONCILE_MS, 86_400_000);
 const QUEUE_RECONCILE_INTERVAL_MS = positiveInt(process.env.WORKER_QUEUE_RECONCILE_INTERVAL_MS, 300_000);
 const WORKER_ID = `${os.hostname()}-${process.pid}`;
+const configuredReleaseId = currentPortalRuntimeReleaseId();
+if (!configuredReleaseId) throw new Error("PORTAL_WORKER_RELEASE_INVALID");
+const RUNTIME_RELEASE_ID: string = configuredReleaseId;
+const EXECUTION_MODES = parsePortalWorkerExecutionModes();
+const IMPLEMENTED_EXECUTION_MODES = new Set(["test_login", "dry", "real", "program_catalog_sync"]);
+if ([...EXECUTION_MODES].some((mode) => !IMPLEMENTED_EXECUTION_MODES.has(mode))) {
+  throw new Error("PORTAL_WORKER_EXECUTION_MODE_NOT_IMPLEMENTED");
+}
+const SUBMISSION_EXECUTION_MODES = (["dry", "real"] as const)
+  .filter((mode) => EXECUTION_MODES.has(mode));
+const MANAGEMENT_JOB_KINDS: Array<"test_login" | "program_catalog_sync"> = [];
+if (EXECUTION_MODES.has("test_login")) MANAGEMENT_JOB_KINDS.push("test_login");
+if (EXECUTION_MODES.has("program_catalog_sync")) MANAGEMENT_JOB_KINDS.push("program_catalog_sync");
 let nextQueueReconcileAt = 0;
 const SHUTDOWN_TIMEOUT_MS = positiveInt(process.env.WORKER_SHUTDOWN_TIMEOUT_MS, 120_000);
 let stopping = false;
 let shutdownPromise: Promise<void> | null = null;
 let schedulerTick: Promise<void> | null = null;
+let managementJob: Promise<void> | null = null;
 const activeJobs = new Map<number, { laneKey: string; slot: number; promise: Promise<void> }>();
 let wakeSleep: (() => void) | null = null;
 
@@ -83,7 +99,7 @@ function sweepTmp(maxAgeMin = 180): void {
 // Main loop
 // ---------------------------------------------------------------------------
 
-console.log(`[portal-worker] Starting — id=${WORKER_ID} poll=${POLL_MS}ms stale=${STALE_MS}ms` + ` globalConcurrency=${LANE_POLICY.globalConcurrency}` + ` defaultLaneConcurrency=${LANE_POLICY.defaultLaneConcurrency}` + ` laneOverrides=${[...LANE_POLICY.laneConcurrency.entries()].map(([key, slots]) => `${key}=${slots}`).join(",") || "none"}` + ` heartbeat=${LANE_POLICY.heartbeatMs}ms`);
+console.log(`[portal-worker] Starting — id=${WORKER_ID} release=${RUNTIME_RELEASE_ID} modes=${[...EXECUTION_MODES].sort().join(",")}` + ` poll=${POLL_MS}ms stale=${STALE_MS}ms` + ` globalConcurrency=${LANE_POLICY.globalConcurrency}` + ` defaultLaneConcurrency=${LANE_POLICY.defaultLaneConcurrency}` + ` laneOverrides=${[...LANE_POLICY.laneConcurrency.entries()].map(([key, slots]) => `${key}=${slots}`).join(",") || "none"}` + ` heartbeat=${LANE_POLICY.heartbeatMs}ms`);
 
 /**
  * Loads the allowlist of university keys eligible for auto-processing:
@@ -114,6 +130,8 @@ async function loadAutoProcessTargets(): Promise<{
       adapterKey: portalUniversitiesTable.adapterKey,
       autoProcess: portalUniversitiesTable.autoProcess,
       isActive: portalUniversitiesTable.isActive,
+      id: portalUniversitiesTable.id,
+      verificationGeneration: portalUniversitiesTable.verificationGeneration,
     })
     .from(portalUniversitiesTable)
     .where(isNull(portalUniversitiesTable.deletedAt));
@@ -126,8 +144,20 @@ async function loadAutoProcessTargets(): Promise<{
     .filter((u) => u.autoProcess && u.isActive)
     .map((u) => u.adapterKey);
   const nonGraduated = await getNonGraduatedExperimentalAdapterKeys(autoProcessAdapterKeys);
+  const verificationStates = await loadPortalPartnerVerificationStates(unis);
 
-  return buildPortalWorkerTargetSets(unis, nonGraduated);
+  return buildPortalWorkerTargetSets(
+    unis.map((uni) => {
+      const verification = verificationStates.get(uni.id);
+      return {
+        ...uni,
+        verificationReady:
+          verification?.testLoginPassed === true &&
+          verification.strictDryRunPassed === true,
+      };
+    }),
+    nonGraduated,
+  );
 }
 
 /**
@@ -135,10 +165,19 @@ async function loadAutoProcessTargets(): Promise<{
  * these stages are eligible for auto-processing (mirrors the enqueue-time
  * candidate selection). An empty array means nothing is auto-processed.
  */
-async function loadTriggerStages(): Promise<string[]> {
+async function loadQueuePolicy(): Promise<{
+  automatedProcessingEnabled: boolean;
+  automaticMode: "dry" | "real";
+  triggerStages: string[];
+}> {
   const [settingsRows, pipelineStages] = await Promise.all([
     db
-      .select({ triggerStages: portalAutomationSettingsTable.triggerStages })
+      .select({
+        triggerStages: portalAutomationSettingsTable.triggerStages,
+        isEnabled: portalAutomationSettingsTable.isEnabled,
+        autoProcessEnabled: portalAutomationSettingsTable.autoProcessEnabled,
+        mode: portalAutomationSettingsTable.mode,
+      })
       .from(portalAutomationSettingsTable)
       .limit(1),
     db
@@ -156,7 +195,7 @@ async function loadTriggerStages(): Promise<string[]> {
       .map((key) => String(key).trim())
       .filter(Boolean),
   );
-  return pipelineStages
+  const triggerStages = pipelineStages
     .filter((stage) => {
       const variant = String(stage.variant ?? "").trim().toLowerCase();
       return (
@@ -167,12 +206,26 @@ async function loadTriggerStages(): Promise<string[]> {
       );
     })
     .map((stage) => stage.key);
+  return {
+    automatedProcessingEnabled:
+      settingsRows[0]?.isEnabled === true &&
+      settingsRows[0]?.autoProcessEnabled === true,
+    automaticMode: settingsRows[0]?.mode ?? "dry",
+    triggerStages,
+  };
 }
 
 async function processClaimedSubmission(sub: ClaimedSubmission): Promise<void> {
   console.log(`[portal-worker] Claimed submission #${sub.id} (attempt ${sub.attempts}/${sub.maxAttempts})` + ` app=${sub.applicationId} uni=${sub.universityKey} mode=${sub.mode}`);
 
   let runResult = null;
+  let verificationBefore: Awaited<ReturnType<typeof getPortalExecutionVerification>> = null;
+  let adapterRunStarted = false;
+  let executionUniversityKey = sub.universityKey;
+  let executionAdapterKey = sub.adapterKey;
+  const dryRunRequestKey = sub.mode === "dry"
+    ? `dry-run:${sub.id}:${randomUUID()}`
+    : null;
 
   try {
     const mandatoryDocs = await getApplicationMandatoryDocumentStatus(sub.applicationId);
@@ -198,6 +251,23 @@ async function processClaimedSubmission(sub: ClaimedSubmission): Promise<void> {
     // instead of the member's own credentials. For direct portals routedVia is
     // null and adapterKey === universityKey, so behaviour is unchanged.
     const { adapterKey, routedVia } = await resolveAdapterKey(sub.universityKey);
+    executionUniversityKey = routedVia ?? sub.universityKey;
+    executionAdapterKey = adapterKey;
+    verificationBefore = await getPortalExecutionVerification({
+      universityKey: executionUniversityKey,
+      adapterKey,
+    });
+    const executionVerified = sub.mode === "dry"
+      ? verificationBefore?.testLoginPassed === true && verificationBefore.binding?.strictDryRunCapable === true
+      : verificationBefore?.testLoginPassed === true && verificationBefore.strictDryRunPassed === true;
+    if (!executionVerified) {
+      const reason = sub.mode === "dry"
+        ? "PORTAL_TEST_LOGIN_OR_STRICT_ADAPTER_REQUIRED"
+        : "PARTNER_VERIFICATION_REQUIRED: current test-login and strict dry-run receipts are required";
+      console.error(`[portal-worker] Submission #${sub.id} blocked before portal access: ${reason}`);
+      await writebackResult(sub.id, null, reason, WORKER_ID);
+      return;
+    }
     const creds = await resolvePortalCreds(routedVia ?? sub.universityKey, adapterKey);
 
     // Guard: browser-upload adapters (everything except "sit", which submits
@@ -212,21 +282,80 @@ async function processClaimedSubmission(sub: ClaimedSubmission): Promise<void> {
     if (!isSitFamilyKey(adapterKey) && profileResult.hasContentBearingDocs && profileResult.filledSlots.length === 0) {
       const reason = `document-bearing student has 0 filled upload slots for adapter=${adapterKey}` + ` (uni=${sub.universityKey}) — refusing to submit with empty document fields;` + ` missing=[${profileResult.missingSlots.join(", ")}]`;
       console.error(`[portal-worker] Submission #${sub.id} blocked: ${reason}`);
-      await writebackResult(sub.id, null, reason);
+      await writebackResult(sub.id, null, reason, WORKER_ID);
       return;
     }
 
+    adapterRunStarted = true;
     runResult = await runSubmission(sub, profileResult.profile, profileResult.files, profileResult.tempDir, creds);
+
+    if (sub.mode === "dry" && runResult.meta["dryRun"] === true) {
+      const verificationAfter = await getPortalExecutionVerification({
+        universityKey: routedVia ?? sub.universityKey,
+        adapterKey,
+      });
+      if (
+        !verificationBefore?.binding ||
+        !samePortalPartnerVerificationBinding(
+          verificationBefore.binding,
+          verificationAfter?.binding ?? null,
+        )
+      ) {
+        throw new Error("STRICT_DRY_RUN_BINDING_CHANGED");
+      }
+      await recordPortalPartnerVerificationReceipt({
+        binding: verificationBefore.binding,
+        verificationType: "STRICT_DRY_RUN",
+        outcome: "PASSED",
+        requestKey: dryRunRequestKey!,
+        performedBy: sub.enqueuedBy,
+        applicationId: sub.applicationId,
+        portalSubmissionId: sub.id,
+        evidence: {
+          mode: "dry",
+          status: "dry_run",
+          mutationBoundary: "strict",
+          executor: "portal-worker",
+        },
+      });
+    }
 
     console.log(`[portal-worker] Submission #${sub.id} run complete —` + ` submitted=${runResult.result.submitted}` + ` alreadyExists=${runResult.result.alreadyExists}` + ` programMissing=${runResult.result.programMissing}` + ` programFull=${runResult.result.programFull ?? false}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (sub.mode === "dry" && adapterRunStarted && verificationBefore?.binding) {
+      const verificationAfter = await getPortalExecutionVerification({
+        universityKey: executionUniversityKey,
+        adapterKey: executionAdapterKey,
+      }).catch(() => null);
+      if (samePortalPartnerVerificationBinding(
+        verificationBefore.binding,
+        verificationAfter?.binding ?? null,
+      )) {
+        await recordPortalPartnerVerificationReceipt({
+          binding: verificationBefore.binding,
+          verificationType: "STRICT_DRY_RUN",
+          outcome: "FAILED",
+          requestKey: dryRunRequestKey!,
+          performedBy: sub.enqueuedBy,
+          failureCode: "STRICT_DRY_RUN_FAILED",
+          applicationId: sub.applicationId,
+          portalSubmissionId: sub.id,
+          evidence: {
+            mode: "dry",
+            status: "failed",
+            mutationBoundary: "strict",
+            executor: "portal-worker",
+          },
+        }).catch(() => undefined);
+      }
+    }
     console.error(`[portal-worker] Submission #${sub.id} failed: ${msg}`);
-    await writebackResult(sub.id, null, msg, undefined, portalEvidenceFromError(err));
+    await writebackResult(sub.id, null, msg, WORKER_ID, portalEvidenceFromError(err));
     return;
   }
 
-  await writebackResult(sub.id, runResult);
+  await writebackResult(sub.id, runResult, undefined, WORKER_ID);
 
   // Program-fallback orchestrator: when the portal reports the requested
   // programme is full ("Kontenjan Dolu") OR the programme is not found in the
@@ -237,6 +366,19 @@ async function processClaimedSubmission(sub: ClaimedSubmission): Promise<void> {
   const needsFallback = runResult?.result?.programFull === true || (runResult?.result?.programMissing === true && runResult?.result?.resolution === "not_in_dropdown" && (runResult?.result?.availablePrograms?.length ?? 0) > 0);
   if (needsFallback) {
     try {
+      const fallbackVerification = await getPortalExecutionVerification({
+        universityKey: executionUniversityKey,
+        adapterKey: executionAdapterKey,
+      });
+      if (
+        !fallbackVerification?.testLoginPassed ||
+        !fallbackVerification.strictDryRunPassed
+      ) {
+        console.error(
+          `[portal-worker] Submission #${sub.id} fallback blocked: current partner verification is missing`,
+        );
+        return;
+      }
       const outcome = await handleNeedsFallback(sub.id);
       const trigger = runResult?.result?.programFull ? "program_full" : "program_missing";
       console.log(`[portal-worker] Submission #${sub.id} ${trigger} → fallback outcome=${outcome.status}`);
@@ -299,6 +441,26 @@ function startLease(lease: ClaimedSubmissionLease): void {
 async function tick(): Promise<void> {
   sweepTmp();
 
+  await recordPortalWorkerHeartbeat({
+    workerId: WORKER_ID,
+    releaseId: RUNTIME_RELEASE_ID,
+    executionModes: EXECUTION_MODES,
+  });
+
+  if (!managementJob && MANAGEMENT_JOB_KINDS.length > 0) {
+    const claimed = await claimNextPortalWorkerJob({
+      workerId: WORKER_ID,
+      supportedKinds: MANAGEMENT_JOB_KINDS,
+    });
+    if (claimed) {
+      managementJob = processPortalManagementJob(claimed, WORKER_ID)
+        .finally(() => {
+          managementJob = null;
+          wakeSleep?.();
+        });
+    }
+  }
+
   const released = await releaseStale(STALE_MS);
   if (released.length > 0) {
     console.log(`[portal-worker] Released ${released.length} stale submission(s)`);
@@ -306,7 +468,13 @@ async function tick(): Promise<void> {
 
   const autoProcessTargets = await loadAutoProcessTargets();
   if (stopping) return;
-  const triggerStages = await loadTriggerStages();
+  const queuePolicy = await loadQueuePolicy();
+  const triggerStages = queuePolicy.automatedProcessingEnabled
+    ? queuePolicy.triggerStages
+    : [];
+  const claimKeys = queuePolicy.automatedProcessingEnabled
+    ? autoProcessTargets.claimKeys
+    : [];
 
   if (Date.now() >= nextQueueReconcileAt) {
     nextQueueReconcileAt = Date.now() + Math.max(POLL_MS, QUEUE_RECONCILE_INTERVAL_MS);
@@ -316,14 +484,16 @@ async function tick(): Promise<void> {
     }
   }
 
-  if (autoProcessTargets.claimKeys.length === 0) return;
+  if (SUBMISSION_EXECUTION_MODES.length === 0) return;
 
   while (!stopping && activeJobs.size < LANE_POLICY.globalConcurrency) {
     const lease = await claimNextWithLaneLease(WORKER_ID, {
-      universityKeys: autoProcessTargets.claimKeys,
+      universityKeys: claimKeys,
       triggerStages,
       defaultLaneConcurrency: LANE_POLICY.defaultLaneConcurrency,
       laneConcurrency: LANE_POLICY.laneConcurrency,
+      executionModes: [...SUBMISSION_EXECUTION_MODES],
+      automaticMode: queuePolicy.automaticMode,
     });
     if (!lease) break;
     if (stopping) {
@@ -372,13 +542,14 @@ async function beginShutdown(signal: string, exitCode: number): Promise<void> {
     console.log(`[portal-worker] ${signal} received — polling stopped; draining` + (activeIds.length > 0 ? ` submissions [${activeIds.join(", ")}]` : " current scheduler tick"));
 
     let timedOut = false;
-    if (schedulerTick || activeJobs.size > 0) {
+    if (schedulerTick || activeJobs.size > 0 || managementJob) {
       let drainTimer: ReturnType<typeof setTimeout> | null = null;
       try {
         await Promise.race([
           (async () => {
             await schedulerTick?.catch(() => undefined);
             await Promise.allSettled([...activeJobs.values()].map((job) => job.promise));
+            await managementJob?.catch(() => undefined);
           })(),
           new Promise<void>((resolve) => {
             drainTimer = setTimeout(() => {

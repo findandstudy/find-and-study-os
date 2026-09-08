@@ -4,8 +4,10 @@
  * TQ1: claimNext() transitions a queued submission → running, sets lockedBy/lockedAt, increments attempts
  * TQ2: claimById() supports an explicit manual retry even at max_attempts
  * TQ3: releaseStale() crash-recovers a stale running submission → queued
+ * TQ3b: stale real execution fails closed for provider reconciliation
  * TQ4: lane leases enforce per-portal capacity without blocking another lane
  * TQ5: heartbeat keeps a long-running lease out of stale recovery
+ * TQ6: automatic mode gates automatic rows but not an explicit manual row
  *
  * Run:
  *   pnpm --filter @workspace/portal-automation-worker test:queue
@@ -50,7 +52,7 @@ after(async () => {
 });
 
 /** Create a minimal student → application → submission chain for testing. */
-async function seedSubmission(opts: { status?: string; attempts?: number; maxAttempts?: number; lockedAt?: Date | null; universityKey?: string; adapterKey?: string | null }): Promise<number> {
+async function seedSubmission(opts: { status?: string; attempts?: number; maxAttempts?: number; lockedAt?: Date | null; universityKey?: string; adapterKey?: string | null; mode?: "dry" | "real"; meta?: Record<string, unknown> }): Promise<number> {
   const [student] = await db
     .insert(studentsTable)
     .values({
@@ -80,11 +82,12 @@ async function seedSubmission(opts: { status?: string; attempts?: number; maxAtt
     universityKey: opts.universityKey ?? UNIVERSITY_KEY,
     universityName: `TQ_Uni_${RUN}`,
     adapterKey: opts.adapterKey ?? null,
-    mode: "dry",
+    mode: opts.mode ?? "dry",
     status: (opts.status ?? "queued") as InsertPortalSubmission["status"],
     attempts: opts.attempts ?? 0,
     maxAttempts: opts.maxAttempts ?? 3,
     lockedAt: opts.lockedAt ?? null,
+    meta: opts.meta,
   };
 
   const [sub] = await db.insert(portalSubmissionsTable).values(values).returning({ id: portalSubmissionsTable.id });
@@ -163,6 +166,32 @@ test("TQ3: releaseStale() resets running submissions older than threshold → qu
   assert.equal(Number((dbRow.meta as Record<string, unknown> | null)?.crash_recoveries), 1, "crash recovery count recorded in submission metadata");
 });
 
+test("TQ3b: releaseStale() never automatically retries an ambiguous real execution", async () => {
+  const subId = await seedSubmission({
+    status: "running",
+    mode: "real",
+    lockedAt: new Date(Date.now() - 10 * 60 * 1000),
+    attempts: 1,
+  });
+  await db
+    .update(portalSubmissionsTable)
+    .set({ lockedBy: `worker-real-stale-${RUN}` })
+    .where(eq(portalSubmissionsTable.id, subId));
+
+  const released = await releaseStale(5 * 60 * 1000);
+  assert.ok(released.includes(subId));
+  const [row] = await db.select().from(portalSubmissionsTable).where(eq(portalSubmissionsTable.id, subId));
+  assert.equal(row.status, "failed");
+  assert.equal(row.attempts, 1, "real execution attempt history is preserved");
+  assert.equal(row.lockedAt, null);
+  assert.equal(row.lockedBy, null);
+  assert.match(row.error ?? "", /PROVIDER_OUTCOME_UNKNOWN/);
+  assert.equal(
+    (row.meta as Record<string, unknown> | null)?.recoveryDisposition,
+    "reconciliation_required",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // TQ4 — portal lane capacity and cross-lane progress
 // ---------------------------------------------------------------------------
@@ -234,4 +263,30 @@ test("TQ5: lease heartbeat refreshes ownership before stale recovery", async () 
   const released = await releaseStale(5 * 60 * 1000);
   assert.ok(!released.includes(subId), "heartbeating job is not requeued as stale");
   await lease?.release();
+});
+
+test("TQ6: automatic mode cannot claim a mismatched automatic row but a manual row may bypass it", async () => {
+  const universityKey = `mode_gate_${RUN}`;
+  const automaticRealId = await seedSubmission({
+    universityKey,
+    adapterKey: "mode-gate",
+    mode: "real",
+  });
+  const manualRealId = await seedSubmission({
+    universityKey,
+    adapterKey: "mode-gate",
+    mode: "real",
+    meta: { manual: true },
+  });
+  const lease = await claimNextWithLaneLease(`worker-tq6-${RUN}`, {
+    universityKeys: [universityKey],
+    defaultLaneConcurrency: 1,
+    automaticMode: "dry",
+    executionModes: ["dry", "real"],
+  });
+  assert.equal(lease?.submission.id, manualRealId, "explicit manual intent bypasses only the automatic-mode gate");
+  await lease?.release();
+
+  const automatic = await db.select().from(portalSubmissionsTable).where(eq(portalSubmissionsTable.id, automaticRealId));
+  assert.equal(automatic[0]?.status, "queued", "mismatched automatic row remains untouched");
 });

@@ -871,6 +871,7 @@ function AutomationRulesTab() {
 // ---------------------------------------------------------------------------
 export default function PortalAutomation() {
   const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState("onboarding");
 
   return (
     <div className="space-y-6">
@@ -887,7 +888,7 @@ export default function PortalAutomation() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="onboarding">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="-mx-1 overflow-x-auto px-1 [scrollbar-width:thin]">
           <TabsList className="inline-flex w-max justify-start gap-1">
             <TabsTrigger value="onboarding" className="shrink-0">{t("portalAutomation.tabs.onboarding")}</TabsTrigger>
@@ -902,7 +903,7 @@ export default function PortalAutomation() {
         </div>
 
         <TabsContent value="onboarding">
-          <PortalOnboardingTab />
+          <PortalOnboardingTab onNavigate={setActiveTab} />
         </TabsContent>
 
         <TabsContent value="rules">

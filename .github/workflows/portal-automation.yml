@@ -32,6 +32,7 @@ env:
   DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
   NODE_ENV: test
   NO_COLOR: "1"
+  RELEASE_ID: portal-ci-runtime-v1
 
 jobs:
   static-gate:
@@ -69,6 +70,8 @@ jobs:
           pnpm --filter @workspace/portal-adapters exec tsx --test ./scripts/test-registry.ts
           pnpm --filter @workspace/api-server run test:portal-trigger-stage-policy
           pnpm --filter @workspace/api-server run test:portal-partner-readiness
+          pnpm --filter @workspace/api-server run test:portal-partner-verification
+          pnpm --filter @workspace/portal-automation-worker run test:target-policy
           pnpm --filter @workspace/api-server run test:portal-production-slice
 
       - name: Type-check and build deployable applications
@@ -109,6 +112,8 @@ jobs:
           pnpm --filter @workspace/portal-adapters exec tsx --test ./scripts/test-registry.ts
           pnpm --filter @workspace/api-server run test:portal-trigger-stage-policy
           pnpm --filter @workspace/api-server run test:portal-partner-readiness
+          pnpm --filter @workspace/api-server run test:portal-partner-verification
+          pnpm --filter @workspace/portal-automation-worker run test:target-policy
           pnpm --filter @workspace/api-server run test:portal-production-slice
           pnpm run typecheck
 
@@ -157,7 +162,7 @@ jobs:
           PG_DISPOSABLE_ADMIN_URL: postgresql://postgres@127.0.0.1:5433/postgres
         run: node lib/db/prepare-disposable-migration-database.mjs
 
-      - name: Apply and replay all 92 migrations
+      - name: Apply and replay all 109 migrations
         env:
           ALLOW_REVIEWED_MIGRATIONS: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
@@ -175,13 +180,23 @@ jobs:
         env:
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
           SESSION_SECRET: portal-automation-ci-test-secret-only-20260904
+          ALLOW_DISPOSABLE_PORTAL_VERIFICATION_TEST: "true"
+          ALLOW_DISPOSABLE_PORTAL_WORKER_CONTROL_TEST: "true"
+          RELEASE_ID: ci-portal-worker-control-v1
         run: |
+          pnpm --filter @workspace/api-server run test:postgres-portal-worker-control-plane
+          pnpm --filter @workspace/api-server run test:postgres-portal-partner-verification
           pnpm --filter @workspace/api-server run test:postgres-portal-lifecycle-observation-store
           pnpm --filter @workspace/api-server run test:postgres-portal-status-queue
           pnpm --filter @workspace/api-server run test:postgres-portal-lifecycle-guardian
           pnpm --filter @workspace/api-server run test:adapter-graduation
           pnpm --filter @workspace/api-server run test:portal-adapter-spec-admin
           pnpm --filter @workspace/api-server run test:portal-mgmt
+          pnpm --filter @workspace/api-server run test:portal-manual-submit
+          pnpm --filter @workspace/api-server run test:portal-auto-trigger
+          pnpm --filter @workspace/api-server run test:portal-automation
+          pnpm --filter @workspace/api-server run test:portal
           pnpm --filter @workspace/api-server run test:portal-universities
+          pnpm --filter @workspace/api-server run test:portal-fallbacks
           pnpm --filter @workspace/api-server run test:portal-operations-admin
           pnpm --filter @workspace/api-server run test:postgres-portal-artifact-intake

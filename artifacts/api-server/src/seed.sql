@@ -218,7 +218,7 @@ INSERT INTO universities (name, country, city, website) SELECT 'Middle East Tech
 INSERT INTO universities (name, country, city, website) SELECT 'Sorbonne University', 'France', 'Paris', 'https://sorbonne-universite.fr' WHERE NOT EXISTS (SELECT 1 FROM universities WHERE name = 'Sorbonne University');
 
 -- Settings
-INSERT INTO settings (id, default_language, supported_languages, robots_index, robots_follow, staging_noindex, feature_flags) SELECT 1, 'en', 'en,tr,ar,fr,ru', true, true, false, '{}' WHERE NOT EXISTS (SELECT 1 FROM settings WHERE id = 1);
+INSERT INTO settings (id, default_language, supported_languages, robots_index, robots_follow, staging_noindex, feature_flags) SELECT 1, 'en', 'en,tr,ar,fr,ru,fa,zh,hi,es,id,ur,tk,ky,kk,uz,tg,bn,pt,ne,vi,ko,uk,it', true, true, false, '{}' WHERE NOT EXISTS (SELECT 1 FROM settings WHERE id = 1);
 
 -- Students
 INSERT INTO students (first_name, last_name, email, phone, nationality, status) SELECT 'James', 'Chen', 'james.chen@example.com', '+1234567890', 'Chinese', 'inactive' WHERE NOT EXISTS (SELECT 1 FROM students WHERE email = 'james.chen@example.com');

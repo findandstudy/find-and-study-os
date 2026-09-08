@@ -20,6 +20,7 @@ import { requireAuth, requireRole, logAudit } from "../lib/auth";
 import { ADMIN_ROLES } from "../lib/roles";
 import { isLiveIntegrationsEnabled } from "../lib/inbox/liveMode";
 import { META_API_VERSION } from "../lib/inbox/channels/meta-shared";
+import { simulatedIntegrationTestResult, unsupportedIntegrationTestResult } from "../lib/integrationTestResult";
 import { maskSecrets, mergeConfig } from "../lib/configMasking";
 import { parseAccountConfig, serializeAccountConfig } from "../lib/inbox/channelAccountConfig";
 import { getZernioApiKey, resolveZernioProfileId } from "../lib/inbox/zernioSend";
@@ -276,7 +277,7 @@ router.post("/channel-accounts/:id/test", requireAuth, requireRole(...ADMIN_ROLE
   const config = parseAccountConfig(existing.configEncrypted);
 
   if (!isLiveIntegrationsEnabled()) {
-    res.json({ success: true, message: "Test skipped — running in simulated mode (set ALLOW_LIVE_INTEGRATIONS=true to test live)" });
+    res.json(simulatedIntegrationTestResult("Live credential check was skipped; simulated mode is not health evidence."));
     return;
   }
 
@@ -369,7 +370,7 @@ router.post("/channel-accounts/:id/test", requireAuth, requireRole(...ADMIN_ROLE
     return;
   }
 
-  res.json({ success: true, message: "Connection test passed (simulated)" });
+  res.json(unsupportedIntegrationTestResult("No real connection verifier is implemented for this account type."));
 });
 
 export default router;

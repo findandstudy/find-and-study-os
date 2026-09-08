@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "node scripts/check-i18n.mjs && vite build --config vite.config.ts && node generate-sitemap.mjs",
+    "build": "node scripts/check-i18n.mjs && tsx --test ./scripts/test-language-country-codes.ts && vite build --config vite.config.ts && node generate-sitemap.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "test:language-flags": "tsx --test ./scripts/test-language-country-codes.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "test:inbox-education-payload": "tsx --test ./scripts/test-inbox-education-payload.ts",
     "test:proposal-pdf": "tsx --test ./scripts/test-proposal-pdf.ts ./scripts/test-proposal-branding.ts",
@@ -18,6 +19,7 @@
     "test:login-accessibility": "tsx --test ./scripts/test-login-accessibility.ts",
     "test:portal-bulk-run-feedback": "tsx --test ./scripts/test-portal-bulk-run-feedback.ts",
     "test:portal-submission-panel": "tsx --test ./scripts/test-portal-submission-panel.ts",
+    "test:operations-queue": "tsx --test ./scripts/test-operations-queue.ts",
     "test:dynamic-lead-sources": "tsx --test ./scripts/test-dynamic-lead-sources.ts",
     "test:pipeline-dialog-dismiss": "tsx --test ./scripts/test-pipeline-dialog-dismiss.ts",
     "test:table-pagination": "tsx --test ./scripts/test-table-pagination.ts",

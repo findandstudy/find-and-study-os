@@ -15,7 +15,7 @@ import {
   getSuccessCounts,
   GRADUATION_THRESHOLD,
 } from "./adapterGraduation.js";
-import { batchPortalCredentialKeys } from "./portalCreds.js";
+import { loadPortalPartnerVerificationStates } from "@workspace/portal-runner";
 import {
   computePortalPartnerReadiness,
   safePortalHttpsUrl,
@@ -37,6 +37,15 @@ export interface PortalPartnerOnboardingRow {
   isActive: boolean;
   autoProcess: boolean;
   fanOutMode: string | null;
+  verificationGeneration: number;
+  runtimeReleaseId: string | null;
+  adapterSpecVersion: number | null;
+  adapterSpecSha256: string | null;
+  testLoginPassed: boolean;
+  testLoginVerifiedAt: string | null;
+  strictDryRunCapable: boolean;
+  strictDryRunPassed: boolean;
+  strictDryRunVerifiedAt: string | null;
   graduationRequired: boolean;
   successCount: number;
   graduationThreshold: number;
@@ -66,14 +75,6 @@ export interface PortalPartnerOnboardingSnapshot {
   partners: PortalPartnerOnboardingRow[];
 }
 
-function hasEnvironmentCredentials(adapterKey: string): boolean {
-  const key = adapterKey.toUpperCase().replace(/-/g, "_");
-  return !!(
-    (process.env[`${key}_EMAIL`] || process.env[`${key}_USER`]) &&
-    process.env[`${key}_PASSWORD`]
-  );
-}
-
 export async function loadPortalPartnerOnboardingSnapshot(
   ids?: readonly number[],
 ): Promise<PortalPartnerOnboardingSnapshot> {
@@ -84,7 +85,7 @@ export async function loadPortalPartnerOnboardingSnapshot(
       )
     : isNull(portalUniversitiesTable.deletedAt);
 
-  const [partners, settingsRows, credentialKeys] = await Promise.all([
+  const [partners, settingsRows] = await Promise.all([
     db
       .select()
       .from(portalUniversitiesTable)
@@ -95,8 +96,15 @@ export async function loadPortalPartnerOnboardingSnapshot(
       .from(portalAutomationSettingsTable)
       .orderBy(asc(portalAutomationSettingsTable.id))
       .limit(1),
-    batchPortalCredentialKeys(),
   ]);
+  const verificationByPartner = await loadPortalPartnerVerificationStates(
+    partners.map((partner) => ({
+      id: partner.id,
+      universityKey: partner.universityKey,
+      adapterKey: partner.adapterKey,
+      verificationGeneration: partner.verificationGeneration,
+    })),
+  );
 
   const adapterKeys = [...new Set(partners.map((row) => row.adapterKey))];
   const adapterEntries = await Promise.all(
@@ -171,11 +179,8 @@ export async function loadPortalPartnerOnboardingSnapshot(
         ? 0
         : (programCountByCatalogId.get(row.crmUniversityId) ?? 0);
     const targetCount = row.isMultiPortal ? memberIds.size : (catalogLinked ? 1 : 0);
-    const hasCredentials =
-      credentialKeys.has(row.adapterKey) ||
-      credentialKeys.has(row.universityKey) ||
-      hasEnvironmentCredentials(row.adapterKey) ||
-      hasEnvironmentCredentials(row.universityKey);
+    const verification = verificationByPartner.get(row.id);
+    const hasCredentials = verification?.encryptedCredentialsReady ?? false;
     const graduationRequired = isExperimentalAdapterKey(row.adapterKey);
     const successCount = graduationRequired
       ? (successCounts.get(row.adapterKey) ?? 0)
@@ -189,6 +194,10 @@ export async function loadPortalPartnerOnboardingSnapshot(
       graduationRequired,
       successCount,
       graduationThreshold: GRADUATION_THRESHOLD,
+      runtimeIdentityReady: verification?.runtimeIdentityReady ?? false,
+      testLoginPassed: verification?.testLoginPassed ?? false,
+      strictDryRunCapable: verification?.binding?.strictDryRunCapable ?? false,
+      strictDryRunPassed: verification?.strictDryRunPassed ?? false,
       isActive: row.isActive,
       autoProcess: row.autoProcess,
     });
@@ -208,6 +217,15 @@ export async function loadPortalPartnerOnboardingSnapshot(
       isActive: row.isActive,
       autoProcess: row.autoProcess,
       fanOutMode: row.fanOutMode,
+      verificationGeneration: row.verificationGeneration,
+      runtimeReleaseId: verification?.binding?.runtimeReleaseId ?? null,
+      adapterSpecVersion: verification?.binding?.adapterSpecVersion ?? null,
+      adapterSpecSha256: verification?.binding?.adapterSpecSha256 ?? null,
+      testLoginPassed: verification?.testLoginPassed ?? false,
+      testLoginVerifiedAt: verification?.testLoginVerifiedAt?.toISOString() ?? null,
+      strictDryRunCapable: verification?.binding?.strictDryRunCapable ?? false,
+      strictDryRunPassed: verification?.strictDryRunPassed ?? false,
+      strictDryRunVerifiedAt: verification?.strictDryRunVerifiedAt?.toISOString() ?? null,
       graduationRequired,
       successCount,
       graduationThreshold: GRADUATION_THRESHOLD,

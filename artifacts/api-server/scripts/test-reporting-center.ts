@@ -12,6 +12,15 @@ import {
   safeChange,
   safeRate,
 } from "../src/lib/reportingContract";
+import {
+  DUPLICATE_MATCH_FAMILIES,
+  duplicateCandidatesCte,
+} from "../src/lib/reportingDuplicateSemantics";
+import {
+  SMALL_COHORT_THRESHOLD,
+  reportingScopeWarnings,
+  reportingSmallCohortWarnings,
+} from "../src/lib/reportingWarnings";
 
 test("reporting filters use inclusive date-only boundaries and a bounded interval", () => {
   const parsed = parseReportingFilters(
@@ -43,9 +52,50 @@ test("reporting filters fail closed for malformed and oversized requests", () =>
 
 test("rates and period changes never invent a denominator", () => {
   assert.equal(safeRate(5, 10), 50);
+  assert.equal(safeRate(0, 10), 0);
   assert.equal(safeRate(0, 0), null);
   assert.equal(safeChange(15, 10), 50);
   assert.equal(safeChange(5, 0), null);
+});
+
+test("small cohorts and branch-null exclusions are explicit metadata warnings", () => {
+  assert.match(reportingScopeWarnings([4])[0] ?? "", /branch_id is NULL/i);
+  assert.deepEqual(
+    reportingSmallCohortWarnings([{ label: "lead cohort", value: 0 }]),
+    [],
+  );
+  assert.match(
+    reportingSmallCohortWarnings([
+      { label: "lead cohort", value: SMALL_COHORT_THRESHOLD - 1 },
+    ])[0] ?? "",
+    /lead cohort=19/,
+  );
+  assert.deepEqual(
+    reportingSmallCohortWarnings([
+      { label: "lead cohort", value: SMALL_COHORT_THRESHOLD },
+    ]),
+    [],
+  );
+});
+
+test("duplicate identity checks share one five-family SQL definition", () => {
+  assert.deepEqual(DUPLICATE_MATCH_FAMILIES, [
+    "student.email",
+    "student.phone",
+    "student.passport",
+    "lead.email",
+    "lead.phone",
+  ]);
+  const globalSql = duplicateCandidatesCte("global");
+  const reportingSql = duplicateCandidatesCte("reporting");
+  assert.doesNotMatch(globalSql, /\$4::int\[\]/);
+  assert.equal(
+    (reportingSql.match(/AND \(\$4::int\[\] IS NULL/g) ?? []).length,
+    5,
+  );
+  assert.match(reportingSql, /FROM students/);
+  assert.match(reportingSql, /FROM leads/);
+  assert.match(reportingSql, /passport/);
 });
 
 test("reporting branch scope is server-resolved and fails closed", () => {
@@ -96,6 +146,7 @@ test("reporting routes enforce permissions, query budgets and safe finance seman
   assert.match(source, /private, no-store/);
   assert.match(source, /getVisibleBranchIds/);
   assert.match(source, /branch_id = ANY\(\$4::int\[\]\)/);
+  assert.match(source, /Potential duplicate identity groups/);
   assert.doesNotMatch(source, /SELECT \* FROM/);
   assert.doesNotMatch(source, /res\.json\([^;]*(passport|phone|email)/is);
 });
@@ -113,4 +164,42 @@ test("reporting permission migration is additive and does not grant ordinary sta
   assert.match(migration, /reporting\.finance/);
   assert.doesNotMatch(migration, /'staff'/);
   assert.doesNotMatch(migration, /DELETE|DROP|TRUNCATE/i);
+});
+
+test("OpenAPI publishes all six reporting reads and their safety semantics", () => {
+  const root = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../..",
+  );
+  const source = fs.readFileSync(
+    path.join(root, "lib/api-spec/openapi.yaml"),
+    "utf8",
+  );
+  for (const route of [
+    "meta",
+    "command-center",
+    "funnel",
+    "applications",
+    "finance",
+    "data-quality",
+  ]) {
+    assert.match(source, new RegExp(`^  /reporting/${route}:`, "m"));
+  }
+  assert.match(source, /original_currency_only_no_cross_currency_sum/);
+  assert.match(source, /Null means the denominator is zero or unavailable/);
+  assert.match(source, /branch_snapshot/);
+  assert.match(source, /ReportingUnavailable/);
+});
+
+test("reporting UI distinguishes an unavailable denominator from measured zero", () => {
+  const root = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../..",
+  );
+  const source = fs.readFileSync(
+    path.join(root, "artifacts/edcons/src/pages/admin/Reports.tsx"),
+    "utf8",
+  );
+  assert.match(source, /value === null\s*\? "—"/);
+  assert.match(source, /`\$\{value\.toLocaleString[\s\S]*?\}%`/);
 });

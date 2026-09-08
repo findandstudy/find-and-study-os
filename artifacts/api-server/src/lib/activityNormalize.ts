@@ -16,8 +16,8 @@ export const ROUTE_MODULE_MAP: Record<string, string> = {
   "/agent/messages": "Messages", "/agent/documents": "Documents",
 };
 
-export const EXCLUDE_SEGMENT_RE = /^(en|tr|ar|fr|ru|fa|zh|hi|es|id|login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|token|oauth|sso|invite|accept|decline|redirect|error|404|500)$/i;
-export const DIRTY_LABEL_RE = /^(login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|unknown|en|tr|ar|fr|ru|fa|zh|hi|es|id|404|500|error|redirect|null|undefined)$/i;
+export const EXCLUDE_SEGMENT_RE = /^(en|tr|ar|fr|ru|fa|zh|hi|es|id|ur|tk|ky|kk|uz|tg|bn|pt|ne|vi|ko|uk|it|login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|token|oauth|sso|invite|accept|decline|redirect|error|404|500)$/i;
+export const DIRTY_LABEL_RE = /^(login|register|verify|reset|confirm|auth|callback|public|embed|apply|sign|contract|unknown|en|tr|ar|fr|ru|fa|zh|hi|es|id|ur|tk|ky|kk|uz|tg|bn|pt|ne|vi|ko|uk|it|404|500|error|redirect|null|undefined)$/i;
 const UUID_RE = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const NUM_TAIL_RE = /\/\d+$/;
 const LONG_TOKEN_RE = /\/[A-Za-z0-9_-]{20,}$/;
@@ -113,6 +113,18 @@ export function clampSessionMetrics<T extends { activeDurationSeconds?: number |
 
 export const MAX_TRACKED_SESSION_SECONDS = 8 * 60 * 60;
 export const MAX_HEARTBEAT_DELTA_SECONDS = 45;
+export const MAX_ACTIVITY_REPORT_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+
+export function isValidActivityReportRange(from: Date, to: Date): boolean {
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  return (
+    Number.isFinite(fromMs) &&
+    Number.isFinite(toMs) &&
+    fromMs < toMs &&
+    toMs - fromMs <= MAX_ACTIVITY_REPORT_RANGE_MS
+  );
+}
 
 export type ActivitySessionLike = {
   startedAt: Date | string | null;

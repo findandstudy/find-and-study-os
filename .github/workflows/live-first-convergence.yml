@@ -78,6 +78,10 @@ jobs:
           pnpm --filter @workspace/api-server run test:institution-admissions-contract
           pnpm --filter @workspace/api-server run test:institution-admissions-authorization
           pnpm --filter @workspace/api-server run test:institution-case-intake
+          pnpm --filter @workspace/api-server run test:social-operations-contract
+          pnpm --filter @workspace/api-server run test:social-publisher-adapter
+          pnpm --filter @workspace/api-server run test:social-creative-adapter
+          pnpm --filter @workspace/api-server run test:background-jobs
 
       - name: Verify frozen convergence review manifest
         if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'codex/live-control-plane-convergence-20260831'
@@ -157,7 +161,98 @@ jobs:
           pnpm --filter @workspace/api-server run test:institution-admissions-contract
           pnpm --filter @workspace/api-server run test:institution-admissions-authorization
           pnpm --filter @workspace/api-server run test:institution-case-intake
+          pnpm --filter @workspace/api-server run test:social-operations-contract
+          pnpm --filter @workspace/api-server run test:social-publisher-adapter
+          pnpm --filter @workspace/api-server run test:social-creative-adapter
+          pnpm --filter @workspace/api-server run test:background-jobs
           pnpm run typecheck
+
+  object-authz-postgres:
+    name: Signed-contract object authorization PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ALLOW_DISPOSABLE_CONTROL_PLANE_GATE: "true"
+      ALLOW_LIVE_INTEGRATIONS: "false"
+      CI: "true"
+      NODE_ENV: test
+      NO_COLOR: "1"
+      PG_GATE_SERVER_PORT: "5432"
+      PG_GATE_TARGET_MODE: ci-dynamic
+    services:
+      postgres:
+        image: postgres:16.15@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5
+        env:
+          POSTGRES_DB: fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          POSTGRES_PASSWORD: postgres_it_2026
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fas_it_${{ github.run_id }}_${{ github.run_attempt }}"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Activate the repository-pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.2 --activate
+          test "$(pnpm --version)" = "10.33.2"
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate the migration ledger
+        run: node lib/db/validate-migrations.mjs
+
+      - name: Prepare the dynamic disposable authority split
+        env:
+          PG_GATE_ADMIN_URL: postgresql://postgres:postgres_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          PG_GATE_APP_URL: postgresql://fas_app:fas_app_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          PG_GATE_MIGRATOR_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+        run: pnpm --filter @workspace/api-server run test:postgres-control-plane-gate -- setup
+
+      - name: Apply all 109 migrations to the dynamic disposable database
+        env:
+          ALLOW_REVIEWED_MIGRATIONS: "true"
+          DATABASE_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          MIGRATION_TARGET_ENV: test
+        working-directory: lib/db
+        run: node ./run-migrations.mjs
+
+      - name: Prove reviewed-runner replay is clean
+        env:
+          ALLOW_REVIEWED_MIGRATIONS: "true"
+          DATABASE_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          MIGRATION_TARGET_ENV: test
+        working-directory: lib/db
+        run: node ./run-migrations.mjs
+
+      - name: Verify the dynamic disposable authority split
+        env:
+          PG_GATE_ADMIN_URL: postgresql://postgres:postgres_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          PG_GATE_APP_URL: postgresql://fas_app:fas_app_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          PG_GATE_MIGRATOR_URL: postgresql://fas_migrator:fas_migrator_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+        run: pnpm --filter @workspace/api-server run test:postgres-control-plane-gate -- verify
+
+      - name: Run signed-contract object authorization integration test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres_it_2026@127.0.0.1:5432/fas_it_${{ github.run_id }}_${{ github.run_attempt }}
+          OBJECT_AUTHZ_TEST_ALLOW_DATABASE_MUTATION: "1"
+        run: pnpm --filter @workspace/api-server run test:object-authz-signed-contract
 
   postgres-adoption:
     name: PostgreSQL 16 fresh and production-prefix adoption
@@ -207,7 +302,7 @@ jobs:
           PG_DISPOSABLE_ADMIN_URL: postgresql://postgres@127.0.0.1:5433/postgres
         run: node lib/db/prepare-disposable-migration-database.mjs
 
-      - name: Apply all 92 migrations to a fresh database
+      - name: Apply all 109 migrations to a fresh database
         env:
           ALLOW_REVIEWED_MIGRATIONS: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
@@ -245,7 +340,7 @@ jobs:
           PG_GATE_MIGRATOR_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
         run: pnpm --filter @workspace/api-server run test:postgres-control-plane-gate -- setup
 
-      - name: Prove production 66/66 to canonical 92/92 adoption
+      - name: Prove production 66/66 to canonical 109/109 adoption
         env:
           ALLOW_DISPOSABLE_PREFIX_ADOPTION: "true"
           DATABASE_URL: postgresql://fas_migrator@127.0.0.1:5433/fasos_apply_local
@@ -290,6 +385,20 @@ jobs:
           INSTITUTION_EVIDENCE_TEST_EXECUTOR_DATABASE_URL: postgresql://fas_institution_evidence_share_executor@127.0.0.1:5433/fasos_apply_local
           INSTITUTION_EVIDENCE_TEST_ACTOR_DATABASE_URL: postgresql://fas_institution_executor@127.0.0.1:5433/fasos_apply_local
         run: pnpm --filter @workspace/api-server run test:postgres-institution-evidence-share
+
+      - name: Run social publication and performance PostgreSQL checks
+        env:
+          ALLOW_DISPOSABLE_SOCIAL_PUBLICATION_TEST: "true"
+          DATABASE_URL: postgresql://fas_social_executor@127.0.0.1:5433/fasos_apply_local
+          SOCIAL_TEST_ADMIN_DATABASE_URL: postgresql://postgres@127.0.0.1:5433/fasos_apply_local
+        run: pnpm --filter @workspace/api-server run test:postgres-social-publication
+
+      - name: Run approval-gated social advertising PostgreSQL checks
+        env:
+          ALLOW_DISPOSABLE_SOCIAL_ADVERTISING_TEST: "true"
+          DATABASE_URL: postgresql://fas_social_executor@127.0.0.1:5433/fasos_apply_local
+          SOCIAL_AD_TEST_ADMIN_DATABASE_URL: postgresql://postgres@127.0.0.1:5433/fasos_apply_local
+        run: pnpm --filter @workspace/api-server run test:postgres-social-advertising
 
       - name: Reset the disposable database after foundation fixtures
         env:

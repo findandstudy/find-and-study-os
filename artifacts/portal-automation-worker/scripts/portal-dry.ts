@@ -23,11 +23,15 @@
  *   1  — bad args / no adapter / profile build / credential / run error
  */
 
-import { adapterByKey, adapterForUniversity } from "@workspace/portal-adapters";
+import {
+  resolveAdapterByKey,
+  resolveAdapterForUniversity,
+} from "@workspace/portal-adapters";
 import {
   runSubmission,
   buildProfileFromApplication,
   resolveAdapterKey,
+  getPortalExecutionVerification,
 } from "@workspace/portal-runner";
 import { resolvePortalCreds } from "../src/credResolver.js";
 
@@ -65,11 +69,11 @@ async function main(): Promise<void> {
   // (study_in_turkey → sit, united_education → united). Mirror that here so the
   // CLI accepts an aggregator key, logs the real adapter, and loads creds under
   // it. Raw-key / name lookups remain as fallbacks for standalone portals.
-  const { adapterKey } = await resolveAdapterKey(universityKey);
+  const { adapterKey, routedVia } = await resolveAdapterKey(universityKey);
   const adapter =
-    adapterByKey(adapterKey) ??
-    adapterByKey(universityKey) ??
-    adapterForUniversity(universityKey);
+    (await resolveAdapterByKey(adapterKey)) ??
+    (await resolveAdapterByKey(universityKey)) ??
+    (await resolveAdapterForUniversity(universityKey));
   if (!adapter) {
     console.error(
       `[portal:dry] No adapter found for "${universityKey}". ` +
@@ -78,6 +82,19 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   console.log(`[portal:dry] adapter=${adapter.key} (${adapter.label})`);
+  const verification = await getPortalExecutionVerification({
+    universityKey: routedVia ?? universityKey,
+    adapterKey,
+  });
+  if (
+    verification?.testLoginPassed !== true ||
+    verification.binding?.strictDryRunCapable !== true
+  ) {
+    console.error(
+      "[portal:dry] Current Test Login evidence and a strict dry-run adapter are required.",
+    );
+    process.exit(1);
+  }
 
   // ----- 2. Build profile + documents from the application (CRM/DB) ---------
   let profileResult: Awaited<ReturnType<typeof buildProfileFromApplication>>;
@@ -100,7 +117,7 @@ async function main(): Promise<void> {
   // ----- 3. Resolve credentials (DB-first, .env fallback) ------------------
   let creds: Awaited<ReturnType<typeof resolvePortalCreds>>;
   try {
-    creds = await resolvePortalCreds(universityKey, adapter.key);
+    creds = await resolvePortalCreds(routedVia ?? universityKey, adapter.key);
   } catch (err) {
     console.error(`[portal:dry] ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);

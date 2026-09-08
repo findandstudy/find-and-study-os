@@ -1,4 +1,11 @@
-import { pgTable, serial, text, boolean, jsonb, timestamp } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  text,
+  boolean,
+  jsonb,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 export const rolesTable = pgTable("roles", {
   id: serial("id").primaryKey(),
@@ -8,8 +15,13 @@ export const rolesTable = pgTable("roles", {
   color: text("color").notNull().default("blue"),
   isSystem: boolean("is_system").notNull().default(false),
   permissions: jsonb("permissions").notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
 });
 
 export type Role = typeof rolesTable.$inferSelect;
@@ -43,7 +55,8 @@ export const PERMISSION_CATEGORIES = {
       "applications.edit": "Edit Applications",
       "applications.delete": "Delete Applications",
       "applications.change_stage": "Change Application Stage",
-      "applications.change_student_app_stage": "Change Student/Application Stage",
+      "applications.change_student_app_stage":
+        "Change Student/Application Stage",
       "applications.view_commission": "View Commission",
     },
   },
@@ -118,6 +131,14 @@ export const PERMISSION_CATEGORIES = {
       "reporting.workforce": "View Workforce Reports",
       "reporting.export": "Export Approved Reports",
       "reporting.manage": "Manage Reporting Definitions and Delivery",
+    },
+  },
+  social: {
+    label: "Social Media Operations",
+    permissions: {
+      "social.view": "View Social Media Operations",
+      "social.manage": "Manage Social Accounts and Content Briefs",
+      "social.approve": "Approve Social Media Content",
     },
   },
   catalog: {
@@ -209,8 +230,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: getAllPermissions(),
   admin: getAllPermissions().filter(
     (p) =>
-      !p.startsWith("finance.commissions") &&
-      !p.startsWith("finance.offset")
+      !p.startsWith("finance.commissions") && !p.startsWith("finance.offset"),
   ),
   staff: [
     "dashboard.view",
@@ -315,7 +335,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
       !p.startsWith("finance.offset") &&
       p !== "users.manage_roles" &&
       p !== "settings.branding" &&
-      p !== "reporting.manage"
+      p !== "reporting.manage" &&
+      p !== "social.approve",
   ),
   editor: [
     "dashboard.view",
@@ -392,14 +413,16 @@ export const DEFAULT_ROLES = [
   {
     name: "consultant",
     displayName: "Consultant",
-    description: "Staff sub-type — handles student consultations and applications",
+    description:
+      "Staff sub-type — handles student consultations and applications",
     color: "indigo",
     isSystem: true,
   },
   {
     name: "accountant",
     displayName: "Accountant",
-    description: "Staff sub-type — manages finance, commissions and service fees",
+    description:
+      "Staff sub-type — manages finance, commissions and service fees",
     color: "purple",
     isSystem: true,
   },

@@ -468,7 +468,7 @@ export class ObjectStorageService {
     contentSha256: string;
     buffer: Buffer;
     contentType: string;
-    extension: ".pdf" | ".jpg" | ".png";
+    extension: ".pdf" | ".jpg" | ".png" | ".webp" | ".mp4";
   }): Promise<string> {
     const subdir = opts.subdir.replace(/^\/+|\/+$/g, "");
     if (

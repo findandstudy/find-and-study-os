@@ -4,13 +4,14 @@
  *                          Skip-reason surface (TSR1–TSR2) +
  *                          Queue mechanics (TAP1–TAP5)
  *
- * TP1: POST /portal-submissions/process-queued with empty queue → 200, processed=0
+ * TP1: POST /portal-submissions/process-queued with empty queue → 202 accepted
  * TP2: POST /portal-submissions/:id/process → 404 on nonexistent id
  * TP3: POST /portal-submissions/:id/process on a canceled submission → 409 NOT_QUEUED
  * TP4: POST /portal-submissions/:id/process → 403 when user lacks required role
  * TP5: POST /portal-submissions/process-queued → 403 when user lacks required role
- * TP6: POST /portal-submissions/reset-stuck with no stuck rows → {reset>=0}
- * TP7: POST /portal-submissions/reset-stuck resets a 15-min-old running row
+ * TP6: POST /portal-submissions/reset-stuck is worker-owned
+ * TP7: API reset preserves a 15-min-old running row
+ * TP8: API cancellation cannot revoke a running worker lease
  *
  * TMD1–TMD10: mapDocType canonical cases including #2103 document types
  * TSR1: writebackResult stores result.detail in resultJson for program_missing
@@ -182,18 +183,18 @@ async function seedSubmission(
 }
 
 // ---------------------------------------------------------------------------
-// TP1 — process-queued with empty-ish queue → 200, processed=0
-//        (Seeds no queued submissions in this test — queue should be empty
-//         for this test run's scope, so processed=0 or a low number is fine.)
+// TP1 — process-queued is an asynchronous acceptance endpoint. It never runs
+// a browser in the API process, including when the queue is empty.
 // ---------------------------------------------------------------------------
-test("TP1: POST /portal-submissions/process-queued on empty queue returns processed=0", async () => {
+test("TP1: POST /portal-submissions/process-queued returns 202 acceptance", async () => {
   const app    = buildApp();
   const server = await listen(app);
   try {
     const res = await sendReq(server, "POST", "/api/portal-submissions/process-queued");
-    assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
-    assert.ok(typeof res.body.processed === "number", "processed must be a number");
-    assert.ok(Array.isArray(res.body.results), "results must be an array");
+    assert.equal(res.status, 202, `Expected 202, got ${res.status}: ${JSON.stringify(res.body)}`);
+    assert.equal(res.body.accepted, true);
+    assert.ok(typeof res.body.queued === "number", "queued must be a number");
+    assert.equal(typeof res.body.statusUrl, "string");
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
   }
@@ -264,26 +265,24 @@ test("TP5: POST /portal-submissions/process-queued as student returns 403", asyn
 });
 
 // ---------------------------------------------------------------------------
-// TP6 — POST /portal-submissions/reset-stuck with no stuck rows → {reset:0}
+// TP6 — API-side stale reset is fail-closed; only the worker may recover it.
 // ---------------------------------------------------------------------------
-test("TP6: POST /portal-submissions/reset-stuck with no stuck rows returns reset>=0", async () => {
+test("TP6: POST /portal-submissions/reset-stuck is worker-owned", async () => {
   const app    = buildApp();
   const server = await listen(app);
   try {
     const res = await sendReq(server, "POST", "/api/portal-submissions/reset-stuck", {});
-    assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
-    assert.equal(typeof res.body.reset, "number", "Expected reset to be a number");
-    assert.ok(Array.isArray(res.body.ids), "Expected ids to be an array");
-    assert.ok(res.body.reset >= 0, `Expected reset>=0, got ${res.body.reset}`);
+    assert.equal(res.status, 409, `Expected 409, got ${res.status}: ${JSON.stringify(res.body)}`);
+    assert.equal(res.body.error, "WORKER_OWNED_RECOVERY");
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
   }
 });
 
 // ---------------------------------------------------------------------------
-// TP7 — POST /portal-submissions/reset-stuck resets a 15-min-old running row
+// TP7 — API reset cannot race a still-active browser action.
 // ---------------------------------------------------------------------------
-test("TP7: POST /portal-submissions/reset-stuck resets an old running submission to queued", async () => {
+test("TP7: POST /portal-submissions/reset-stuck preserves an old running submission", async () => {
   const studentId    = await seedStudent();
   const appId        = await seedApp(studentId);
   const submissionId = await seedSubmission(appId, studentId, "queued");
@@ -301,19 +300,46 @@ test("TP7: POST /portal-submissions/reset-stuck resets an old running submission
   const server = await listen(app);
   try {
     const res = await sendReq(server, "POST", "/api/portal-submissions/reset-stuck", { thresholdMinutes: 10 });
-    assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
-    assert.ok(
-      (res.body.ids as number[]).includes(submissionId),
-      `Expected ids to include ${submissionId}, got ${JSON.stringify(res.body.ids)}`,
-    );
+    assert.equal(res.status, 409, `Expected 409, got ${res.status}: ${JSON.stringify(res.body)}`);
+    assert.equal(res.body.error, "WORKER_OWNED_RECOVERY");
 
     const [row] = await db
       .select({ status: portalSubmissionsTable.status })
       .from(portalSubmissionsTable)
       .where(eq(portalSubmissionsTable.id, submissionId));
-    assert.equal(row?.status, "queued", `Expected status=queued, got ${row?.status}`);
+    assert.equal(row?.status, "running", `Expected status=running, got ${row?.status}`);
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
+test("TP8: POST /portal-submissions/:id/cancel rejects a worker-owned running submission", async () => {
+  const studentId = await seedStudent();
+  const appId = await seedApp(studentId);
+  const submissionId = await seedSubmission(appId, studentId, "queued");
+  await db
+    .update(portalSubmissionsTable)
+    .set({
+      status: "running",
+      lockedAt: new Date(),
+      lockedBy: `worker-cancel-${RUN_ID}`,
+    })
+    .where(eq(portalSubmissionsTable.id, submissionId));
+
+  const app = buildApp();
+  const server = await listen(app);
+  try {
+    const res = await sendReq(server, "POST", `/api/portal-submissions/${submissionId}/cancel`);
+    assert.equal(res.status, 409, `Expected 409, got ${res.status}: ${JSON.stringify(res.body)}`);
+    assert.equal(res.body.error, "RUNNING_SUBMISSION_WORKER_OWNED");
+    const [row] = await db
+      .select({ status: portalSubmissionsTable.status, lockedBy: portalSubmissionsTable.lockedBy })
+      .from(portalSubmissionsTable)
+      .where(eq(portalSubmissionsTable.id, submissionId));
+    assert.equal(row?.status, "running");
+    assert.equal(row?.lockedBy, `worker-cancel-${RUN_ID}`);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 

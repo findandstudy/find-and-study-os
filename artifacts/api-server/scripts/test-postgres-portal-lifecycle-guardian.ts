@@ -1,19 +1,16 @@
 import assert from "node:assert/strict";
 import test, { after } from "node:test";
-import { and, count, eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import {
-  aiActionQueueTable,
   aiPersonasTable,
   applicationsTable,
   db,
   pool,
   portalSubmissionsTable,
+  portalLifecycleProposalsTable,
   studentsTable,
 } from "@workspace/db";
-import {
-  PORTAL_LIFECYCLE_ACTION,
-  queuePortalLifecycleReview,
-} from "../src/lib/portalLifecycleGuardian";
+import { queuePortalLifecycleReview } from "../src/lib/portalLifecycleGuardian";
 import { PORTAL_GUARDIAN_SLUG } from "../src/lib/portalAiGuardian";
 import { normalizePortalLifecycleObservation } from "../src/lib/portalLifecycleObservation";
 import { recordPortalLifecycleObservation } from "../src/lib/portalLifecycleObservationStore";
@@ -74,12 +71,9 @@ test("concurrent lifecycle proposals create one durable approval item", async ()
 
     const [stored] = await db
       .select({ value: count() })
-      .from(aiActionQueueTable)
+      .from(portalLifecycleProposalsTable)
       .where(
-        and(
-          eq(aiActionQueueTable.personaId, persona.id),
-          eq(aiActionQueueTable.actionType, PORTAL_LIFECYCLE_ACTION),
-        ),
+        eq(portalLifecycleProposalsTable.status, "pending_review"),
       );
     assert.equal(stored?.value, 1);
   } finally {

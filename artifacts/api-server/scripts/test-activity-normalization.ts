@@ -7,6 +7,8 @@ import {
   clampSessionMetrics,
   normalizeActivitySession,
   MAX_HEARTBEAT_DELTA_SECONDS,
+  MAX_ACTIVITY_REPORT_RANGE_MS,
+  isValidActivityReportRange,
 } from "../src/lib/activityNormalize";
 
 test("deriveModuleName: known routes resolve to labels", () => {
@@ -174,4 +176,24 @@ test("normalizeActivitySession: partial date range is allocated without exceedin
 
 test("heartbeat safety window stays close to the 30-second client interval", () => {
   assert.equal(MAX_HEARTBEAT_DELTA_SECONDS, 45);
+});
+
+test("activity reporting accepts bounded ranges and rejects invalid or unbounded scans", () => {
+  const from = new Date("2026-01-01T00:00:00.000Z");
+  assert.equal(
+    isValidActivityReportRange(from, new Date("2026-12-31T00:00:00.000Z")),
+    true,
+  );
+  assert.equal(isValidActivityReportRange(from, from), false);
+  assert.equal(
+    isValidActivityReportRange(new Date("invalid"), new Date()),
+    false,
+  );
+  assert.equal(
+    isValidActivityReportRange(
+      from,
+      new Date(from.getTime() + MAX_ACTIVITY_REPORT_RANGE_MS + 1),
+    ),
+    false,
+  );
 });

@@ -3,6 +3,7 @@ export type PortalWorkerTarget = {
   adapterKey: string;
   autoProcess: boolean;
   isActive: boolean;
+  verificationReady: boolean;
 };
 
 /**
@@ -21,6 +22,7 @@ export function buildPortalWorkerTargetSets(
     (portal) =>
       portal.isActive &&
       portal.autoProcess &&
+      portal.verificationReady &&
       !nonGraduatedAdapterKeys.has(portal.adapterKey),
   );
 

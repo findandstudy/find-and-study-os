@@ -160,6 +160,8 @@ echo "[5/8] Verifying canonical PM2 topology and release-link ownership"
 node deploy/pm2-preflight.cjs --release-link "$CURRENT_RELEASE_LINK"
 API_PROCESS_NAME="$(node -p "require('./deploy/ecosystem.config.cjs').processNames.api")"
 PORTAL_WORKER_PROCESS_NAME="$(node -p "require('./deploy/ecosystem.config.cjs').processNames.portalWorker")"
+PORTAL_STATUS_WORKER_PROCESS_NAME="$(node -p "require('./deploy/ecosystem.config.cjs').processNames.portalStatusWorker")"
+PORTAL_LIFECYCLE_WORKER_PROCESS_NAME="$(node -p "require('./deploy/ecosystem.config.cjs').processNames.portalLifecycleWorker")"
 
 switch_release_link() {
   target="$1"
@@ -212,9 +214,20 @@ restart_pm2_process() {
   return 1
 }
 
+restart_optional_pm2_process() {
+  process_name="$1"
+  if ! pm2_process_exists_once "$process_name"; then
+    echo "[deploy] Optional process $process_name is not adopted; leaving it disabled"
+    return 0
+  fi
+  restart_pm2_process "$process_name" true
+}
+
 rollback_code() {
   echo "[rollback] Restoring previous code release"
   switch_release_link "$PREVIOUS_RELEASE"
+  restart_optional_pm2_process "$PORTAL_LIFECYCLE_WORKER_PROCESS_NAME" || true
+  restart_optional_pm2_process "$PORTAL_STATUS_WORKER_PROCESS_NAME" || true
   restart_pm2_process "$PORTAL_WORKER_PROCESS_NAME" true || true
   restart_pm2_process "$API_PROCESS_NAME" || true
   if curl --fail --silent --show-error --max-time 5 \
@@ -237,6 +250,14 @@ kill -0 "$candidate_pid" 2>/dev/null || {
 if ! restart_pm2_process "$PORTAL_WORKER_PROCESS_NAME" true; then
   rollback_code
   fail "portal worker restart failed; code rollback attempted"
+fi
+if ! restart_optional_pm2_process "$PORTAL_STATUS_WORKER_PROCESS_NAME"; then
+  rollback_code
+  fail "portal status worker restart failed; code rollback attempted"
+fi
+if ! restart_optional_pm2_process "$PORTAL_LIFECYCLE_WORKER_PROCESS_NAME"; then
+  rollback_code
+  fail "portal lifecycle worker restart failed; code rollback attempted"
 fi
 if ! restart_pm2_process "$API_PROCESS_NAME"; then
   rollback_code

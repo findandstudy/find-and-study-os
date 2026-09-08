@@ -70,6 +70,9 @@ import aiBotsRouter from "./aiBots";
 import agentApplicationsRouter from "./agentApplications";
 import institutionAdmissionsRouter from "./institutionAdmissions";
 import reportingRouter from "./reporting";
+import socialOperationsRouter from "./socialOperations";
+import socialAdvertisingRouter from "./socialAdvertising";
+import operationsRouter from "./operations";
 import { tokenScopeGuard } from "../middlewares/tokenScopeGuard";
 import { studentEmailVerificationGate } from "../middlewares/studentEmailVerificationGate";
 
@@ -194,7 +197,10 @@ router.use(async (req, res, next) => {
     next();
   } catch (err) {
     console.error("[agent-onboarding-gate]", err);
-    next();
+    res.status(503).json({
+      error: "Agent onboarding state unavailable",
+      code: "AGENT_ONBOARDING_UNAVAILABLE",
+    });
   }
 });
 
@@ -205,6 +211,9 @@ router.use(tokenScopeGuard);
 
 router.use(institutionAdmissionsRouter);
 router.use(reportingRouter);
+router.use(socialOperationsRouter);
+router.use(socialAdvertisingRouter);
+router.use(operationsRouter);
 
 router.use(healthRouter);
 router.use(storageRouter);

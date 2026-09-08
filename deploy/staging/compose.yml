@@ -71,7 +71,137 @@ services:
       traefik.http.routers.fasos-staging.entrypoints: "websecure"
       traefik.http.routers.fasos-staging.tls: "true"
       traefik.http.routers.fasos-staging.tls.certresolver: "mytlschallenge"
+      traefik.http.routers.fasos-staging.middlewares: "fasos-staging-noindex@docker"
+      traefik.http.middlewares.fasos-staging-noindex.headers.customresponseheaders.X-Robots-Tag: "noindex, nofollow"
       traefik.http.services.fasos-staging.loadbalancer.server.port: "5000"
+
+  social-publication-worker:
+    profiles: ["social-external"]
+    image: "${FASOS_STAGING_APP_IMAGE:?set FASOS_STAGING_APP_IMAGE}"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    user: "${FASOS_STAGING_UID:?set FASOS_STAGING_UID}:${FASOS_STAGING_GID:?set FASOS_STAGING_GID}"
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "run",
+        "worker:social-publication",
+      ]
+    env_file:
+      - "${FASOS_STAGING_APP_ENV_FILE:?set FASOS_STAGING_APP_ENV_FILE}"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - "${FASOS_STAGING_STORAGE_DIR:?set FASOS_STAGING_STORAGE_DIR}:/var/lib/findandstudy/storage:ro"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - edge
+
+  social-performance-worker:
+    profiles: ["social-external"]
+    image: "${FASOS_STAGING_APP_IMAGE:?set FASOS_STAGING_APP_IMAGE}"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    user: "${FASOS_STAGING_UID:?set FASOS_STAGING_UID}:${FASOS_STAGING_GID:?set FASOS_STAGING_GID}"
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "run",
+        "worker:social-performance",
+      ]
+    env_file:
+      - "${FASOS_STAGING_APP_ENV_FILE:?set FASOS_STAGING_APP_ENV_FILE}"
+    depends_on:
+      db:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - edge
+
+  social-creative-worker:
+    profiles: ["social-ai"]
+    image: "${FASOS_STAGING_APP_IMAGE:?set FASOS_STAGING_APP_IMAGE}"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    user: "${FASOS_STAGING_UID:?set FASOS_STAGING_UID}:${FASOS_STAGING_GID:?set FASOS_STAGING_GID}"
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "run",
+        "worker:social-creative",
+      ]
+    env_file:
+      - "${FASOS_STAGING_APP_ENV_FILE:?set FASOS_STAGING_APP_ENV_FILE}"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - "${FASOS_STAGING_STORAGE_DIR:?set FASOS_STAGING_STORAGE_DIR}:/var/lib/findandstudy/storage"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - edge
+
+  social-advertising-worker:
+    profiles: ["social-external"]
+    image: "${FASOS_STAGING_APP_IMAGE:?set FASOS_STAGING_APP_IMAGE}"
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s
+    user: "${FASOS_STAGING_UID:?set FASOS_STAGING_UID}:${FASOS_STAGING_GID:?set FASOS_STAGING_GID}"
+    command:
+      [
+        "pnpm",
+        "--filter",
+        "@workspace/api-server",
+        "run",
+        "worker:social-advertising",
+      ]
+    env_file:
+      - "${FASOS_STAGING_APP_ENV_FILE:?set FASOS_STAGING_APP_ENV_FILE}"
+    depends_on:
+      db:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+      - edge
 
 secrets:
   postgres_password:

@@ -3429,7 +3429,7 @@ function generateEmbedScript(baseUrl: string): string {
     // cross-origin widget iframe. Native file/camera capture remains available
     // as a fallback when a browser declines MediaRecorder support.
     iframe.setAttribute('allow', 'camera; microphone; fullscreen');
-    var supportedLanguages=['en','tr','ar','fa','fr','es','ru','zh','hi','id'];
+    var supportedLanguages=['en','tr','ar','fa','fr','es','ru','zh','hi','id','ur','tk','ky','kk','uz','tg'];
     function normalizePageLanguage(raw) {
       if (!raw || typeof raw !== 'string') return '';
       var first=raw.trim().toLowerCase().replace(/_/g,'-').split(',')[0].split(';')[0];

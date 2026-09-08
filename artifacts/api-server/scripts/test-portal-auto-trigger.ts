@@ -37,16 +37,28 @@ import {
   portalAutomationSettingsTable,
   portalUniversitiesTable,
   portalSubmissionsTable,
+  portalWorkerHeartbeatsTable,
   pipelineStagesTable,
   universitiesTable,
   portalAccountUniversitiesTable,
+  usersTable,
 } from "@workspace/db";
+import {
+  currentPortalRuntimeReleaseId,
+  recordPortalWorkerHeartbeat,
+} from "@workspace/portal-runner";
 import {
   maybeEnqueuePortalSubmission,
   resolvePortalRouting,
   __setDrainTriggerForTests,
 } from "../src/lib/portalAutoTrigger.js";
 import { runPortalAutoDrainTick } from "../src/routes/portalAutomation.js";
+import {
+  assertDisposablePortalVerificationTarget,
+  seedVerifiedPortalPartnerFixture,
+} from "./portalVerificationFixture.js";
+
+assertDisposablePortalVerificationTarget();
 
 // ---------------------------------------------------------------------------
 // Run-specific unique key
@@ -59,6 +71,7 @@ const ADAPTER_KEY  = `test_${RUN}`;
 const UNI_KEY      = `uni_${RUN}`;
 const UNI_NAME     = `TAT Test University ${RUN}`;
 const TRIGGER_STAGE = `tat_stage_${RUN}`;
+const WORKER_ID = `tat-worker-${RUN}`;
 
 // Aggregator fixture identifiers (for TAT8-TAT11)
 const AGG_ADAPTER_KEY  = `agg_adp_${RUN}`;
@@ -93,6 +106,7 @@ const cleanupCatalogUniIds: number[] = [];
 const cleanupMembershipIds: number[] = [];
 const cleanupPipelineStageIds: number[] = [];
 let   settingsRowId: number | null   = null;
+let authUserId = 0;
 
 // Shared aggregator fixture state (set in before(), read in TAT8-TAT11)
 let aggPortalUniId:  number | null = null;
@@ -102,6 +116,24 @@ let aggCatalogUniId: number | null = null;
 // before — create shared fixtures
 // ---------------------------------------------------------------------------
 before(async () => {
+  const releaseId = currentPortalRuntimeReleaseId();
+  assert.ok(releaseId, "portal auto-trigger fixture requires a release identity");
+  await recordPortalWorkerHeartbeat({
+    workerId: WORKER_ID,
+    releaseId,
+    executionModes: new Set(["dry"]),
+  });
+
+  const [authUser] = await db.insert(usersTable).values({
+    email: `${RUN}.admin@example.com`,
+    firstName: "Portal",
+    lastName: "Trigger Admin",
+    role: "super_admin",
+    isActive: true,
+    emailVerified: true,
+  }).returning({ id: usersTable.id });
+  authUserId = authUser.id;
+
   const [triggerStage] = await db.insert(pipelineStagesTable).values({
     entityType: "application",
     key: TRIGGER_STAGE,
@@ -172,6 +204,19 @@ before(async () => {
   aggPortalUniId = aggPu.id;
   cleanupPortalUniIds.push(aggPu.id);
 
+  await seedVerifiedPortalPartnerFixture({
+    portalUniversityId: pu.id,
+    universityKey: UNI_KEY,
+    universityName: UNI_NAME,
+    adapterKey: ADAPTER_KEY,
+  });
+  await seedVerifiedPortalPartnerFixture({
+    portalUniversityId: aggPu.id,
+    universityKey: AGG_UNI_KEY,
+    universityName: AGG_UNI_LABEL,
+    adapterKey: AGG_ADAPTER_KEY,
+  });
+
   // 3. Membership row linking catalog university → aggregator
   const [mem] = await db.insert(portalAccountUniversitiesTable).values({
     portalKey:          AGG_UNI_KEY,
@@ -185,6 +230,10 @@ before(async () => {
 // after — restore settings and clean test data
 // ---------------------------------------------------------------------------
 after(async () => {
+  await db.delete(portalWorkerHeartbeatsTable)
+    .where(eq(portalWorkerHeartbeatsTable.workerId, WORKER_ID))
+    .catch(() => {});
+
   // Restore settings
   if (savedSettings && settingsRowId) {
     const {
@@ -240,6 +289,9 @@ after(async () => {
   for (const id of cleanupPipelineStageIds) {
     await db.delete(pipelineStagesTable).where(eq(pipelineStagesTable.id, id)).catch(() => {});
   }
+  if (authUserId > 0) {
+    await db.delete(usersTable).where(eq(usersTable.id, authUserId)).catch(() => {});
+  }
   setImmediate(() => process.exit(process.exitCode ?? 0));
 });
 
@@ -294,7 +346,7 @@ test("TAT1: enqueues when isEnabled + stage in triggerStages + active uni + cred
     newStage:      TRIGGER_STAGE,
     universityName: UNI_NAME,
     universityId:  null,
-    actorUserId:   1,
+    actorUserId:   authUserId,
   });
 
   const sub = await findSub(appId);
@@ -305,7 +357,7 @@ test("TAT1: enqueues when isEnabled + stage in triggerStages + active uni + cred
   assert.equal(sub!.universityName,  UNI_NAME,      "universityName correct");
   assert.equal(sub!.applicationId,   appId,         "applicationId correct");
   assert.equal(sub!.studentId,       studentId,     "studentId correct");
-  assert.equal(sub!.enqueuedBy,      1,             "enqueuedBy=actorUserId");
+  assert.equal(sub!.enqueuedBy,      authUserId,    "enqueuedBy=actorUserId");
 });
 
 // ---------------------------------------------------------------------------
@@ -320,7 +372,7 @@ test("TAT2: does NOT enqueue when newStage is not in triggerStages", async () =>
     newStage:      "some_other_stage",   // NOT in triggerStages
     universityName: UNI_NAME,
     universityId:  null,
-    actorUserId:   1,
+    actorUserId:   authUserId,
   });
 
   const sub = await findSub(appId);
@@ -345,7 +397,7 @@ test("TAT3: scope=selected skips when universityKey is not in selectedUniversity
       newStage:      TRIGGER_STAGE,
       universityName: UNI_NAME,
       universityId:  null,
-      actorUserId:   1,
+      actorUserId:   authUserId,
     });
 
     const sub = await findSub(appId);
@@ -371,7 +423,7 @@ test("TAT4: dedup — skips enqueue when an active submission already exists", a
     newStage:      TRIGGER_STAGE,
     universityName: UNI_NAME,
     universityId:  null,
-    actorUserId:   1,
+    actorUserId:   authUserId,
   });
   const first = await findSub(appId);
   assert.ok(first !== null, "first submission created");
@@ -383,7 +435,7 @@ test("TAT4: dedup — skips enqueue when an active submission already exists", a
     newStage:      TRIGGER_STAGE,
     universityName: UNI_NAME,
     universityId:  null,
-    actorUserId:   1,
+    actorUserId:   authUserId,
   });
 
   // Count submissions for this app
@@ -427,7 +479,7 @@ test("TAT4b: max_failures — does NOT enqueue after 3 failed submissions for th
     newStage:      TRIGGER_STAGE,
     universityName: UNI_NAME,
     universityId:  null,
-    actorUserId:   1,
+    actorUserId:   authUserId,
   });
 
   const rows = await db
@@ -462,7 +514,7 @@ test("TAT5: Scheduled OFF — immediate drain trigger fires after enqueue (not o
       newStage:      TRIGGER_STAGE,
       universityName: UNI_NAME,
       universityId:  null,
-      actorUserId:   1,
+      actorUserId:   authUserId,
     });
 
     const sub = await findSub(appId);
@@ -481,7 +533,7 @@ test("TAT5: Scheduled OFF — immediate drain trigger fires after enqueue (not o
       newStage:      TRIGGER_STAGE,
       universityName: UNI_NAME,
       universityId:  null,
-      actorUserId:   1,
+      actorUserId:   authUserId,
     });
     assert.equal(calls.length, 1, "no drain trigger on a dedup skip");
   } finally {
@@ -513,7 +565,7 @@ test("TAT6: Scheduled ON — no immediate drain; tick drains only after interval
       newStage:      TRIGGER_STAGE,
       universityName: UNI_NAME,
       universityId:  null,
-      actorUserId:   1,
+      actorUserId:   authUserId,
     });
     const sub = await findSub(appId);
     assert.ok(sub !== null, "submission was still enqueued");
@@ -581,7 +633,7 @@ test("TAT7: Enabled OFF — neither immediate drain nor scheduled drain", async 
       newStage:      TRIGGER_STAGE,
       universityName: UNI_NAME,
       universityId:  null,
-      actorUserId:   1,
+      actorUserId:   authUserId,
     });
     const sub = await findSub(appId);
     assert.equal(sub, null, "no submission enqueued when isEnabled=false");
@@ -605,6 +657,30 @@ test("TAT7: Enabled OFF — neither immediate drain nor scheduled drain", async 
       .set({ isEnabled: true, autoProcessEnabled: false, lastAutoDrainAt: null })
       .where(eq(portalAutomationSettingsTable.id, settingsRowId!));
   }
+});
+
+test("TAT7b: a new partner generation revokes old verification receipts", async () => {
+  const [partner] = await db
+    .select({ generation: portalUniversitiesTable.verificationGeneration })
+    .from(portalUniversitiesTable)
+    .where(eq(portalUniversitiesTable.universityKey, UNI_KEY));
+  await db
+    .update(portalUniversitiesTable)
+    .set({ verificationGeneration: partner.generation + 1 })
+    .where(eq(portalUniversitiesTable.universityKey, UNI_KEY));
+
+  const { studentId, appId } = await seedApp();
+  await maybeEnqueuePortalSubmission({
+    applicationId: appId,
+    studentId,
+    newStage: TRIGGER_STAGE,
+    universityName: UNI_NAME,
+    universityId: null,
+    actorUserId: authUserId,
+  });
+
+  const sub = await findSub(appId);
+  assert.equal(sub, null, "stale generation receipts must not unlock automatic enqueue");
 });
 
 // ---------------------------------------------------------------------------

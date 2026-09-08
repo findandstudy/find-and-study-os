@@ -1,4 +1,5 @@
 import { Router, type IRouter, raw } from "express";
+import { createHash, randomUUID } from "node:crypto";
 import { dispatchNotification } from "../lib/notificationDispatcher.js";
 import { and, asc, count, desc, eq, getTableColumns, gte, ilike, inArray, isNotNull, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -15,6 +16,8 @@ import {
   portalAdapterSpecsTable,
   portalAccountUniversitiesTable,
   portalAutomationSettingsTable,
+  portalLifecycleProposalsTable,
+  portalLifecycleProposalReviewsTable,
 } from "@workspace/db";
 import {
   buildWorkbookBuffer,
@@ -36,7 +39,6 @@ import {
 } from "../lib/portalAutoTrigger.js";
 import { buildPageMeta, parsePaginationParams } from "@workspace/pagination";
 import {
-  adapterMetadata,
   resolveAdapterByKey,
   setCredsOverride,
   clearCredsOverride,
@@ -66,7 +68,6 @@ import { getValidated, validate } from "../middlewares/validate";
 import {
   claimById,
   claimNext,
-  releaseStale,
   heartbeat,
   buildStudentProfile,
   runSubmission,
@@ -86,8 +87,18 @@ import {
   acquirePortalStatusLaneLease,
   releasePortalStatusChecks,
   type ClaimedPortalStatusCheck,
+  getPortalExecutionVerification,
+  loadPortalPartnerVerificationStates,
+  recordPortalPartnerVerificationReceipt,
+  samePortalPartnerVerificationBinding,
+  assertPortalWorkerReady,
+  enqueuePortalWorkerJob,
+  PortalWorkerJobIdempotencyConflictError,
+  PortalWorkerUnavailableError,
+  buildPortalSubmissionIntent,
+  createPortalSubmissionIntentFromSnapshot,
 } from "@workspace/portal-runner";
-import { batchPortalCredentialKeys, resolvePortalCreds, checkHasPortalCredentials } from "../lib/portalCreds.js";
+import { resolvePortalCreds } from "../lib/portalCreds.js";
 import { reconcilePortalUniversityCrmLinks } from "../lib/portalUniversityLinker.js";
 import { enqueuePortalSubmissions } from "../lib/portalManualEnqueue.js";
 import { prepareApplicationPortalPreflight } from "../lib/portalApplicationPreflight.js";
@@ -96,6 +107,7 @@ import {
   isDiagnosablePortalStatus,
 } from "../lib/portalAiGuardian.js";
 import { queuePortalLifecycleReview } from "../lib/portalLifecycleGuardian.js";
+import { enqueueApprovedPortalLifecycleProposal } from "../lib/portalLifecycleExecution.js";
 import { normalizePortalLifecycleObservation } from "../lib/portalLifecycleObservation.js";
 import {
   mapPortalDispositionToSubmissionStatus,
@@ -131,6 +143,7 @@ const enqueueBodySchema = z.object({
   universityKey: z.string().min(1),
   mode: z.enum(["dry", "real"]),
   confirm: z.boolean().optional(),
+  requestKey: z.string().min(1).max(100).regex(/^[A-Za-z0-9._:-]+$/).optional(),
 });
 type EnqueueSchemas = { params: typeof enqueueParamsSchema; body: typeof enqueueBodySchema };
 
@@ -141,7 +154,7 @@ router.post(
   validate({ params: enqueueParamsSchema, body: enqueueBodySchema }),
   async (req, res): Promise<void> => {
     const { appId } = getValidated<EnqueueSchemas>(req).params;
-    const { universityKey, mode, confirm } = getValidated<EnqueueSchemas>(req).body;
+    const { universityKey, mode, confirm, requestKey } = getValidated<EnqueueSchemas>(req).body;
 
     if (mode === "real" && !confirm) {
       res.status(422).json({
@@ -154,7 +167,11 @@ router.post(
     const user = req.user!;
 
     const [app] = await db
-      .select({ id: applicationsTable.id, studentId: applicationsTable.studentId })
+      .select({
+        id: applicationsTable.id,
+        studentId: applicationsTable.studentId,
+        universityId: applicationsTable.universityId,
+      })
       .from(applicationsTable)
       .where(and(eq(applicationsTable.id, appId), isNull(applicationsTable.deletedAt)));
 
@@ -223,6 +240,22 @@ router.post(
       studentRouting.portalUni.universityName;
     routedAdapterKey = studentRouting.portalUni.adapterKey;
     routingMeta = studentRouting.routingMeta;
+    const verification = await getPortalExecutionVerification({
+      universityKey: finalUniversityKey,
+      adapterKey: routedAdapterKey,
+    });
+    const verificationReady = mode === "dry"
+      ? verification?.testLoginPassed === true && verification.binding?.strictDryRunCapable === true
+      : verification?.testLoginPassed === true && verification.strictDryRunPassed === true;
+    if (!verificationReady) {
+      res.status(409).json({
+        error: "PARTNER_VERIFICATION_REQUIRED",
+        message: mode === "dry"
+          ? "Current Test Login evidence and a strict dry-run adapter are required."
+          : "Current Test Login and Strict Dry Run evidence are required.",
+      });
+      return;
+    }
     const preflight = await prepareApplicationPortalPreflight({
       applicationId: app.id,
       adapterKey: routedAdapterKey,
@@ -238,20 +271,92 @@ router.post(
       return;
     }
 
-    const [row] = await db
-      .insert(portalSubmissionsTable)
-      .values({
-        applicationId: app.id,
-        studentId: app.studentId,
-        universityKey: finalUniversityKey,
-        universityName: finalUniversityName,
-        adapterKey: routedAdapterKey,
-        mode,
-        status: "queued",
-        enqueuedBy: user.id,
-        meta: { manual: true, preflight, ...(routingMeta ?? {}) },
-      })
-      .returning();
+    const intent = await buildPortalSubmissionIntent({
+      applicationId: app.id,
+      portalUniversity: studentRouting.portalUni,
+      targetCatalogUniversityId: app.universityId,
+      source: "manual",
+      requestKey,
+    });
+    const outcome = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${app.id}, hashtext(${intent.targetIdentitySha256}))`,
+      );
+      const [active] = await tx
+        .select({ id: portalSubmissionsTable.id })
+        .from(portalSubmissionsTable)
+        .where(and(
+          eq(portalSubmissionsTable.applicationId, app.id),
+          or(
+            eq(portalSubmissionsTable.targetIdentitySha256, intent.targetIdentitySha256),
+            and(
+              isNull(portalSubmissionsTable.targetIdentitySha256),
+              eq(portalSubmissionsTable.universityKey, finalUniversityKey),
+            ),
+          ),
+          eq(portalSubmissionsTable.mode, mode),
+          inArray(portalSubmissionsTable.status, ["queued", "running"]),
+          isNull(portalSubmissionsTable.deletedAt),
+        ))
+        .limit(1);
+      if (active) return { kind: "active" as const, id: active.id };
+      if (mode === "real") {
+        const [submitted] = await tx
+          .select({ id: portalSubmissionsTable.id })
+          .from(portalSubmissionsTable)
+          .where(and(
+            eq(portalSubmissionsTable.applicationId, app.id),
+            or(
+              eq(portalSubmissionsTable.targetIdentitySha256, intent.targetIdentitySha256),
+              and(
+                isNull(portalSubmissionsTable.targetIdentitySha256),
+                eq(portalSubmissionsTable.universityKey, finalUniversityKey),
+              ),
+            ),
+            eq(portalSubmissionsTable.mode, "real"),
+            eq(portalSubmissionsTable.submissionAction, "submit"),
+            or(
+              isNotNull(portalSubmissionsTable.providerCommittedAt),
+              and(
+                isNull(portalSubmissionsTable.targetIdentitySha256),
+                inArray(portalSubmissionsTable.status, ["submitted", "already_exists", "accepted"]),
+                isNotNull(portalSubmissionsTable.externalRef),
+              ),
+            ),
+            isNull(portalSubmissionsTable.deletedAt),
+          ))
+          .limit(1);
+        if (submitted) return { kind: "reconciliation" as const, id: submitted.id };
+      }
+      const [inserted] = await tx
+        .insert(portalSubmissionsTable)
+        .values({
+          applicationId: app.id,
+          studentId: app.studentId,
+          universityKey: finalUniversityKey,
+          universityName: finalUniversityName,
+          adapterKey: routedAdapterKey,
+          mode,
+          status: "queued",
+          enqueuedBy: user.id,
+          submitIntentKey: intent.submitIntentKey,
+          targetIdentitySha256: intent.targetIdentitySha256,
+          targetIdentity: intent.targetIdentity,
+          submissionAction: "submit",
+          meta: { manual: true, preflight, ...(routingMeta ?? {}) },
+        })
+        .returning();
+      return { kind: "inserted" as const, row: inserted };
+    });
+    if (outcome.kind === "active") {
+      res.status(409).json({ error: "ALREADY_QUEUED", submissionId: outcome.id });
+      return;
+    }
+    if (outcome.kind === "reconciliation") {
+      res.status(409).json({ error: "RECONCILIATION_REQUIRED", submissionId: outcome.id });
+      return;
+    }
+    const row = outcome.row;
 
     await logAudit(
       user.id,
@@ -367,6 +472,15 @@ router.post(
           missingDocTypes: only.missingDocTypes ?? [],
           missingDocLabels: only.missingDocLabels ?? [],
           autoFilledFields: only.autoFilledFields ?? [],
+        });
+        return;
+      }
+      if (only?.reason === "PARTNER_VERIFICATION_REQUIRED") {
+        res.status(409).json({
+          error: "PARTNER_VERIFICATION_REQUIRED",
+          message: mode === "dry"
+            ? "Current Test Login evidence and a strict dry-run adapter are required."
+            : "Current Test Login and Strict Dry Run evidence are required.",
         });
         return;
       }
@@ -751,7 +865,11 @@ router.post(
   async (req, res): Promise<void> => {
     const { id } = getValidated<IdSchemas>(req).params;
     const [row] = await db
-      .select({ id: portalSubmissionsTable.id, status: portalSubmissionsTable.status })
+      .select({
+        id: portalSubmissionsTable.id,
+        status: portalSubmissionsTable.status,
+        providerCommittedAt: portalSubmissionsTable.providerCommittedAt,
+      })
       .from(portalSubmissionsTable)
       .where(
         and(
@@ -830,7 +948,11 @@ router.post(
     const { id } = getValidated<IdSchemas>(req).params;
 
     const [row] = await db
-      .select({ id: portalSubmissionsTable.id, status: portalSubmissionsTable.status })
+      .select({
+        id: portalSubmissionsTable.id,
+        status: portalSubmissionsTable.status,
+        providerCommittedAt: portalSubmissionsTable.providerCommittedAt,
+      })
       .from(portalSubmissionsTable)
       .where(and(eq(portalSubmissionsTable.id, id), isNull(portalSubmissionsTable.deletedAt)));
 
@@ -843,6 +965,14 @@ router.post(
       res.status(409).json({
         error: "NOT_RETRYABLE",
         message: "Only failed or canceled submissions can be retried",
+      });
+      return;
+    }
+
+    if (row.providerCommittedAt !== null) {
+      res.status(409).json({
+        error: "RECONCILIATION_REQUIRED",
+        message: "This target was already committed at the provider and cannot be retried as a new submit action",
       });
       return;
     }
@@ -925,243 +1055,40 @@ router.post(
       return;
     }
 
-    if (row.status !== "queued" && row.status !== "running") {
+    if (row.status !== "queued") {
       res.status(409).json({
-        error: "NOT_CANCELABLE",
-        message: "Only queued or running submissions can be canceled",
+        error: row.status === "running"
+          ? "RUNNING_SUBMISSION_WORKER_OWNED"
+          : "NOT_CANCELABLE",
+        message: row.status === "running"
+          ? "A running browser action is owned by the worker and cannot be canceled without cooperative worker acknowledgement"
+          : "Only queued submissions can be canceled",
       });
       return;
     }
 
-    await db
+    const canceled = await db
       .update(portalSubmissionsTable)
-      .set({ status: "canceled" })
-      .where(eq(portalSubmissionsTable.id, id));
+      .set({ status: "canceled", updatedAt: new Date() })
+      .where(and(
+        eq(portalSubmissionsTable.id, id),
+        eq(portalSubmissionsTable.status, "queued"),
+      ))
+      .returning({ id: portalSubmissionsTable.id });
+
+    if (canceled.length === 0) {
+      res.status(409).json({
+        error: "SUBMISSION_CLAIMED_CONCURRENTLY",
+        message: "The worker claimed this submission before cancellation completed",
+      });
+      return;
+    }
 
     await logAudit(user.id, "cancel_portal_submission", "portal_submission", id, {}, req.ip);
 
     res.json({ ok: true });
   },
 );
-
-// ---------------------------------------------------------------------------
-// Process-once helper — sequential, eşzaman 1 guaranteed by mutex flag.
-// ---------------------------------------------------------------------------
-
-/** Module-level mutex: prevents concurrent manual process runs. */
-let _processMutex = false;
-
-/** Submissions running longer than this are candidates for stuck-reset. */
-const STUCK_THRESHOLD_MS = 10 * 60_000; // 10 minutes
-
-/** Inline process timeout: responds early while the claimed work continues. */
-const INLINE_TIMEOUT_MS = 50_000; // 50 seconds
-
-interface ProcessSingleResult {
-  id: number;
-  status: "submitted" | "already_exists" | "program_missing" | "program_full" | "exclusive_region" | "failed" | "dry_run" | "skipped" | "requeued" | "running";
-  error?: string;
-  message?: string;
-}
-
-/**
- * Processes a pre-claimed submission with a heartbeat and hard inline timeout.
- *
- * Heartbeat (every 20s): keeps locked_at fresh so the periodic stuck-reset
- * job never fires while work is in flight.
- *
- * Timeout (INLINE_TIMEOUT_MS): if the run takes longer than the HTTP-friendly
- * inline limit, the caller receives { status: "running" } while the original
- * browser process keeps its lock + heartbeat and finishes normally. NEVER
- * requeue live browser work: doing so can launch overlapping portal mutations
- * for the same student and exhaust Chromium memory on long SIT/United wizards.
- */
-async function runWithTimeout(
-  sub: ClaimedSubmission,
-  workerId: string,
-  timeoutMs = INLINE_TIMEOUT_MS,
-): Promise<ProcessSingleResult> {
-  const mandatoryDocs = await getApplicationMandatoryDocumentStatus(sub.applicationId);
-  if (!mandatoryDocs || mandatoryDocs.missing.length > 0) {
-    const reason = mandatoryDocs
-      ? `MISSING_MANDATORY_DOCUMENTS: ${mandatoryDocs.missing.join(", ")}`
-      : `MISSING_MANDATORY_DOCUMENTS: application ${sub.applicationId} not found`;
-    await writebackResult(sub.id, null, reason, workerId);
-    return { id: sub.id, status: "failed", error: reason };
-  }
-
-  const hbInterval = setInterval(() => {
-    heartbeat(sub.id, workerId).catch(() => {});
-  }, 20_000);
-
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-
-  const rawWorkPromise = (async (): Promise<ProcessSingleResult> => {
-    const profileResult = await buildStudentProfile(sub.id);
-    // Multi-portal routing: if this university routes_via a multi-portal company,
-    // resolveAdapterKey returns the company's adapterKey + the routedVia key.
-    // routedVia is null on the legacy path → no adapter override is passed, so
-    // behaviour is byte-for-byte identical to before this feature.
-    const { adapterKey, routedVia, memberUniversityId } =
-      await resolveAdapterKey(sub.universityKey);
-    if (routedVia) {
-      console.log(
-        `[portal-process] #${sub.id} routed via multi-portal "${routedVia}" → adapter "${adapterKey}"` +
-          (memberUniversityId != null ? ` (member catalog #${memberUniversityId})` : ""),
-      );
-    }
-
-    let creds: { user: string; password: string } | undefined;
-    try {
-      // When routed, credentials belong to the multi-portal company (routedVia).
-      creds = await resolvePortalCreds(routedVia ?? sub.universityKey, adapterKey);
-    } catch (credsErr) {
-      if (sub.mode === "real") throw credsErr;
-      // dry mode: missing creds → adapter login will fail and be caught
-    }
-
-    const runResult = await runSubmission(
-      sub,
-      profileResult.profile,
-      profileResult.files,
-      profileResult.tempDir,
-      creds,
-      routedVia
-        ? {
-            adapterKey,
-            // Junction-routed → load member-level program overrides keyed by
-            // (account portal key, member catalog id). routes_via fallback
-            // (memberUniversityId null) keeps Phase 2 mapping behaviour.
-            ...(memberUniversityId != null
-              ? { programMappingKey: routedVia, memberUniversityId }
-              : {}),
-          }
-        : undefined,
-    );
-    // Enrich resultJson with doc-slot info so skip reasons are surfaced in the UI
-    runResult.meta["filledSlots"]  = profileResult.filledSlots;
-    runResult.meta["missingSlots"] = profileResult.missingSlots;
-    if (routedVia) {
-      runResult.meta["routedVia"]      = routedVia;
-      runResult.meta["routedAdapter"]  = adapterKey;
-    }
-    await writebackResult(sub.id, runResult, undefined, workerId);
-
-    // Structural outcomes (exclusive_region, program_full) take precedence over
-    // dry_run so the inline API status matches the DB status written by
-    // resolveTarget(), which checks them before dryRun.
-    const status: ProcessSingleResult["status"] = runResult.result.exclusiveRegion
-      ? "exclusive_region"
-      : runResult.result.programFull    ? "program_full"
-      : runResult.meta["dryRun"]        ? "dry_run"
-      : runResult.result.submitted      ? "submitted"
-      : runResult.result.alreadyExists  ? "already_exists"
-      : runResult.result.programMissing ? "program_missing"
-      : "failed";
-
-    return { id: sub.id, status };
-  })();
-  // Own error writeback inside the work promise so it remains correct even
-  // after the HTTP timeout has returned. Keep the heartbeat alive until this
-  // exact browser run settles; the timeout race must not release its lock.
-  const workPromise = rawWorkPromise
-    .catch(async (err): Promise<ProcessSingleResult> => {
-      const msg = err instanceof Error ? err.message : String(err);
-      await writebackResult(sub.id, null, msg, workerId);
-      return { id: sub.id, status: "failed", error: msg };
-    })
-    .finally(() => {
-      clearInterval(hbInterval);
-    });
-
-  const timeoutPromise = new Promise<ProcessSingleResult>((resolve) => {
-    timeoutHandle = setTimeout(() => {
-      timedOut = true;
-      console.log(
-        `[portal-process] #${sub.id} still running after ${timeoutMs}ms — original lock retained`,
-      );
-      resolve({
-        id: sub.id,
-        status: "running",
-        message: `İşlem arka planda aynı kilitle devam ediyor`,
-      });
-    }, timeoutMs);
-  });
-
-  try {
-    const result = await Promise.race([workPromise, timeoutPromise]);
-    clearTimeout(timeoutHandle);
-    return result;
-  } catch (err) {
-    clearTimeout(timeoutHandle);
-    if (timedOut) {
-      return { id: sub.id, status: "running" };
-    }
-    const msg = err instanceof Error ? err.message : String(err);
-    await writebackResult(sub.id, null, msg, workerId);
-    return { id: sub.id, status: "failed", error: msg };
-  }
-}
-
-/**
- * Claims and processes a single submission by id.
- * Returns "skipped" if the row cannot be claimed (not queued / exhausted / locked).
- */
-async function processSingle(
-  submissionId: number,
-  workerId: string,
-): Promise<ProcessSingleResult> {
-  const sub = await claimById(submissionId, workerId);
-  if (!sub) return { id: submissionId, status: "skipped" };
-  return runWithTimeout(sub, workerId);
-}
-
-/**
- * Drains the entire queued backlog sequentially (eşzaman 1).  Releases stale
- * locks first, then claims+runs every queued submission with a per-submission
- * inline timeout + heartbeat.  Caller MUST hold _processMutex.  Shared by the
- * manual process-queued endpoint and the Run Now endpoint so the immediate
- * processing path is identical (and interval-independent).
- *
- * When `triggerStages` is provided (Run Now), only submissions whose
- * application is currently in one of those stages are claimed — mirroring the
- * enqueue-time candidate selection. When omitted (manual process-queued), all
- * queued submissions are drained regardless of stage.
- */
-async function drainQueue(
-  workerId: string,
-  triggerStages?: string[],
-  excludeUniversityKeys?: string[],
-): Promise<ProcessSingleResult[]> {
-  const results: ProcessSingleResult[] = [];
-
-  // Release stale locks first (crash recovery: inline requests that died
-  // without requeuing leave orphan 'running' rows).
-  const staleIds = await releaseStale(STUCK_THRESHOLD_MS);
-  if (staleIds.length > 0) {
-    console.log(
-      `[portal-process] Released ${staleIds.length} stale submission(s): ${staleIds.join(",")}`,
-    );
-  }
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const sub = await claimNext(workerId, undefined, triggerStages, excludeUniversityKeys);
-    if (!sub) break;
-
-    console.log(
-      `[portal-process] Processing #${sub.id} uni=${sub.universityKey} mode=${sub.mode} attempt=${sub.attempts}/${sub.maxAttempts}`,
-    );
-    const result = await runWithTimeout(sub, workerId);
-    results.push(result);
-    // A timed-out inline run still owns a live browser and heartbeat. Do not
-    // claim another row in this API process while it continues in background.
-    if (result.status === "running") break;
-  }
-
-  return results;
-}
 
 // ---------------------------------------------------------------------------
 // POST /portal-submissions/process-queued
@@ -1173,43 +1100,40 @@ router.post(
   requireAuth,
   requireRole(...STAFF_ROLES, ...ADMIN_ROLES),
   async (req, res): Promise<void> => {
-    if (_processMutex) {
-      res.status(409).json({
-        error: "ALREADY_RUNNING",
-        message: "A portal process run is already in progress on this instance",
-      });
-      return;
-    }
-
     const user = req.user!;
-    const workerId = `api-manual-${user.id}-${Date.now()}`;
-
-    _processMutex = true;
-    let results: ProcessSingleResult[] = [];
-
     try {
-      results = await drainQueue(workerId);
-    } finally {
-      _processMutex = false;
+      const queuedByMode = await db
+        .select({ mode: portalSubmissionsTable.mode, total: count() })
+        .from(portalSubmissionsTable)
+        .where(and(
+          eq(portalSubmissionsTable.status, "queued"),
+          isNull(portalSubmissionsTable.deletedAt),
+        ))
+        .groupBy(portalSubmissionsTable.mode);
+      for (const row of queuedByMode) await assertPortalWorkerReady(row.mode);
+      const queued = queuedByMode.reduce((sum, row) => sum + row.total, 0);
+
+      await logAudit(
+        user.id,
+        "request_portal_queue_drain",
+        "portal_submission",
+        undefined,
+        { queued, modes: queuedByMode.map((row) => row.mode) },
+        req.ip,
+      );
+
+      res.status(202).json({
+        accepted: true,
+        queued,
+        statusUrl: "/api/portal-submissions?status=queued",
+      });
+    } catch (error) {
+      if (error instanceof PortalWorkerUnavailableError) {
+        res.status(503).json({ accepted: false, error: error.code });
+        return;
+      }
+      throw error;
     }
-
-    const processedCount = results.filter(
-      (r) => r.status !== "skipped" && r.status !== "requeued",
-    ).length;
-
-    await logAudit(
-      user.id,
-      "process_portal_submissions",
-      "portal_submission",
-      undefined,
-      {
-        processed: processedCount,
-        results: results.map((r) => ({ id: r.id, status: r.status })),
-      },
-      req.ip,
-    );
-
-    res.json({ processed: processedCount, results });
   },
 );
 
@@ -1241,34 +1165,18 @@ router.post(
     }
 
     const runtimeSettings = await withEligiblePortalTriggerStages(settings);
+    try {
+      await assertPortalWorkerReady(runtimeSettings.mode);
+    } catch (error) {
+      if (error instanceof PortalWorkerUnavailableError) {
+        res.status(503).json({ accepted: false, error: error.code });
+        return;
+      }
+      throw error;
+    }
 
     // ----- Enqueue every eligible trigger-stage application -------------
     const summary = await scanAndEnqueueTriggerStageApplications(user.id, runtimeSettings);
-
-    // ----- Immediately drain the queue (interval-independent) -----------
-    // Reuses the exact manual process-queued path (50s inline cap per
-    // submission + requeue), guarded by the shared mutex.  If a process run is
-    // already in flight we skip draining here — those rows are picked up by the
-    // in-flight run (or the always-on worker) within seconds.
-    let processed = 0;
-    let results: ProcessSingleResult[] = [];
-    let drained = false;
-
-    if (!_processMutex) {
-      const workerId = `api-runnow-${user.id}-${Date.now()}`;
-      _processMutex = true;
-      try {
-        // Run Now must only process applications currently in a configured
-        // trigger stage — same gate as the enqueue scan above.
-        results = await drainQueue(workerId, runtimeSettings.triggerStages ?? []);
-        drained = true;
-      } finally {
-        _processMutex = false;
-      }
-      processed = results.filter(
-        (r) => r.status !== "skipped" && r.status !== "requeued",
-      ).length;
-    }
 
     await logAudit(
       user.id,
@@ -1280,21 +1188,19 @@ router.post(
         queued: summary.queued,
         skipped: summary.skipped,
         reasons: summary.reasons,
-        processed,
-        drained,
+        acceptedByWorker: true,
       },
       req.ip,
     );
 
-    res.json({
+    res.status(202).json({
+      accepted: true,
       scanned: summary.scanned,
       queued: summary.queued,
       skipped: summary.skipped,
       reasons: summary.reasons,
       queuedIds: summary.queuedIds,
-      processed,
-      drained,
-      results: results.map((r) => ({ id: r.id, status: r.status })),
+      statusUrl: "/api/portal-submissions?status=queued",
     });
   },
 );
@@ -1309,21 +1215,12 @@ router.post(
   requireRole(...STAFF_ROLES, ...ADMIN_ROLES),
   validate({ params: idParamsSchema }),
   async (req, res): Promise<void> => {
-    if (_processMutex) {
-      res.status(409).json({
-        error: "ALREADY_RUNNING",
-        message: "A portal process run is already in progress on this instance",
-      });
-      return;
-    }
-
     const user = req.user!;
     const { id } = getValidated<IdSchemas>(req).params;
-    const workerId = `api-manual-${user.id}-${Date.now()}`;
 
     // Verify the submission exists and is queued before acquiring mutex
     const [row] = await db
-      .select({ id: portalSubmissionsTable.id, status: portalSubmissionsTable.status })
+      .select({ id: portalSubmissionsTable.id, status: portalSubmissionsTable.status, mode: portalSubmissionsTable.mode })
       .from(portalSubmissionsTable)
       .where(and(eq(portalSubmissionsTable.id, id), isNull(portalSubmissionsTable.deletedAt)));
 
@@ -1340,32 +1237,38 @@ router.post(
       return;
     }
 
-    _processMutex = true;
-
     try {
-      const result = await processSingle(id, workerId);
+      await assertPortalWorkerReady(row.mode);
 
       await logAudit(
         user.id,
-        "process_portal_submission",
+        "request_portal_submission_processing",
         "portal_submission",
         id,
-        { status: result.status, error: result.error },
+        { status: row.status, mode: row.mode },
         req.ip,
       );
-
-      res.json({ processed: result.status !== "skipped" && result.status !== "requeued" ? 1 : 0, results: [result] });
-    } finally {
-      _processMutex = false;
+      res.status(202).json({
+        accepted: true,
+        submissionId: id,
+        statusUrl: `/api/portal-submissions/${id}`,
+      });
+    } catch (error) {
+      if (error instanceof PortalWorkerUnavailableError) {
+        res.status(503).json({ accepted: false, error: error.code });
+        return;
+      }
+      throw error;
     }
   },
 );
 
 // ---------------------------------------------------------------------------
 // POST /portal-submissions/reset-stuck
-// Resets "running" submissions that have been locked longer than
-// thresholdMinutes (default 10) back to "queued".
-// Safe to call at any time (idempotent) — used by admin button + startup.
+// Running browser actions are worker-owned. Resetting their DB row from the
+// API can overlap a still-active portal mutation, so this legacy endpoint is
+// retained as an explicit fail-closed contract. The worker performs bounded
+// stale-lease recovery after its own heartbeat checks.
 // ---------------------------------------------------------------------------
 const resetStuckBodySchema = z.object({
   thresholdMinutes: z.number().int().positive().min(1).max(60).default(10),
@@ -1378,28 +1281,12 @@ router.post(
   requireRole(...STAFF_ROLES, ...ADMIN_ROLES),
   validate({ body: resetStuckBodySchema }),
   async (req, res): Promise<void> => {
-    const user = req.user!;
     const { thresholdMinutes } = getValidated<ResetStuckSchemas>(req).body;
-    const thresholdMs = thresholdMinutes * 60_000;
-
-    const ids = await releaseStale(thresholdMs);
-
-    if (ids.length > 0) {
-      console.log(
-        `[portal-stuck-reset] Manual reset: ${ids.length} submission(s) — ids: ${ids.join(",")}`,
-      );
-    }
-
-    await logAudit(
-      user.id,
-      "reset_stuck_portal_submissions",
-      "portal_submission",
-      undefined,
-      { thresholdMinutes, reset: ids.length, ids },
-      req.ip,
-    );
-
-    res.json({ reset: ids.length, ids });
+    res.status(409).json({
+      error: "WORKER_OWNED_RECOVERY",
+      message: "Stale running submissions are recovered only by the release-matched portal worker",
+      thresholdMinutes,
+    });
   },
 );
 
@@ -1538,18 +1425,18 @@ router.post(
       .where(and(
         inArray(portalSubmissionsTable.id, ids),
         isNull(portalSubmissionsTable.deletedAt),
-        or(
-          eq(portalSubmissionsTable.status, "queued"),
-          eq(portalSubmissionsTable.status, "running"),
-        ),
+        eq(portalSubmissionsTable.status, "queued"),
       ));
     const eligibleIds = eligible.map((r) => r.id);
 
     if (eligibleIds.length > 0) {
       await db
         .update(portalSubmissionsTable)
-        .set({ status: "canceled" })
-        .where(inArray(portalSubmissionsTable.id, eligibleIds));
+        .set({ status: "canceled", updatedAt: new Date() })
+        .where(and(
+          inArray(portalSubmissionsTable.id, eligibleIds),
+          eq(portalSubmissionsTable.status, "queued"),
+        ));
     }
 
     await logAudit(
@@ -1580,48 +1467,43 @@ router.post(
   requireRole(...STAFF_ROLES, ...ADMIN_ROLES),
   validate({ body: bulkIdsBodySchema }),
   async (req, res): Promise<void> => {
-    if (_processMutex) {
-      res.status(409).json({
-        error: "ALREADY_RUNNING",
-        message: "A portal process run is already in progress on this instance",
-      });
-      return;
-    }
-
     const user = req.user!;
     const { ids } = getValidated<BulkIdsSchemas>(req).body;
-    const workerId = `api-bulk-${user.id}-${Date.now()}`;
-
-    _processMutex = true;
-    const results: ProcessSingleResult[] = [];
     try {
-      for (const id of ids) {
-        const result = await processSingle(id, workerId);
-        results.push(result);
-        if (result.status === "running") break;
+      const queued = await db
+        .select({ id: portalSubmissionsTable.id, mode: portalSubmissionsTable.mode })
+        .from(portalSubmissionsTable)
+        .where(and(
+          inArray(portalSubmissionsTable.id, ids),
+          eq(portalSubmissionsTable.status, "queued"),
+          isNull(portalSubmissionsTable.deletedAt),
+        ));
+      for (const mode of [...new Set(queued.map((row) => row.mode))]) {
+        await assertPortalWorkerReady(mode);
       }
-    } finally {
-      _processMutex = false;
+
+      await logAudit(
+        user.id,
+        "request_bulk_portal_submission_processing",
+        "portal_submission",
+        undefined,
+        { requested: ids, accepted: queued.map((row) => row.id) },
+        req.ip,
+      );
+
+      res.status(202).json({
+        accepted: queued.length,
+        ids: queued.map((row) => row.id),
+        skipped: ids.filter((id) => !queued.some((row) => row.id === id)),
+        statusUrl: "/api/portal-submissions?status=queued",
+      });
+    } catch (error) {
+      if (error instanceof PortalWorkerUnavailableError) {
+        res.status(503).json({ accepted: false, error: error.code });
+        return;
+      }
+      throw error;
     }
-
-    const processedCount = results.filter(
-      (r) => r.status !== "skipped" && r.status !== "requeued",
-    ).length;
-
-    await logAudit(
-      user.id,
-      "bulk_process_portal_submissions",
-      "portal_submission",
-      undefined,
-      {
-        requested: ids,
-        processed: processedCount,
-        results: results.map((r) => ({ id: r.id, status: r.status })),
-      },
-      req.ip,
-    );
-
-    res.json({ processed: processedCount, results });
   },
 );
 
@@ -1659,6 +1541,7 @@ type ApplyToAllOutcome =
   | "no-program"
   | "missing-docs"
   | "duplicate"
+  | "reconciliation-required"
   | "failed";
 
 interface ApplyToAllItem {
@@ -1677,20 +1560,13 @@ interface ApplyToAllItem {
 // endpoint — no parallel engine / no copy-paste).
 // ---------------------------------------------------------------------------
 
-/** Env-var credential fallback — mirrors GET /university-portals exactly. */
-function envHasKey(k: string): boolean {
-  const K = k.toUpperCase().replace(/-/g, "_");
-  return !!(
-    (process.env[`${K}_EMAIL`] || process.env[`${K}_USER`]) &&
-    process.env[`${K}_PASSWORD`]
-  );
-}
-
 interface CredentialReadyUniversity {
+  id: number;
   universityKey: string;
   universityName: string;
   adapterKey: string;
   crmUniversityId: number;
+  verificationGeneration: number;
 }
 
 /**
@@ -1720,42 +1596,46 @@ export function buildManualFanOutMeta(
 /**
  * Loads the fan-out target universities: active, not deleted, mapped to a CRM
  * university (crm_university_id set so catalog programmes are resolvable) AND
- * credential-ready (DB row or env vars). Credential gate mirrors
- * GET /university-portals exactly. Shared by the single + bulk endpoints so both
- * target the exact same set (and universitiesTargeted counts match).
+ * current-verification-ready. Environment credentials alone cannot unlock a
+ * target. Shared by the single + bulk endpoints so both target the exact same
+ * set (and universitiesTargeted counts match).
  */
-async function loadCredentialReadyPortalUniversities(): Promise<CredentialReadyUniversity[]> {
-  const [dbCredKeys, unis] = await Promise.all([
-    batchPortalCredentialKeys(),
-    db
-      .select({
-        universityKey:   portalUniversitiesTable.universityKey,
-        universityName:  portalUniversitiesTable.universityName,
-        adapterKey:      portalUniversitiesTable.adapterKey,
-        crmUniversityId: portalUniversitiesTable.crmUniversityId,
-      })
-      .from(portalUniversitiesTable)
-      .where(
-        and(
-          eq(portalUniversitiesTable.isActive, true),
-          isNull(portalUniversitiesTable.deletedAt),
-          isNotNull(portalUniversitiesTable.crmUniversityId),
-        ),
+async function loadCredentialReadyPortalUniversities(
+  mode: "dry" | "real",
+): Promise<CredentialReadyUniversity[]> {
+  const unis = await db
+    .select({
+      id: portalUniversitiesTable.id,
+      universityKey: portalUniversitiesTable.universityKey,
+      universityName: portalUniversitiesTable.universityName,
+      adapterKey: portalUniversitiesTable.adapterKey,
+      crmUniversityId: portalUniversitiesTable.crmUniversityId,
+      verificationGeneration: portalUniversitiesTable.verificationGeneration,
+    })
+    .from(portalUniversitiesTable)
+    .where(
+      and(
+        eq(portalUniversitiesTable.isActive, true),
+        isNull(portalUniversitiesTable.deletedAt),
+        isNotNull(portalUniversitiesTable.crmUniversityId),
       ),
-  ]);
+    );
+  const verificationStates = await loadPortalPartnerVerificationStates(unis);
 
   return unis
-    .filter(
-      (uni) =>
-        dbCredKeys.has(uni.adapterKey) ||
-        dbCredKeys.has(uni.universityKey) ||
-        envHasKey(uni.adapterKey),
-    )
+    .filter((uni) => {
+      const verification = verificationStates.get(uni.id);
+      return mode === "dry"
+        ? verification?.testLoginPassed === true && verification.binding?.strictDryRunCapable === true
+        : verification?.testLoginPassed === true && verification.strictDryRunPassed === true;
+    })
     .map((uni) => ({
+      id:              uni.id,
       universityKey:   uni.universityKey,
       universityName:  uni.universityName,
       adapterKey:      uni.adapterKey,
       crmUniversityId: uni.crmUniversityId as number,
+      verificationGeneration: uni.verificationGeneration,
     }));
 }
 
@@ -1781,7 +1661,12 @@ async function fanOutApplicationToUniversities(
    * application row (and its dedup) still keys on the member CRM university.
    * Omitted → identical legacy behavior (apply-to-all / bulk are unchanged).
    */
-  routeVia?: { universityKey: string; adapterKey: string },
+  routeVia?: {
+    id: number;
+    universityKey: string;
+    adapterKey: string;
+    verificationGeneration: number;
+  },
 ): Promise<ApplyToAllItem[]> {
   const [student] = await db
     .select({ nationality: studentsTable.nationality })
@@ -1943,6 +1828,7 @@ async function fanOutApplicationToUniversities(
           tx,
         ): Promise<
           | { kind: "duplicate"; appId: number; subId: number }
+          | { kind: "reconciliation"; appId: number; subId: number }
           | { kind: "queued"; appId: number; subId: number }
         > => {
           await tx.execute(
@@ -1950,8 +1836,21 @@ async function fanOutApplicationToUniversities(
           );
 
           let appId: number;
+          let intentApplication: {
+            id: number;
+            universityId: number | null;
+            programId: number | null;
+            intake: string | null;
+            season: string;
+          };
           const [existingApp] = await tx
-            .select({ id: applicationsTable.id })
+            .select({
+              id: applicationsTable.id,
+              universityId: applicationsTable.universityId,
+              programId: applicationsTable.programId,
+              intake: applicationsTable.intake,
+              season: applicationsTable.season,
+            })
             .from(applicationsTable)
             .where(
               and(
@@ -1964,6 +1863,7 @@ async function fanOutApplicationToUniversities(
 
           if (existingApp) {
             appId = existingApp.id;
+            intentApplication = existingApp;
           } else {
             const [newApp] = await tx
               .insert(applicationsTable)
@@ -2009,28 +1909,71 @@ async function fanOutApplicationToUniversities(
                 createdAt:           now,
                 updatedAt:           now,
               })
-              .returning({ id: applicationsTable.id });
+              .returning({
+                id: applicationsTable.id,
+                universityId: applicationsTable.universityId,
+                programId: applicationsTable.programId,
+                intake: applicationsTable.intake,
+                season: applicationsTable.season,
+              });
             appId = newApp.id;
+            intentApplication = newApp;
           }
 
+          const intent = createPortalSubmissionIntentFromSnapshot({
+            application: intentApplication,
+            portalUniversity: routeVia ?? uni,
+            targetCatalogUniversityId: crmUniversityId,
+            source: "fanout",
+          });
+
           await tx.execute(
-            sql`SELECT pg_advisory_xact_lock(${appId}, hashtext(${submissionKey}))`,
+            sql`SELECT pg_advisory_xact_lock(${appId}, hashtext(${intent.targetIdentitySha256}))`,
           );
 
           const [existingSub] = await tx
-            .select({ id: portalSubmissionsTable.id })
+            .select({
+              id: portalSubmissionsTable.id,
+              status: portalSubmissionsTable.status,
+              externalRef: portalSubmissionsTable.externalRef,
+              targetIdentitySha256: portalSubmissionsTable.targetIdentitySha256,
+              providerCommittedAt: portalSubmissionsTable.providerCommittedAt,
+            })
             .from(portalSubmissionsTable)
             .where(
               and(
                 eq(portalSubmissionsTable.applicationId, appId),
-                eq(portalSubmissionsTable.universityKey, submissionKey),
-                inArray(portalSubmissionsTable.status, submissionDedupStatuses),
+                or(
+                  eq(portalSubmissionsTable.targetIdentitySha256, intent.targetIdentitySha256),
+                  and(
+                    isNull(portalSubmissionsTable.targetIdentitySha256),
+                    eq(portalSubmissionsTable.universityKey, submissionKey),
+                  ),
+                ),
+                eq(portalSubmissionsTable.mode, mode),
+                or(
+                  inArray(portalSubmissionsTable.status, [
+                    ...submissionDedupStatuses,
+                    "already_exists",
+                    "accepted",
+                  ]),
+                  isNotNull(portalSubmissionsTable.providerCommittedAt),
+                ),
                 isNull(portalSubmissionsTable.deletedAt),
               ),
             )
             .limit(1);
 
           if (existingSub) {
+            if (
+              mode === "real" &&
+              (existingSub.providerCommittedAt !== null ||
+                (existingSub.targetIdentitySha256 === null &&
+                  ["submitted", "already_exists", "accepted"].includes(existingSub.status) &&
+                  existingSub.externalRef))
+            ) {
+              return { kind: "reconciliation", appId, subId: existingSub.id };
+            }
             return { kind: "duplicate", appId, subId: existingSub.id };
           }
 
@@ -2074,6 +2017,10 @@ async function fanOutApplicationToUniversities(
               mode,
               status:         "queued",
               enqueuedBy:     userId,
+              submitIntentKey: intent.submitIntentKey,
+              targetIdentitySha256: intent.targetIdentitySha256,
+              targetIdentity: intent.targetIdentity,
+              submissionAction: "submit",
               // Manual fan-out must bypass the university auto-process and
               // trigger-stage gates. Aggregator routing additionally names the
               // member school to select inside the portal.
@@ -2096,7 +2043,12 @@ async function fanOutApplicationToUniversities(
       results.push({
         universityKey:  uni.universityKey,
         universityName: uni.universityName,
-        outcome:        txOutcome.kind === "duplicate" ? "duplicate" : "queued",
+        outcome:
+          txOutcome.kind === "duplicate"
+            ? "duplicate"
+            : txOutcome.kind === "reconciliation"
+              ? "reconciliation-required"
+              : "queued",
         applicationId:  txOutcome.appId,
         submissionId:   txOutcome.subId,
         programName:    program.name,
@@ -2124,6 +2076,7 @@ function computeApplyToAllCounts(results: ApplyToAllItem[]) {
     excluded:  results.filter((r) => r.outcome === "excluded").length,
     noProgram: results.filter((r) => r.outcome === "no-program").length,
     duplicate: results.filter((r) => r.outcome === "duplicate").length,
+    reconciliationRequired: results.filter((r) => r.outcome === "reconciliation-required").length,
     failed:    results.filter((r) => r.outcome === "failed").length,
   };
 }
@@ -2224,11 +2177,14 @@ async function resolveFanOutMode(
  */
 async function loadAggregatorMemberUniversities(
   aggregatorKey: string,
+  mode: "dry" | "real",
 ): Promise<CredentialReadyUniversity[]> {
   const [aggregator] = await db
     .select({
+      id:            portalUniversitiesTable.id,
       universityKey: portalUniversitiesTable.universityKey,
       adapterKey:    portalUniversitiesTable.adapterKey,
+      verificationGeneration: portalUniversitiesTable.verificationGeneration,
     })
     .from(portalUniversitiesTable)
     .where(and(
@@ -2238,6 +2194,14 @@ async function loadAggregatorMemberUniversities(
     ))
     .limit(1);
   if (!aggregator) return [];
+  const verification = await getPortalExecutionVerification({
+    universityKey: aggregator.universityKey,
+    adapterKey: aggregator.adapterKey,
+  });
+  const verificationReady = mode === "dry"
+    ? verification?.testLoginPassed === true && verification.binding?.strictDryRunCapable === true
+    : verification?.testLoginPassed === true && verification.strictDryRunPassed === true;
+  if (!verificationReady) return [];
 
   const members = await db
     .select({
@@ -2260,10 +2224,12 @@ async function loadAggregatorMemberUniversities(
     : members;
 
   return filtered.map((m) => ({
+    id:              aggregator.id,
     universityKey:   aggregator.universityKey,
     universityName:  m.name,
     adapterKey:      aggregator.adapterKey,
     crmUniversityId: m.catalogUniversityId,
+    verificationGeneration: aggregator.verificationGeneration,
   }));
 }
 
@@ -2323,10 +2289,15 @@ export async function maybeFanOutStudentForApplication(
     const fanOutMode = await resolveFanOutMode(portalKey, settings);
     if (fanOutMode !== "auto") return;
 
-    // Credential check — mirrors the per-app enqueue gate so we never enqueue
-    // rows that can't run.
-    if (!await checkHasPortalCredentials(portalKey, routing.portalUni.adapterKey)) {
-      console.warn(`[portal-fanout] skipped app=${applicationId}: credentials missing for ${portalKey}`);
+    // Automatic fan-out is a real execution path. Current release-bound Test
+    // Login and Strict Dry Run receipts are required for the source portal;
+    // environment credentials alone never unlock it.
+    const sourceVerification = await getPortalExecutionVerification({
+      universityKey: portalKey,
+      adapterKey: routing.portalUni.adapterKey,
+    });
+    if (!sourceVerification?.testLoginPassed || !sourceVerification.strictDryRunPassed) {
+      console.warn(`[portal-fanout] skipped app=${applicationId}: partner verification missing for ${portalKey}`);
       return;
     }
 
@@ -2334,13 +2305,25 @@ export async function maybeFanOutStudentForApplication(
     //   Multi-portal aggregator → load its member universities (routeVia set).
     //   Direct portal           → all credential-ready unis except the source.
     let unis: CredentialReadyUniversity[];
-    let routeVia: { universityKey: string; adapterKey: string } | undefined;
+    let routeVia:
+      | {
+          id: number;
+          universityKey: string;
+          adapterKey: string;
+          verificationGeneration: number;
+        }
+      | undefined;
 
     if (routing.portalUni.isMultiPortal) {
-      unis    = await loadAggregatorMemberUniversities(portalKey);
-      routeVia = { universityKey: portalKey, adapterKey: routing.portalUni.adapterKey };
+      unis    = await loadAggregatorMemberUniversities(portalKey, "real");
+      routeVia = {
+        id: routing.portalUni.id,
+        universityKey: portalKey,
+        adapterKey: routing.portalUni.adapterKey,
+        verificationGeneration: routing.portalUni.verificationGeneration,
+      };
     } else {
-      unis = (await loadCredentialReadyPortalUniversities())
+      unis = (await loadCredentialReadyPortalUniversities("real"))
         .filter((u) => u.universityKey !== portalKey);
     }
 
@@ -2425,8 +2408,8 @@ router.post(
     }
 
     // Fan out to all credential-ready universities (same pool as apply-to-all).
-    const unis  = await loadCredentialReadyPortalUniversities();
     const mode  = settings.mode === "real" ? "real" : "dry";
+    const unis  = await loadCredentialReadyPortalUniversities(mode);
     const results = await fanOutApplicationToUniversities(srcApp, unis, mode, user.id);
     const counts  = computeApplyToAllCounts(results);
 
@@ -2485,7 +2468,7 @@ router.post(
     }
 
     // Fan-out via the shared core (credential-ready, CRM-linked universities).
-    const unis = await loadCredentialReadyPortalUniversities();
+    const unis = await loadCredentialReadyPortalUniversities(mode);
     const results = await fanOutApplicationToUniversities(srcApp, unis, mode, user.id);
     const counts = computeApplyToAllCounts(results);
 
@@ -2537,7 +2520,9 @@ router.get(
         isNull(applicationsTable.deletedAt),
       ));
 
-    const unis = await loadCredentialReadyPortalUniversities();
+    const unis = await loadCredentialReadyPortalUniversities(
+      runtimeSettings?.mode === "real" ? "real" : "dry",
+    );
     res.json({
       applications: Number(row?.n ?? 0),
       universities: unis.length,
@@ -2612,7 +2597,7 @@ router.post(
       .orderBy(asc(applicationsTable.id));
 
     // ----- Fan out each application via the shared core --------------------
-    const unis = await loadCredentialReadyPortalUniversities();
+    const unis = await loadCredentialReadyPortalUniversities(mode);
     const allResults: ApplyToAllItem[] = [];
     for (const srcApp of srcApps) {
       const results = await fanOutApplicationToUniversities(srcApp, unis, mode, user.id);
@@ -2649,58 +2634,42 @@ router.post(
 
 // ---------------------------------------------------------------------------
 // GET /university-portals
-// Returns active portal universities that have credentials configured.
-// Used by app-detail Submit dropdown — shows only credential-ready entries.
+// Returns active portal universities that have current execution evidence.
+// Used by app-detail Submit dropdown; environment-only credentials and orphan
+// registry adapters cannot unlock a newly onboarded partner.
 // ---------------------------------------------------------------------------
 router.get("/university-portals", requireAuth, async (_req, res): Promise<void> => {
-  const [dbCredKeys, unis] = await Promise.all([
-    batchPortalCredentialKeys(),
-    db
-      .select({
-        universityKey: portalUniversitiesTable.universityKey,
-        universityName: portalUniversitiesTable.universityName,
-        adapterKey: portalUniversitiesTable.adapterKey,
-      })
-      .from(portalUniversitiesTable)
-      .where(
-        and(
-          eq(portalUniversitiesTable.isActive, true),
-          isNull(portalUniversitiesTable.deletedAt),
-        ),
+  const unis = await db
+    .select({
+      id: portalUniversitiesTable.id,
+      universityKey: portalUniversitiesTable.universityKey,
+      universityName: portalUniversitiesTable.universityName,
+      adapterKey: portalUniversitiesTable.adapterKey,
+      verificationGeneration: portalUniversitiesTable.verificationGeneration,
+    })
+    .from(portalUniversitiesTable)
+    .where(
+      and(
+        eq(portalUniversitiesTable.isActive, true),
+        isNull(portalUniversitiesTable.deletedAt),
       ),
-  ]);
-
-  function envHasKey(k: string): boolean {
-    const K = k.toUpperCase().replace(/-/g, "_");
-    return !!(
-      (process.env[`${K}_EMAIL`] || process.env[`${K}_USER`]) &&
-      process.env[`${K}_PASSWORD`]
     );
-  }
-
-  // --- Step 1: DB-registered universities with credentials ---
-  const seenAdapterKeys = new Set<string>();
-  const result: { key: string; label: string; adapterKey: string; hasCredentials: boolean }[] = [];
-
-  for (const { universityKey, universityName, adapterKey } of unis) {
-    const hasCredentials =
-      dbCredKeys.has(adapterKey) || dbCredKeys.has(universityKey) || envHasKey(adapterKey);
-    if (hasCredentials) {
-      result.push({ key: universityKey, label: universityName, adapterKey, hasCredentials: true });
-      seenAdapterKeys.add(adapterKey);
-    }
-  }
-
-  // --- Step 2: Registry adapters with credentials NOT yet in the DB list ---
-  // Covers the case where portal_credentials has the key but portal_universities
-  // hasn't been seeded yet (e.g. fresh PROD deploy).
-  for (const { key: aKey, label } of adapterMetadata()) {
-    if (seenAdapterKeys.has(aKey)) continue;
-    const hasCredentials = dbCredKeys.has(aKey) || envHasKey(aKey);
-    if (hasCredentials) {
-      result.push({ key: aKey, label, adapterKey: aKey, hasCredentials: true });
-    }
-  }
+  const verificationStates = await loadPortalPartnerVerificationStates(unis);
+  const result = unis.flatMap((uni) => {
+    const verification = verificationStates.get(uni.id);
+    const dryRunReady =
+      verification?.testLoginPassed === true &&
+      verification.binding?.strictDryRunCapable === true;
+    if (!dryRunReady) return [];
+    return [{
+      key: uni.universityKey,
+      label: uni.universityName,
+      adapterKey: uni.adapterKey,
+      hasCredentials: verification.encryptedCredentialsReady,
+      dryRunReady: true,
+      realRunReady: verification.strictDryRunPassed,
+    }];
+  });
 
   res.json(result);
 });
@@ -2746,44 +2715,6 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// Background job: periodic stuck-reset
-// ---------------------------------------------------------------------------
-
-/**
- * Starts a setInterval that periodically resets stuck portal_submissions.
- * Call once at api-server startup (safe on every instance — releaseStale is
- * idempotent and the DB UPDATE is atomic).
- */
-let portalStuckResetTimer: ReturnType<typeof setInterval> | null = null;
-
-export function startPortalStuckReset(intervalMs = 5 * 60_000): () => void {
-  if (portalStuckResetTimer) return stopPortalStuckReset;
-  const run = (): void => {
-    releaseStale(STUCK_THRESHOLD_MS)
-      .then((ids) => {
-        if (ids.length > 0) {
-          console.log(
-            `[portal-stuck-reset] Auto-reset ${ids.length} submission(s): ${ids.join(",")}`,
-          );
-        }
-      })
-      .catch((err) => {
-        console.error("[portal-stuck-reset] Error:", err);
-      });
-  };
-  portalStuckResetTimer = setInterval(run, intervalMs);
-  console.log(
-    `[portal-stuck-reset] Started — interval=${intervalMs}ms threshold=${STUCK_THRESHOLD_MS}ms`,
-  );
-  return stopPortalStuckReset;
-}
-
-export function stopPortalStuckReset(): void {
-  if (portalStuckResetTimer) clearInterval(portalStuckResetTimer);
-  portalStuckResetTimer = null;
-}
-
-// ---------------------------------------------------------------------------
 // Background job: scheduled auto-drain (Scheduled Auto-Process ON)
 // ---------------------------------------------------------------------------
 
@@ -2795,7 +2726,7 @@ const DEFAULT_AUTO_PROCESS_INTERVAL_MIN = 20;
 
 /** Outcome of one scheduler tick — exported shape for the test script. */
 export type AutoDrainTickResult =
-  | { ran: false; reason: "disabled" | "scheduled_off" | "interval_not_elapsed" | "already_running" }
+  | { ran: false; reason: "disabled" | "scheduled_off" | "interval_not_elapsed" | "worker_unavailable" }
   | { ran: true; claimed: number; processed: number };
 
 /**
@@ -2807,12 +2738,11 @@ export type AutoDrainTickResult =
  *   2. autoProcessEnabled (Scheduled Auto-Process toggle)
  *   3. `auto_process_interval_minutes` have elapsed since last_auto_drain_at
  *      (never-drained → due immediately)
- *   4. no drain currently in flight (_processMutex)
+ *   4. a release-matched worker advertises the configured execution mode
  *
- * The drain passes settings.triggerStages so scheduled drains respect the
- * configured stage filter (same claimNext gating convention as Run Now).
- * last_auto_drain_at is updated only after a completed drain, so a failed
- * drain is retried on the next tick.
+ * Browser execution never occurs here. The API scheduler only verifies worker
+ * readiness and advances its observation timestamp; the dedicated worker owns
+ * claims, browser sessions and stale-lock recovery.
  *
  * Exported separately from startPortalAutoDrain so the test script can drive
  * ticks deterministically without timers.
@@ -2836,43 +2766,35 @@ export async function runPortalAutoDrainTick(): Promise<AutoDrainTickResult> {
     return { ran: false, reason: "interval_not_elapsed" };
   }
 
-  if (_processMutex) return { ran: false, reason: "already_running" };
-
-  const workerId = `api-autodrain-${Date.now()}`;
-
-  // Adapter auto-graduation: scheduled drains never process submissions whose
-  // portal adapter is still experimental (non-graduated). Manual (meta.manual)
-  // rows bypass the exclusion inside claimNext, like every other gate.
-  const excludeUniversityKeys = await getExperimentalExcludedUniversityKeys();
-
-  _processMutex = true;
-  let results: ProcessSingleResult[] = [];
   try {
-    results = await drainQueue(workerId, settings.triggerStages ?? [], excludeUniversityKeys);
-  } finally {
-    _processMutex = false;
+    await assertPortalWorkerReady(settings.mode);
+  } catch (error) {
+    if (error instanceof PortalWorkerUnavailableError) {
+      return { ran: false, reason: "worker_unavailable" };
+    }
+    throw error;
   }
+
+  const [queued] = await db
+    .select({ total: count() })
+    .from(portalSubmissionsTable)
+    .where(and(
+      eq(portalSubmissionsTable.status, "queued"),
+      eq(portalSubmissionsTable.mode, settings.mode),
+      isNull(portalSubmissionsTable.deletedAt),
+    ));
 
   await db
     .update(portalAutomationSettingsTable)
     .set({ lastAutoDrainAt: new Date() })
     .where(eq(portalAutomationSettingsTable.id, settings.id));
 
-  const processed = results.filter(
-    (r) => r.status !== "skipped" && r.status !== "requeued",
-  ).length;
-  if (results.length > 0) {
-    console.log(
-      `[portal-auto-drain] Scheduled drain done — claimed=${results.length} processed=${processed}`,
-    );
-  }
-  return { ran: true, claimed: results.length, processed };
+  return { ran: true, claimed: queued?.total ?? 0, processed: 0 };
 }
 
 /**
- * Starts the periodic scheduled-drain checker. Call once at api-server
- * startup, next to startPortalStuckReset. Errors are caught and logged per
- * tick — the interval never crashes the process.
+ * Starts the periodic scheduled-drain checker. Errors are caught and logged
+ * per tick — the interval never crashes the process.
  */
 export function startPortalAutoDrain(intervalMs = AUTO_DRAIN_TICK_MS): void {
   const run = (): void => {
@@ -2916,7 +2838,7 @@ async function pollPortalStatusWithTimeout<T>(
  * and grouped by portal-account lane. Each lane gets its own login/session;
  * a broken or slow university cannot block unrelated portals.
  */
-export async function runPortalStatusSync(): Promise<{ checked: number; updated: number }> {
+export async function runPortalStatusSync(options: { allowArtifacts?: boolean } = {}): Promise<{ checked: number; updated: number }> {
   const workerId = `status-sync-${process.pid}-${Date.now()}`;
   const rows = await claimDuePortalStatusChecks({
     workerId,
@@ -2958,6 +2880,7 @@ export async function runPortalStatusSync(): Promise<{ checked: number; updated:
     let artifactStored = false;
     if (
       observation.identityVerified &&
+      options.allowArtifacts === true &&
       requiredArtifact &&
       adapter.collectStatusArtifacts &&
       !(await hasStoredPortalLifecycleArtifact(row.applicationId, requiredArtifact))
@@ -3117,6 +3040,26 @@ export async function runPortalStatusSync(): Promise<{ checked: number; updated:
       }
       try {
         const first = laneRows[0]!;
+        const verification = await getPortalExecutionVerification({
+          universityKey: first.universityKey,
+          adapterKey: first.adapterKey,
+        });
+        if (!verification?.testLoginPassed || !verification.strictDryRunPassed) {
+          await Promise.all(
+            laneRows.map((row) =>
+              failPortalStatusCheck({
+                submissionId: row.id,
+                workerId,
+                currentFailedAttempts: row.statusCheckAttempts,
+                error: "STATUS_CHECK_AUTHENTICATION",
+              }),
+            ),
+          );
+          console.warn(
+            `[portal-status-sync] lane ${laneKey} blocked: current partner verification is missing`,
+          );
+          return;
+        }
         const adapter = await resolveAdapterByKey(first.adapterKey);
         if (!adapter?.checkStatus) {
           await Promise.all(
@@ -3220,6 +3163,173 @@ export async function runPortalStatusSync(): Promise<{ checked: number; updated:
   return { checked: rows.length, updated };
 }
 
+const lifecycleProposalListQuerySchema = z.object({
+  status: z.enum(["pending_review", "approved", "rejected", "executing", "executed", "failed", "canceled"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+const lifecycleProposalReviewBodySchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  reason: z.string().trim().max(1000).optional(),
+  requestKey: z.string().min(1).max(100).regex(/^[A-Za-z0-9._:-]+$/),
+}).strict();
+type LifecycleProposalListSchemas = { query: typeof lifecycleProposalListQuerySchema };
+type LifecycleProposalReviewSchemas = {
+  params: typeof idParamsSchema;
+  body: typeof lifecycleProposalReviewBodySchema;
+};
+
+router.get(
+  "/portal-lifecycle-proposals",
+  requireAuth,
+  requireRole(...ADMIN_ROLES),
+  validate({ query: lifecycleProposalListQuerySchema }),
+  async (req, res): Promise<void> => {
+    const { status, limit } = getValidated<LifecycleProposalListSchemas>(req).query;
+    const rows = await db
+      .select({
+        id: portalLifecycleProposalsTable.id,
+        submissionId: portalLifecycleProposalsTable.submissionId,
+        applicationId: portalLifecycleProposalsTable.applicationId,
+        observationId: portalLifecycleProposalsTable.observationId,
+        rawStatus: portalLifecycleProposalsTable.rawStatus,
+        currentStage: portalLifecycleProposalsTable.currentStage,
+        decision: portalLifecycleProposalsTable.decision,
+        artifacts: portalLifecycleProposalsTable.artifacts,
+        missingDocuments: portalLifecycleProposalsTable.missingDocuments,
+        applicationReferenceSync: portalLifecycleProposalsTable.applicationReferenceSync,
+        status: portalLifecycleProposalsTable.status,
+        reviewedBy: portalLifecycleProposalsTable.reviewedBy,
+        reviewedAt: portalLifecycleProposalsTable.reviewedAt,
+        createdAt: portalLifecycleProposalsTable.createdAt,
+      })
+      .from(portalLifecycleProposalsTable)
+      .where(status ? eq(portalLifecycleProposalsTable.status, status) : undefined)
+      .orderBy(desc(portalLifecycleProposalsTable.createdAt), desc(portalLifecycleProposalsTable.id))
+      .limit(limit);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ items: rows });
+  },
+);
+
+router.post(
+  "/portal-lifecycle-proposals/:id/review",
+  requireAuth,
+  requireRole(...ADMIN_ROLES),
+  validate({ params: idParamsSchema, body: lifecycleProposalReviewBodySchema }),
+  async (req, res): Promise<void> => {
+    const { id } = getValidated<LifecycleProposalReviewSchemas>(req).params;
+    const body = getValidated<LifecycleProposalReviewSchemas>(req).body;
+    const requestKey = body.requestKey;
+    const reason = body.reason?.trim() || null;
+    const reviewerId = req.user!.id;
+    const evidenceSha256 = createHash("sha256")
+      .update(JSON.stringify({ id, reviewerId, decision: body.decision, reason, requestKey }))
+      .digest("hex");
+
+    const result = await db.transaction(async (tx) => {
+      const [proposal] = await tx
+        .select({
+          id: portalLifecycleProposalsTable.id,
+          status: portalLifecycleProposalsTable.status,
+          proposedByUserId: portalLifecycleProposalsTable.proposedByUserId,
+        })
+        .from(portalLifecycleProposalsTable)
+        .where(eq(portalLifecycleProposalsTable.id, id))
+        .for("update")
+        .limit(1);
+      if (!proposal) return { kind: "not_found" as const };
+      const [existingReview] = await tx
+        .select({
+          evidenceSha256: portalLifecycleProposalReviewsTable.evidenceSha256,
+          decision: portalLifecycleProposalReviewsTable.decision,
+        })
+        .from(portalLifecycleProposalReviewsTable)
+        .where(eq(portalLifecycleProposalReviewsTable.proposalId, id))
+        .limit(1);
+      if (existingReview) {
+        return existingReview.evidenceSha256 === evidenceSha256
+          ? { kind: "replay" as const, decision: existingReview.decision }
+          : { kind: "conflict" as const };
+      }
+      if (proposal.status !== "pending_review") return { kind: "conflict" as const };
+      if (proposal.proposedByUserId === reviewerId) return { kind: "maker_checker" as const };
+
+      await tx.insert(portalLifecycleProposalReviewsTable).values({
+        proposalId: id,
+        reviewerId,
+        decision: body.decision,
+        reason,
+        requestKey,
+        evidenceSha256,
+      });
+      await tx
+        .update(portalLifecycleProposalsTable)
+        .set({
+          status: body.decision === "approve" ? "approved" : "rejected",
+          reviewedBy: reviewerId,
+          reviewedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(portalLifecycleProposalsTable.id, id),
+          eq(portalLifecycleProposalsTable.status, "pending_review"),
+        ));
+      return { kind: "reviewed" as const, decision: body.decision };
+    });
+
+    if (result.kind === "not_found") {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+    if (result.kind === "maker_checker") {
+      res.status(409).json({ error: "MAKER_CHECKER_REQUIRED" });
+      return;
+    }
+    if (result.kind === "conflict") {
+      res.status(409).json({ error: "PROPOSAL_ALREADY_REVIEWED" });
+      return;
+    }
+    let executionQueued = false;
+    let executionJobId: number | undefined;
+    let executionReason: string | undefined;
+    if (result.decision === "approve") {
+      try {
+        const queued = await enqueueApprovedPortalLifecycleProposal(id);
+        executionQueued = queued.queued;
+        executionJobId = queued.jobId;
+        executionReason = queued.reason;
+      } catch (error) {
+        executionReason = error instanceof PortalWorkerUnavailableError
+          ? error.code
+          : "LIFECYCLE_EXECUTION_ENQUEUE_FAILED";
+      }
+    }
+    await logAudit(
+      reviewerId,
+      "review_portal_lifecycle_proposal",
+      "portal_lifecycle_proposal",
+      id,
+      {
+        decision: result.decision,
+        replay: result.kind === "replay",
+        requestKey,
+        executionQueued,
+        executionJobId,
+        executionReason,
+      },
+      req.ip,
+    );
+    res.json({
+      proposalId: id,
+      decision: result.decision,
+      replay: result.kind === "replay",
+      executionQueued,
+      ...(executionJobId ? { executionJobId } : {}),
+      ...(executionReason ? { executionReason } : {}),
+    });
+  },
+);
+
 router.get(
   "/portal-automation/operations",
   requireAuth,
@@ -3249,7 +3359,7 @@ router.get(
             (SELECT count(*)::int FROM portal_lifecycle_observations observation WHERE observation.observed_at >= now() - interval '24 hours' AND NOT observation.identity_verified) AS "unverified24h",
             (SELECT count(*)::int FROM portal_lifecycle_observations observation WHERE observation.observed_at >= now() - interval '24 hours' AND observation.disposition = 'MISSING_DOCUMENT') AS "missingDocuments24h",
             (SELECT count(*)::int FROM portal_lifecycle_observations observation WHERE observation.observed_at >= now() - interval '24 hours' AND observation.disposition IN ('CONDITIONAL_OFFER', 'UNCONDITIONAL_OFFER', 'FINAL_ACCEPTANCE', 'REJECTED')) AS "decisions24h",
-            (SELECT count(*)::int FROM ai_action_queue action WHERE action.action_type = 'portal_lifecycle_proposal' AND action.status = 'pending_approval') AS "pendingReviews"
+            (SELECT count(*)::int FROM portal_lifecycle_proposals proposal WHERE proposal.status = 'pending_review') AS "pendingReviews"
           FROM portal_submissions submission
           WHERE submission.deleted_at IS NULL
         `),
@@ -3369,39 +3479,45 @@ router.get(
   },
 );
 
-let manualStatusSyncRunning = false;
 router.post(
   "/portal-automation/status-sync/run",
   requireAuth,
   requireRole(...ADMIN_ROLES),
   async (req, res): Promise<void> => {
-    if (manualStatusSyncRunning) {
-      res.status(409).json({ error: "STATUS_SYNC_ALREADY_RUNNING" });
-      return;
-    }
-    manualStatusSyncRunning = true;
-    const actorId = req.user!.id;
-    const actorIp = req.ip;
-    void runPortalStatusSync()
-      .then((result) =>
-        logAudit(
-          actorId,
-          "run_portal_status_sync",
-          "portal_submission",
-          undefined,
-          result,
-          actorIp,
-        ),
-      )
-      .catch((error) => {
-        console.error(
-          `[portal-status-sync] Manual sweep failed: ${classifyPortalStatusFailure(error)}`,
-        );
-      })
-      .finally(() => {
-        manualStatusSyncRunning = false;
+    const requestKey = `manual:${randomUUID()}`;
+    try {
+      const job = await enqueuePortalWorkerJob({
+        kind: "status_sweep",
+        portalUniversityId: null,
+        requestKey,
+        requestedBy: req.user!.id,
       });
-    res.status(202).json({ started: true });
+      await logAudit(
+        req.user!.id,
+        "queue_portal_status_sync",
+        "portal_submission",
+        undefined,
+        { workerJobId: job.id, requestKey, replay: job.replay },
+        req.ip,
+      );
+      res.status(202).json({
+        accepted: true,
+        jobId: job.id,
+        requestKey,
+        replay: job.replay,
+        statusUrl: job.statusUrl,
+      });
+    } catch (error) {
+      if (error instanceof PortalWorkerJobIdempotencyConflictError) {
+        res.status(409).json({ accepted: false, error: "PORTAL_WORKER_JOB_IDEMPOTENCY_CONFLICT" });
+        return;
+      }
+      if (error instanceof PortalWorkerUnavailableError) {
+        res.status(503).json({ accepted: false, error: error.code });
+        return;
+      }
+      throw error;
+    }
   },
 );
 
@@ -3475,18 +3591,8 @@ export function stopPortalStatusSync(): void {
 // PROGRAM EŞLEME (FAZ 1) — LIVE program options + CRM→portal program mapping
 // ===========================================================================
 
-/** Live portal login timeout for listPrograms (mirrors test-login). */
-const PROGRAM_LOGIN_TIMEOUT_MS = 90_000;
 /** Program option cache TTL — entries older than this are refetched. */
 const PROGRAM_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
-
-/** Races a promise against a timeout, rejecting with `msg` if it elapses. */
-function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(msg)), ms)),
-  ]);
-}
 
 /**
  * Resolves an active (non-deleted) portal_universities row by universityKey.
@@ -3569,66 +3675,36 @@ router.get(
       return;
     }
 
-    // Live fetch via the adapter.
-    const adapter = await resolveAdapterByKey(uni.adapterKey);
-    if (!adapter) {
-      res.status(404).json({
-        error: "ADAPTER_NOT_FOUND",
-        message: `Adapter bulunamadı: '${uni.adapterKey}'`,
-      });
-      return;
-    }
-    if (typeof adapter.listPrograms !== "function") {
-      res.status(400).json({
-        error: "NOT_SUPPORTED",
-        message: `Adapter '${uni.adapterKey}' program listelemeyi desteklemiyor`,
-      });
-      return;
-    }
-
-    let session: Awaited<ReturnType<typeof adapter.login>> | null = null;
     try {
-      const creds = await resolvePortalCreds(key, uni.adapterKey);
-      setCredsOverride(adapter.key, { user: creds.user, password: creds.password });
-      session = await withTimeout(
-        adapter.login({ headless: true }),
-        PROGRAM_LOGIN_TIMEOUT_MS,
-        "Login zaman aşımına uğradı",
-      );
-      const options = await withTimeout(
-        adapter.listPrograms(session, level || undefined),
-        PROGRAM_LOGIN_TIMEOUT_MS,
-        "Program listesi zaman aşımına uğradı",
-      );
-
-      // Upsert cache (university_key, level) — refresh options + fetchedAt.
-      const [row] = await db
-        .insert(portalProgramCacheTable)
-        .values({ universityKey: key, level, options })
-        .onConflictDoUpdate({
-          target: [
-            portalProgramCacheTable.universityKey,
-            portalProgramCacheTable.level,
-          ],
-          set: { options, fetchedAt: new Date() },
-        })
-        .returning();
-
-      res.json({
-        options: row.options,
-        cached: false,
-        stale: false,
-        fetchedAt: row.fetchedAt,
+      const levelFingerprint = createHash("sha256").update(level).digest("hex").slice(0, 12);
+      const requestKey = `program:${uni.id}:${levelFingerprint}:${Math.floor(Date.now() / 60_000)}`;
+      const job = await enqueuePortalWorkerJob({
+        kind: "program_catalog_sync",
+        portalUniversityId: uni.id,
+        requestKey,
+        requestedBy: req.user!.id,
+        payload: { level },
       });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const safe = msg
-        .replace(/password[^\s]*/gi, "***")
-        .replace(/token[^\s]*/gi, "***");
-      res.status(502).json({ error: "PORTAL_ERROR", message: safe });
-    } finally {
-      clearCredsOverride(adapter.key);
-      session?.close().catch(() => {});
+      res.status(202).json({
+        options: cached?.options ?? [],
+        cached: Boolean(cached),
+        stale: true,
+        fetchedAt: cached?.fetchedAt ?? null,
+        refreshAccepted: true,
+        jobId: job.id,
+        statusUrl: job.statusUrl,
+        replay: job.replay,
+      });
+    } catch (error) {
+      if (error instanceof PortalWorkerJobIdempotencyConflictError) {
+        res.status(409).json({ error: "PORTAL_WORKER_JOB_IDEMPOTENCY_CONFLICT" });
+        return;
+      }
+      if (error instanceof PortalWorkerUnavailableError) {
+        res.status(503).json({ error: error.code });
+        return;
+      }
+      throw error;
     }
   },
 );
@@ -4208,6 +4284,7 @@ router.put(
     }
 
     await db.transaction(async (tx) => {
+      await resetAdapterExecutionStateTx(tx, portal.adapterKey);
       // Detach removed members (previously routed here, now omitted).
       const clearCondition =
         requested.length > 0
@@ -4476,6 +4553,7 @@ router.put(
 
     const requested = Array.from(new Set(catalogUniversityIds));
 
+    let conflictingPortalKeys: string[] = [];
     if (requested.length > 0) {
       // Validate every catalog id exists.
       const existing = await db
@@ -4532,9 +4610,22 @@ router.put(
         });
         return;
       }
+      conflictingPortalKeys = [...new Set(conflicts.map((conflict) => conflict.portalKey))];
     }
 
     await db.transaction(async (tx) => {
+      const affectedPortalKeys = [...new Set([key, ...conflictingPortalKeys])];
+      const affectedPartners = await tx
+        .select({ adapterKey: portalUniversitiesTable.adapterKey })
+        .from(portalUniversitiesTable)
+        .where(and(
+          inArray(portalUniversitiesTable.universityKey, affectedPortalKeys),
+          isNull(portalUniversitiesTable.deletedAt),
+        ));
+      for (const adapterKey of new Set(affectedPartners.map((partner) => partner.adapterKey))) {
+        await resetAdapterExecutionStateTx(tx, adapterKey);
+      }
+
       // Remove members of THIS account omitted from the new set.
       const removeCondition =
         requested.length > 0
@@ -4818,6 +4909,7 @@ async function resetAdapterExecutionStateTx(
       isActive: false,
       autoProcess: false,
       fanOutMode: "off",
+      verificationGeneration: sql`${portalUniversitiesTable.verificationGeneration} + 1`,
       updatedAt: new Date(),
     })
     .where(and(

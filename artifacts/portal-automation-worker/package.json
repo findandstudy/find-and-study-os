@@ -13,7 +13,6 @@
     "run-once": "NODE_OPTIONS=--max-old-space-size=512 tsx ./scripts/run-once.ts",
     "portal:dry": "tsx ./scripts/portal-dry.ts",
     "seed-dry-job": "tsx ./scripts/seed-dry-job.ts",
-    "complete-1959": "NODE_OPTIONS=--max-old-space-size=512 tsx ./scripts/complete-topkapi-1959.ts",
     "validate-profile": "tsx ./scripts/validate-profile.ts",
     "analyze-program-match": "tsx ./scripts/analyze-program-match.ts",
     "dump-program-options": "tsx ./scripts/dump-program-options.ts",

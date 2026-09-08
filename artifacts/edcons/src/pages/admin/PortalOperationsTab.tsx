@@ -8,7 +8,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { PortalEmptyState, PortalErrorState } from "@/components/admin/PortalTabStates";
 import {
   Activity,
@@ -23,6 +32,42 @@ import {
   Rows3,
   ShieldCheck,
 } from "lucide-react";
+
+type PortalLifecycleDecision = {
+  signal?: string;
+  disposition?: string;
+  targetStage?: string | null;
+  action?: string;
+  requiredArtifact?: string | null;
+  artifactVerified?: boolean;
+  reason?: string;
+};
+
+type PortalLifecycleProposal = {
+  id: number;
+  submissionId: number;
+  applicationId: number;
+  rawStatus: string;
+  currentStage: string;
+  decision: PortalLifecycleDecision;
+  artifacts: string[];
+  missingDocuments: Array<{ code?: string; label: string }>;
+  applicationReferenceSync: string | null;
+  status: string;
+  createdAt: string;
+};
+
+type ReviewChoice = {
+  proposal: PortalLifecycleProposal;
+  decision: "approve" | "reject";
+  requestKey: string;
+};
+
+function createRequestKey(): string {
+  const value = globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `portal-review:${value}`;
+}
 
 const number = (value: number | string | undefined): number =>
   Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -39,12 +84,23 @@ export default function PortalOperationsTab() {
   const [loadError, setLoadError] = useState(false);
   const [running, setRunning] = useState(false);
   const [resuming, setResuming] = useState<Set<number>>(new Set());
+  const [proposals, setProposals] = useState<PortalLifecycleProposal[]>([]);
+  const [reviewChoice, setReviewChoice] = useState<ReviewChoice | null>(null);
+  const [reviewReason, setReviewReason] = useState("");
+  const [reviewing, setReviewing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
     try {
-      setData(await customFetch<PortalOperationsResponse>("/api/portal-automation/operations"));
+      const [operations, proposalResponse] = await Promise.all([
+        customFetch<PortalOperationsResponse>("/api/portal-automation/operations"),
+        customFetch<{ items: PortalLifecycleProposal[] }>(
+          "/api/portal-lifecycle-proposals?status=pending_review&limit=50",
+        ),
+      ]);
+      setData(operations);
+      setProposals(proposalResponse.items);
     } catch {
       setLoadError(true);
     } finally {
@@ -66,6 +122,45 @@ export default function PortalOperationsTab() {
       toast({ title: t("portalAutomation.operations.runError"), variant: "destructive" });
     } finally {
       setRunning(false);
+    }
+  };
+
+  const openReview = (proposal: PortalLifecycleProposal, decision: "approve" | "reject") => {
+    setReviewReason("");
+    setReviewChoice({ proposal, decision, requestKey: createRequestKey() });
+  };
+
+  const submitReview = async () => {
+    if (!reviewChoice) return;
+    setReviewing(true);
+    try {
+      const result = await customFetch<{
+        executionQueued: boolean;
+        executionReason?: string;
+      }>(`/api/portal-lifecycle-proposals/${reviewChoice.proposal.id}/review`, {
+        method: "POST",
+        body: JSON.stringify({
+          decision: reviewChoice.decision,
+          reason: reviewReason.trim() || undefined,
+          requestKey: reviewChoice.requestKey,
+        }),
+      });
+      toast({
+        title: reviewChoice.decision === "approve"
+          ? t("portalAutomation.operations.reviewApproved")
+          : t("portalAutomation.operations.reviewRejected"),
+        description: reviewChoice.decision === "approve" && !result.executionQueued
+          ? t("portalAutomation.operations.reviewSavedNotQueued", {
+              reason: result.executionReason ?? "MANUAL_ACTION_REQUIRED",
+            })
+          : undefined,
+      });
+      setReviewChoice(null);
+      await load();
+    } catch {
+      toast({ title: t("portalAutomation.operations.reviewError"), variant: "destructive" });
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -255,6 +350,85 @@ export default function PortalOperationsTab() {
 
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="size-4 text-primary" />
+            {t("portalAutomation.operations.reviewQueueTitle")}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {t("portalAutomation.operations.reviewQueueDescription")}
+          </p>
+        </CardHeader>
+        <CardContent>
+          {proposals.length === 0 ? (
+            <PortalEmptyState icon={ShieldCheck} title={t("portalAutomation.operations.emptyReviews")} />
+          ) : (
+            <div className="space-y-3">
+              {proposals.map((proposal) => {
+                const decision = proposal.decision ?? {};
+                return (
+                  <div key={proposal.id} className="rounded-lg border p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">
+                            {t("portalAutomation.operations.applicationLabel")} #{proposal.applicationId}
+                          </span>
+                          <Badge variant="outline">{decision.disposition ?? decision.signal ?? "UNKNOWN"}</Badge>
+                          <Badge variant="secondary">{decision.action ?? "manual_review"}</Badge>
+                          {decision.requiredArtifact && (
+                            <Badge variant={decision.artifactVerified ? "secondary" : "destructive"}>
+                              {decision.requiredArtifact}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                          <div>
+                            <p className="text-xs text-muted-foreground">{t("portalAutomation.operations.portalStatus")}</p>
+                            <p className="font-medium">{proposal.rawStatus}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">{t("portalAutomation.operations.stageChange")}</p>
+                            <p className="font-medium">{proposal.currentStage} → {decision.targetStage ?? "—"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">{t("portalAutomation.operations.missingDocuments")}</p>
+                            <p className="font-medium">{proposal.missingDocuments?.length ?? 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">{t("portalAutomation.operations.createdAt")}</p>
+                            <p className="font-medium">{time(proposal.createdAt)}</p>
+                          </div>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{decision.reason ?? "—"}</p>
+                        {proposal.missingDocuments?.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {proposal.missingDocuments.map((document, index) => (
+                              <Badge key={`${document.code ?? document.label}-${index}`} variant="outline" className="gap-1">
+                                <FileWarning className="size-3" />{document.label}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openReview(proposal, "reject")}>
+                          {t("portalAutomation.operations.reject")}
+                        </Button>
+                        <Button size="sm" onClick={() => openReview(proposal, "approve")}>
+                          {t("portalAutomation.operations.approve")}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">{t("portalAutomation.operations.observationsTitle")}</CardTitle>
         </CardHeader>
         <CardContent>
@@ -285,6 +459,55 @@ export default function PortalOperationsTab() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={reviewChoice !== null}
+        onOpenChange={(open) => {
+          if (!open && !reviewing) setReviewChoice(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {reviewChoice?.decision === "approve"
+                ? t("portalAutomation.operations.approveTitle")
+                : t("portalAutomation.operations.rejectTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("portalAutomation.operations.reviewConfirmation", {
+                applicationId: String(reviewChoice?.proposal.applicationId ?? ""),
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={reviewReason}
+            onChange={(event) => setReviewReason(event.target.value)}
+            maxLength={1000}
+            rows={4}
+            placeholder={t("portalAutomation.operations.reviewReasonPlaceholder")}
+            disabled={reviewing}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("portalAutomation.operations.reviewSafetyNote")}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReviewChoice(null)} disabled={reviewing}>
+              {t("portalAutomation.operations.reviewCancel")}
+            </Button>
+            <Button
+              variant={reviewChoice?.decision === "reject" ? "destructive" : "default"}
+              onClick={() => void submitReview()}
+              disabled={reviewing}
+              className="gap-1.5"
+            >
+              {reviewing && <Loader2 className="size-4 animate-spin" />}
+              {reviewChoice?.decision === "approve"
+                ? t("portalAutomation.operations.approve")
+                : t("portalAutomation.operations.reject")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,10 +1,22 @@
 import { Router, type IRouter } from "express";
-import { db, universitiesTable, programsTable, applicationsTable, pipelineStagesTable, programDocumentRequirementsTable } from "@workspace/db";
-import { eq, ilike, sql, and, inArray, isNull, getTableColumns } from "drizzle-orm";
+import { db, pool, universitiesTable, programsTable, programTranslationsTable, applicationsTable, pipelineStagesTable, programDocumentRequirementsTable } from "@workspace/db";
+import { eq, ilike, sql, and, or, inArray, isNull, getTableColumns } from "drizzle-orm";
 import { requireAuth, requireRole, logAudit } from "../lib/auth";
 import { MANAGER_ROLES, STAFF_ROLES } from "../lib/roles";
 import { getCurrentSeason } from "../lib/season";
 import { sanitizeCourseFinderProgram } from "../lib/courseFinderVisibility";
+import {
+  PROGRAM_TARGET_LOCALES,
+  isProgramTargetLocale,
+  normalizeProgramLocale,
+  normalizeProgramSourceContent,
+  parseProgramTranslation,
+} from "../lib/programTranslationContract";
+import {
+  reconcileMissingProgramTranslations,
+  requeueAllFailedProgramTranslations,
+  requeueProgramTranslations,
+} from "../lib/programTranslationQueue";
 
 const router: IRouter = Router();
 
@@ -23,7 +35,7 @@ const CONTACT_FIELDS = ["contactPersonName", "contactPersonPhone", "contactPerso
 // list — exposing it would reveal internal user-id assignments publicly.
 const INTERNAL_FIELDS = ["assignedStaffIds"];
 const PROG_PATCH_FIELDS = [
-  "universityId", "name", "degree", "field", "language", "duration",
+  "universityId", "name", "description", "degree", "field", "language", "duration",
   "tuitionFee", "currency", "scholarship", "intakes", "requirements",
   "commissionRate", "applicationFee", "advancedFee", "depositFee",
   "serviceFeeAmount", "discountedFee", "languageFee", "feeType",
@@ -243,8 +255,49 @@ router.delete("/universities/:id", requireAuth, requireRole(...MANAGER_ROLES), a
 
 /* ─── PROGRAMS ───────────────────────────────────────────────── */
 
+type TranslationSummaryRow = {
+  program_id: number;
+  total: number;
+  published: number;
+  pending: number;
+  failed: number;
+  manual: number;
+};
+
+async function loadTranslationSummaries(programIds: number[]): Promise<Map<number, {
+  total: number;
+  published: number;
+  pending: number;
+  failed: number;
+  manual: number;
+  target: number;
+}>> {
+  if (programIds.length === 0) return new Map();
+  const result = await pool.query<TranslationSummaryRow>(`
+    SELECT program_id,
+           count(*)::int AS total,
+           count(*) FILTER (WHERE status = 'published')::int AS published,
+           count(*) FILTER (WHERE status IN ('queued','processing','retrying','stale_manual'))::int AS pending,
+           count(*) FILTER (WHERE status = 'failed')::int AS failed,
+           count(*) FILTER (WHERE is_manual)::int AS manual
+      FROM program_translations
+     WHERE program_id = ANY($1::int[])
+     GROUP BY program_id
+  `, [programIds]);
+  return new Map(result.rows.map((row) => [row.program_id, {
+    total: Number(row.total),
+    published: Number(row.published),
+    pending: Number(row.pending),
+    failed: Number(row.failed),
+    manual: Number(row.manual),
+    target: PROGRAM_TARGET_LOCALES.length,
+  }]));
+}
+
 router.get("/programs", async (req, res): Promise<void> => {
   const { universityId, language, search, name, degree, field, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const locale = normalizeProgramLocale(req.query.locale);
+  const localized = locale !== "en";
   const safeInt = (v: string, fallback: number) => /^\d+$/.test(v) ? parseInt(v, 10) : fallback;
   const pageNum = Math.max(1, safeInt(page, 1));
   const limitNum = Math.min(100, Math.max(1, safeInt(limit, 20)));
@@ -253,20 +306,40 @@ router.get("/programs", async (req, res): Promise<void> => {
   const conditions = [];
   if (universityId && /^\d+$/.test(universityId)) conditions.push(eq(programsTable.universityId, parseInt(universityId, 10)));
   if (language) conditions.push(ilike(programsTable.language, language));
-  if (search) conditions.push(ilike(programsTable.name, `%${search}%`));
-  if (name) conditions.push(ilike(programsTable.name, `%${name}%`));
+  if (search) conditions.push(localized
+    ? or(ilike(programsTable.name, `%${search}%`), ilike(programTranslationsTable.name, `%${search}%`))!
+    : ilike(programsTable.name, `%${search}%`));
+  if (name) conditions.push(localized
+    ? or(ilike(programsTable.name, `%${name}%`), ilike(programTranslationsTable.name, `%${name}%`))!
+    : ilike(programsTable.name, `%${name}%`));
   if (degree) conditions.push(ilike(programsTable.degree, degree));
   if (field) conditions.push(ilike(programsTable.field, field));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(programsTable).where(where);
+  const translationJoin = and(
+    eq(programTranslationsTable.programId, programsTable.id),
+    eq(programTranslationsTable.locale, locale),
+    eq(programTranslationsTable.status, "published"),
+  );
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` })
+    .from(programsTable)
+    .leftJoin(programTranslationsTable, translationJoin)
+    .where(where);
   const rows = await db
     .select({
       ...getTableColumns(programsTable),
+      name: sql<string>`coalesce(${programTranslationsTable.name}, ${programsTable.name})`,
+      description: sql<string | null>`coalesce(${programTranslationsTable.description}, ${programsTable.description})`,
+      field: sql<string | null>`coalesce(${programTranslationsTable.field}, ${programsTable.field})`,
+      duration: sql<string | null>`coalesce(${programTranslationsTable.duration}, ${programsTable.duration})`,
+      intakes: sql<string | null>`coalesce(${programTranslationsTable.intakes}, ${programsTable.intakes})`,
+      requirements: sql<string | null>`coalesce(${programTranslationsTable.requirements}, ${programsTable.requirements})`,
+      translatedLocale: programTranslationsTable.locale,
       universityName: universitiesTable.name,
     })
     .from(programsTable)
     .leftJoin(universitiesTable, eq(programsTable.universityId, universitiesTable.id))
+    .leftJoin(programTranslationsTable, translationJoin)
     .where(where)
     .limit(limitNum)
     .offset(offset)
@@ -284,7 +357,12 @@ router.get("/programs", async (req, res): Promise<void> => {
         serviceFee: false,
       }));
 
-  let data: any[] = visibleRows;
+  let data: any[] = visibleRows.map((row) => ({
+    ...row,
+    contentLocale: row.translatedLocale || "en",
+    fallbackUsed: localized && !row.translatedLocale,
+    translatedLocale: undefined,
+  }));
   if (rows.length > 0) {
     const ids = rows.map(r => r.id);
     const reqs = await db.select().from(programDocumentRequirementsTable)
@@ -296,7 +374,18 @@ router.get("/programs", async (req, res): Promise<void> => {
       arr.push({ documentType: r.documentType, mandatory: r.mandatory, sortOrder: r.sortOrder });
       grouped.set(r.programId, arr);
     }
-    data = visibleRows.map(r => ({ ...r, documentRequirements: grouped.get(r.id) || [] }));
+    data = data.map(r => ({ ...r, documentRequirements: grouped.get(r.id) || [] }));
+  }
+
+  if (req.user && rows.length > 0) {
+    const summaries = await loadTranslationSummaries(rows.map((row) => row.id));
+    data = data.map((row) => ({
+      ...row,
+      translationSummary: summaries.get(row.id) || {
+        total: 0, published: 0, pending: 0, failed: 0, manual: 0,
+        target: PROGRAM_TARGET_LOCALES.length,
+      },
+    }));
   }
 
   res.json({ data, meta: { total: Number(count), page: pageNum, limit: limitNum, totalPages: Math.ceil(Number(count) / limitNum) } });
@@ -304,7 +393,7 @@ router.get("/programs", async (req, res): Promise<void> => {
 
 router.post("/programs", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
   const {
-    universityId, name, degree, field, language, duration,
+    universityId, name, description, degree, field, language, duration,
     tuitionFee, currency = "USD", scholarship, intakes, requirements, commissionRate,
     applicationFee, advancedFee, depositFee, serviceFeeAmount, discountedFee, languageFee,
     feeType, minGpa, minLanguageScore, quota, isActive = true,
@@ -318,7 +407,7 @@ router.post("/programs", requireAuth, requireRole(...MANAGER_ROLES), async (req,
     quotaVal = qv;
   }
   const [prog] = await db.insert(programsTable).values({
-    universityId: Number(universityId), name, degree: degree || null, field: field || null,
+    universityId: Number(universityId), name, description: description || null, degree: degree || null, field: field || null,
     language: language || null, duration: duration || null,
     tuitionFee: n(tuitionFee), currency,
     scholarship: n(scholarship),
@@ -413,7 +502,23 @@ router.patch("/programs/bulk-status", requireAuth, requireRole(...MANAGER_ROLES)
 router.get("/programs/:id", async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [prog] = await db.select().from(programsTable).where(eq(programsTable.id, id));
+  const locale = normalizeProgramLocale(req.query.locale);
+  const [prog] = await db.select({
+    ...getTableColumns(programsTable),
+    name: sql<string>`coalesce(${programTranslationsTable.name}, ${programsTable.name})`,
+    description: sql<string | null>`coalesce(${programTranslationsTable.description}, ${programsTable.description})`,
+    field: sql<string | null>`coalesce(${programTranslationsTable.field}, ${programsTable.field})`,
+    duration: sql<string | null>`coalesce(${programTranslationsTable.duration}, ${programsTable.duration})`,
+    intakes: sql<string | null>`coalesce(${programTranslationsTable.intakes}, ${programsTable.intakes})`,
+    requirements: sql<string | null>`coalesce(${programTranslationsTable.requirements}, ${programsTable.requirements})`,
+    translatedLocale: programTranslationsTable.locale,
+  }).from(programsTable)
+    .leftJoin(programTranslationsTable, and(
+      eq(programTranslationsTable.programId, programsTable.id),
+      eq(programTranslationsTable.locale, locale),
+      eq(programTranslationsTable.status, "published"),
+    ))
+    .where(eq(programsTable.id, id));
   if (!prog) { res.status(404).json({ error: "Program not found" }); return; }
   const reqs = await db.select().from(programDocumentRequirementsTable)
     .where(eq(programDocumentRequirementsTable.programId, id))
@@ -425,7 +530,114 @@ router.get("/programs/:id", async (req, res): Promise<void> => {
         internalFees: false,
         serviceFee: false,
       });
-  res.json({ ...visibleProgram, documentRequirements: reqs.map(r => ({ documentType: r.documentType, mandatory: r.mandatory, sortOrder: r.sortOrder })) });
+  res.json({
+    ...visibleProgram,
+    contentLocale: prog.translatedLocale || "en",
+    fallbackUsed: locale !== "en" && !prog.translatedLocale,
+    translatedLocale: undefined,
+    documentRequirements: reqs.map(r => ({ documentType: r.documentType, mandatory: r.mandatory, sortOrder: r.sortOrder })),
+  });
+});
+
+router.get("/programs/:id/translations", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid id" }); return; }
+  const rows = await db.select().from(programTranslationsTable)
+    .where(eq(programTranslationsTable.programId, id))
+    .orderBy(programTranslationsTable.locale);
+  res.json({
+    sourceLocale: "en",
+    targetLocales: PROGRAM_TARGET_LOCALES,
+    data: rows.map(({ workerId: _workerId, ...row }) => row),
+  });
+});
+
+router.post("/programs/:id/translations/retry", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid id" }); return; }
+  const requested = Array.isArray(req.body?.locales) ? req.body.locales : undefined;
+  if (requested && !requested.every(isProgramTargetLocale)) {
+    res.status(400).json({ error: "Unsupported locale" });
+    return;
+  }
+  const queued = await requeueProgramTranslations(id, requested);
+  await logAudit(req.user!.id, "program_translations.requeue", "program", id, { queued, locales: requested || "all" }, req.ip);
+  res.json({ queued });
+});
+
+router.post("/programs/translations/retry-failed", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
+  const queued = await requeueAllFailedProgramTranslations();
+  await logAudit(req.user!.id, "program_translations.requeue_failed", "program", undefined, { queued }, req.ip);
+  res.json({ queued });
+});
+
+router.post("/programs/translations/reconcile", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
+  const afterProgramId = Number(req.body?.afterProgramId ?? 0);
+  const limit = Number(req.body?.limit ?? 100);
+  if (!Number.isSafeInteger(afterProgramId) || afterProgramId < 0) {
+    res.status(400).json({ error: "afterProgramId must be a non-negative integer" });
+    return;
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+    res.status(400).json({ error: "limit must be an integer between 1 and 200" });
+    return;
+  }
+  const result = await reconcileMissingProgramTranslations(afterProgramId, limit);
+  await logAudit(req.user!.id, "program_translations.reconcile", "program", undefined, {
+    afterProgramId,
+    limit,
+    ...result,
+  }, req.ip);
+  res.json(result);
+});
+
+router.put("/programs/:id/translations/:locale", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  const locale = String(req.params.locale || "").toLowerCase();
+  if (!Number.isSafeInteger(id) || id < 1) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!isProgramTargetLocale(locale)) { res.status(400).json({ error: "Unsupported locale" }); return; }
+  const [program] = await db.select().from(programsTable).where(eq(programsTable.id, id));
+  if (!program) { res.status(404).json({ error: "Program not found" }); return; }
+  try {
+    const source = normalizeProgramSourceContent(program as unknown as Record<string, unknown>);
+    const content = parseProgramTranslation(JSON.stringify({
+      name: req.body?.name,
+      description: req.body?.description,
+      field: req.body?.field,
+      duration: req.body?.duration,
+      intakes: req.body?.intakes,
+      requirements: req.body?.requirements,
+    }), source);
+    const result = await pool.query(`
+      INSERT INTO program_translations (
+        program_id, locale, name, description, field, duration, intakes,
+        requirements, source_hash, status, is_manual, attempts, error_code,
+        translated_at, next_attempt_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        fas_program_content_source_hash($9,$10,$11,$12,$13,$14),
+        'published', true, 0, NULL, now(), now(), now()
+      )
+      ON CONFLICT (program_id, locale) DO UPDATE
+      SET name=EXCLUDED.name, description=EXCLUDED.description, field=EXCLUDED.field,
+          duration=EXCLUDED.duration, intakes=EXCLUDED.intakes,
+          requirements=EXCLUDED.requirements, source_hash=EXCLUDED.source_hash,
+          status='published', is_manual=true, attempts=0, error_code=NULL,
+          provider='manual', model=NULL, translated_at=now(), next_attempt_at=now(),
+          leased_at=NULL, lease_expires_at=NULL, worker_id=NULL, updated_at=now()
+      WHERE program_translations.status <> 'processing'
+      RETURNING program_id
+    `, [
+      id, locale, content.name, content.description, content.field, content.duration,
+      content.intakes, content.requirements, source.name, source.description,
+      source.field, source.duration, source.intakes, source.requirements,
+    ]);
+    if (result.rowCount !== 1) { res.status(409).json({ error: "Translation is currently processing" }); return; }
+    await logAudit(req.user!.id, "program_translation.manual_publish", "program", id, { locale }, req.ip);
+    res.json({ programId: id, locale, status: "published", isManual: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid translation" });
+  }
 });
 
 router.patch("/programs/:id", requireAuth, requireRole(...MANAGER_ROLES), async (req, res): Promise<void> => {

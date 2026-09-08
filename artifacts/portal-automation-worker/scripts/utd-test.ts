@@ -1,3 +1,6 @@
+process.env.PORTAL_DRYRUN = "1";
+process.env.SF_DRYRUN = "1";
+
 import { adapterByKey } from "@workspace/portal-adapters";
 import { resolvePortalCreds } from "../src/credResolver.js";
 (async () => {

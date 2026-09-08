@@ -6,8 +6,9 @@
  *  TPA1: enqueue dry — POST /applications/:appId/portal-submissions → 201
  *  TPA2: real mode without confirm → 422 CONFIRM_REQUIRED
  *  TPA3: RBAC — agent role cannot enqueue → 403
- *  TPA4: credentials PUT → { ok: true } (plaintext NEVER returned)
- *  TPA5: GET /university-portals after credential set → hasCredentials: true
+ *  TPA4: credentials PUT → { ok: true } and invalidates verification
+ *  TPA5: GET /university-portals hides an invalidated partner; current
+ *        version-bound verification makes it selectable again
  *        response body must NOT contain "password" or "username" plaintext keys
  *  TPA6: DELETE /university-portals/:key/credentials → { ok: true }
  *  TPA7: GET /university-portals after delete → hasCredentials: false
@@ -28,9 +29,17 @@ import {
   portalUniversitiesTable,
   portalSubmissionsTable,
   portalCredentialsTable,
+  usersTable,
 } from "@workspace/db";
 import portalAutomationRouter from "../src/routes/portalAutomation.js";
 import portalMgmtRouter from "../src/routes/portalMgmt.js";
+import {
+  assertDisposablePortalVerificationTarget,
+  seedCurrentPortalPartnerReceipts,
+  seedVerifiedPortalPartnerFixture,
+} from "./portalVerificationFixture.js";
+
+assertDisposablePortalVerificationTarget();
 
 // ---------------------------------------------------------------------------
 // Cleanup registry
@@ -40,6 +49,7 @@ const cleanupStudentIds:    number[] = [];
 const cleanupAppIds:        number[] = [];
 const cleanupUniIds:        number[] = [];
 const cleanupCredKeys:      string[] = [];
+let cleanupUserId: number | null = null;
 
 const RUN = `tpa_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
 
@@ -72,6 +82,11 @@ after(async () => {
     await db.update(studentsTable)
       .set({ deletedAt: new Date() })
       .where(and(eq(studentsTable.id, id), isNull(studentsTable.deletedAt)))
+      .catch(() => {});
+  }
+  if (cleanupUserId !== null) {
+    await db.delete(usersTable)
+      .where(eq(usersTable.id, cleanupUserId))
       .catch(() => {});
   }
   setImmediate(() => process.exit(process.exitCode ?? 0));
@@ -169,7 +184,7 @@ async function createTestPortalUniversity(): Promise<{ id: number; universityKey
     isActive: true,
   }).returning({ id: portalUniversitiesTable.id, universityKey: portalUniversitiesTable.universityKey, adapterKey: portalUniversitiesTable.adapterKey });
   cleanupUniIds.push(uni.id);
-  cleanupCredKeys.push(key);
+  cleanupCredKeys.push(adapterKey);
   return uni;
 }
 
@@ -178,19 +193,39 @@ async function createTestPortalUniversity(): Promise<{ id: number; universityKey
 // ---------------------------------------------------------------------------
 let srv: http.Server;
 let testAppId: number;
+let portalUniId: number;
 let portalUniKey: string;
 let portalAdapterKey: string;
 
 test("setup", async () => {
+  const [user] = await db.insert(usersTable).values({
+    email: `${RUN}.admin@example.test`,
+    firstName: "Portal",
+    lastName: "API Admin",
+    role: "super_admin",
+    isActive: true,
+    emailVerified: true,
+  }).returning({ id: usersTable.id });
+  cleanupUserId = user.id;
+  currentUser.id = user.id;
+
   srv = await listen(buildApp());
   const fixture = await createTestStudentAndApp();
   testAppId = fixture.appId;
 
   const portalUni = await createTestPortalUniversity();
+  portalUniId = portalUni.id;
   portalUniKey = portalUni.universityKey;
   portalAdapterKey = portalUni.adapterKey;
 
-  currentUser = { id: 1, role: "super_admin", isActive: true, emailVerified: true };
+  await seedVerifiedPortalPartnerFixture({
+    portalUniversityId: portalUniId,
+    universityKey: portalUniKey,
+    universityName: "TPA Portal University",
+    adapterKey: portalAdapterKey,
+  });
+
+  currentUser = { id: user.id, role: "super_admin", isActive: true, emailVerified: true };
 });
 
 // TPA1 — enqueue dry → 201
@@ -238,8 +273,8 @@ test("TPA3: agent role cannot enqueue → 403", async () => {
 });
 
 // TPA4 — credentials PUT → { ok: true }
-test("TPA4: PUT /university-portals/:key/credentials → { ok: true } (no plaintext)", async () => {
-  const r = await req(srv, "PUT", `/api/university-portals/${portalUniKey}/credentials`, {
+test("TPA4: credential mutation succeeds without plaintext and invalidates execution state", async () => {
+  const r = await req(srv, "PUT", `/api/portal-universities/${portalUniKey}/credentials`, {
     username: "portal_user",
     password: "portal_secret_pw",
   });
@@ -251,18 +286,42 @@ test("TPA4: PUT /university-portals/:key/credentials → { ok: true } (no plaint
   const raw = JSON.stringify(body);
   assert.ok(!raw.includes("portal_secret_pw"), "Response must not leak password");
   assert.ok(!raw.includes("portal_user"), "Response must not leak username");
+
+  const afterMutation = await req(srv, "GET", "/api/university-portals");
+  assert.equal(afterMutation.status, 200);
+  const hidden = (afterMutation.body as Array<{ key: string }>).find((p) => p.key === portalUniKey);
+  assert.equal(hidden, undefined, "Credential changes must hide the partner until it is re-verified");
 });
 
-// TPA5 — GET /university-portals → hasCredentials: true after PUT
-test("TPA5: GET /university-portals → hasCredentials=true after credential set", async () => {
+// TPA5 — current verification restores the canonical selectable portal.
+test("TPA5: current verification restores a credential-ready portal", async () => {
+  await seedCurrentPortalPartnerReceipts({
+    portalUniversityId: portalUniId,
+    universityKey: portalUniKey,
+    universityName: "TPA Portal University",
+    adapterKey: portalAdapterKey,
+  });
+  await db.update(portalUniversitiesTable)
+    .set({ isActive: true, updatedAt: new Date() })
+    .where(eq(portalUniversitiesTable.id, portalUniId));
+
   const r = await req(srv, "GET", "/api/university-portals");
   assert.equal(r.status, 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.body)}`);
-  const portals = r.body as Array<{ key: string; hasCredentials: boolean }>;
+  const portals = r.body as Array<{
+    key: string;
+    adapterKey: string;
+    hasCredentials: boolean;
+    dryRunReady: boolean;
+    realRunReady: boolean;
+  }>;
   assert.ok(Array.isArray(portals), "Should return array");
 
-  const target = portals.find((p) => p.key === portalAdapterKey);
-  assert.ok(target, `Portal with key "${portalAdapterKey}" not found in list`);
+  const target = portals.find((p) => p.key === portalUniKey);
+  assert.ok(target, `Portal with canonical key "${portalUniKey}" not found in list`);
+  assert.equal(target!.adapterKey, portalAdapterKey);
   assert.equal(target!.hasCredentials, true, "hasCredentials should be true after PUT");
+  assert.equal(target!.dryRunReady, true);
+  assert.equal(target!.realRunReady, true);
 
   // No plaintext secrets in any portal entry
   const raw = JSON.stringify(portals);
@@ -273,8 +332,8 @@ test("TPA5: GET /university-portals → hasCredentials=true after credential set
 });
 
 // TPA6 — DELETE credentials → { ok: true }
-test("TPA6: DELETE /university-portals/:key/credentials → { ok: true }", async () => {
-  const r = await req(srv, "DELETE", `/api/university-portals/${portalUniKey}/credentials`);
+test("TPA6: DELETE /portal-universities/:key/credentials → { ok: true }", async () => {
+  const r = await req(srv, "DELETE", `/api/portal-universities/${portalUniKey}/credentials`);
   assert.equal(r.status, 200, `Expected 200, got ${r.status}: ${JSON.stringify(r.body)}`);
   const body = r.body as Record<string, unknown>;
   assert.equal(body.ok, true);
@@ -287,8 +346,8 @@ test("TPA7: GET /university-portals → portal absent from list after credential
   const r = await req(srv, "GET", "/api/university-portals");
   assert.equal(r.status, 200);
   const portals = r.body as Array<{ key: string; hasCredentials: boolean }>;
-  const target = portals.find((p) => p.key === portalAdapterKey);
-  assert.equal(target, undefined, `Portal "${portalAdapterKey}" should not appear in list after DELETE (no credentials)`);
+  const target = portals.find((p) => p.key === portalUniKey);
+  assert.equal(target, undefined, `Portal "${portalUniKey}" should not appear in list after DELETE (no credentials)`);
 });
 
 test("teardown", async () => {

@@ -4,7 +4,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useI18n } from "@/hooks/use-i18n";
 import { useToast } from "@/hooks/use-toast";
-import { applicationCreationErrorMessage } from "@/lib/applicationCreationError";
+import { applicationCreationErrorToast } from "@/components/ApplicationCreationErrorToast";
 import type { InboxConversationDetailResponse } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -462,12 +462,10 @@ export function InboxApplicationTab({
       onProgramSelected?.(null);
       onUpdated?.();
     } catch (err: any) {
-      const msg = applicationCreationErrorMessage(err, "");
-      toast({
-        title: t("inbox.applicationTab.addFailed"),
-        description: msg || undefined,
-        variant: "destructive",
-      });
+      toast(applicationCreationErrorToast(
+        err,
+        t("inbox.applicationTab.addFailed"),
+      ));
     } finally {
       setSubmitting(false);
     }

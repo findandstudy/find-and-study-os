@@ -14,6 +14,7 @@ import { FileText, Plus, Edit, Trash2, Loader2, ChevronDown, ChevronUp, AlertTri
 import { ContractRichTextEditor } from "@/components/contracts/ContractRichTextEditor";
 import { ContractFieldBuilder, type ContractIntakeField } from "@/components/contracts/ContractFieldBuilder";
 import { ContractBrandProfilesDialog, type ContractBrandProfile } from "@/components/contracts/ContractBrandProfilesDialog";
+import { SYSTEM_LANGUAGE_OPTIONS } from "@/lib/i18n";
 
 type Template = {
   id: number;
@@ -33,13 +34,7 @@ type Template = {
 
 type IntakeField = ContractIntakeField;
 
-const LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "tr", label: "Türkçe" },
-  { code: "ar", label: "العربية" },
-  { code: "fr", label: "Français" },
-  { code: "ru", label: "Русский" },
-];
+const LANGUAGES = SYSTEM_LANGUAGE_OPTIONS;
 
 const STARTER_BODY = `<h1>Service Agreement</h1>
 <p>This Service Agreement is made on {{contract.date}} between Find And Study OS and {{agent.businessName}}.</p>

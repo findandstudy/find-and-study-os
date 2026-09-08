@@ -1,11 +1,11 @@
 import { Component, type ReactNode } from "react";
 import { GraduationCap, RefreshCw, AlertTriangle, ChevronDown, LogOut } from "lucide-react";
-import { getTranslation, type Language } from "@/lib/i18n/index";
+import { getTranslation, RTL_LANGUAGES, SUPPORTED_LANGUAGES, type Language } from "@/lib/i18n/index";
 import { performLogout } from "@/lib/logout";
 
-const SUPPORTED_LANGS = new Set(["en", "tr", "ar", "fr", "ru", "fa", "zh", "hi", "es", "id"]);
+const SUPPORTED_LANGS = new Set<string>(SUPPORTED_LANGUAGES);
 
-const RTL_LANGS = new Set(["ar", "fa"]);
+const RTL_LANGS = new Set<string>(RTL_LANGUAGES);
 
 // A single auto-reload attempt is allowed per pathname per 5-minute window.
 // This breaks any infinite loop while still recovering from one-shot

@@ -645,6 +645,125 @@
       "when": 1789027200000,
       "tag": "0091_portal_application_artifact_intake",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1789113600000,
+      "tag": "0092_portal_partner_verification_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1789200000000,
+      "tag": "0093_portal_program_fallback_active_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1789286400000,
+      "tag": "0094_portal_worker_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1789372800000,
+      "tag": "0095_portal_submission_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1789459200000,
+      "tag": "0096_portal_lifecycle_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1789545600000,
+      "tag": "0097_social_operations_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1789632000000,
+      "tag": "0098_operations_work_read_model_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1789718400000,
+      "tag": "0099_social_publication_orchestration",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1789804800000,
+      "tag": "0100_social_provider_observability",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1789891200000,
+      "tag": "0101_social_worker_heartbeats",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1789977600000,
+      "tag": "0102_social_media_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1790064000000,
+      "tag": "0103_social_attribution_read_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1790150400000,
+      "tag": "0104_social_creative_orchestration",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1790236800000,
+      "tag": "0105_social_ad_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1790323200000,
+      "tag": "0106_activity_read_path_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1790409600000,
+      "tag": "0107_program_content_translations",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1790496000000,
+      "tag": "0108_expand_system_and_program_locales",
+      "breakpoints": true
     }
   ]
 }

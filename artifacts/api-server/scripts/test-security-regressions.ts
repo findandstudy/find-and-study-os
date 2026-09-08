@@ -16,6 +16,10 @@ const indexSource = readFileSync(
   new URL("../src/index.ts", import.meta.url),
   "utf8",
 );
+const routesIndexSource = readFileSync(
+  new URL("../src/routes/index.ts", import.meta.url),
+  "utf8",
+);
 const lifecycleSource = readFileSync(
   new URL("../src/lib/portalLifecycleContract.ts", import.meta.url),
   "utf8",
@@ -174,6 +178,26 @@ const agentApplicationsSource = readFileSync(
 );
 const activityRouteSource = readFileSync(
   new URL("../src/routes/activity.ts", import.meta.url),
+  "utf8",
+);
+const socialOperationsRouteSource = readFileSync(
+  new URL("../src/routes/socialOperations.ts", import.meta.url),
+  "utf8",
+);
+const socialAdvertisingRouteSource = readFileSync(
+  new URL("../src/routes/socialAdvertising.ts", import.meta.url),
+  "utf8",
+);
+const socialAdvertisingQueueSource = readFileSync(
+  new URL("../src/lib/socialAdvertisingQueue.ts", import.meta.url),
+  "utf8",
+);
+const institutionAdmissionsRouteSource = readFileSync(
+  new URL("../src/routes/institutionAdmissions.ts", import.meta.url),
+  "utf8",
+);
+const testEnvRunnerSource = readFileSync(
+  new URL("./run-with-env.cjs", import.meta.url),
   "utf8",
 );
 
@@ -549,6 +573,72 @@ test("activity PDF rendering blocks network access and returns generic errors", 
   assert.match(activityRouteSource, /chromiumPathResolved/);
 });
 
+test("activity telemetry is owner-bound, input-bounded and coordinator-managed", () => {
+  assert.match(
+    activityRouteSource,
+    /validate\(\{ body: heartbeatBodySchema \}\)/,
+  );
+  assert.match(
+    activityRouteSource,
+    /validate\(\{ body: pageVisitBodySchema \}\)/,
+  );
+  assert.match(activityRouteSource, /eq\(userSessionsTable\.userId, userId\)/);
+  assert.match(
+    activityRouteSource,
+    /eq\(userPageVisitsTable\.userId, userId\)/,
+  );
+  assert.match(activityRouteSource, /wallClockSeconds/);
+  assert.match(activityRouteSource, /MAX_TRACKED_SESSION_SECONDS/);
+  assert.match(activityRouteSource, /isValidActivityReportRange/);
+  assert.match(
+    activityRouteSource,
+    /export function startActivityStaleSessionCleanup/,
+  );
+  assert.match(activityRouteSource, /\.limit\(500\)/);
+  assert.doesNotMatch(activityRouteSource, /^setInterval\(/m);
+});
+
+test("social advertising revalidates target identity and hides infrastructure failures", () => {
+  assert.match(
+    socialAdvertisingQueueSource,
+    /SOCIAL_AD_PROVIDER_CAMPAIGN_MISMATCH/,
+  );
+  assert.match(socialAdvertisingQueueSource, /integration_enabled !== true/);
+  assert.match(socialAdvertisingQueueSource, /integration_category/);
+  assert.match(
+    socialAdvertisingRouteSource,
+    /status === 500 \? "SOCIAL_AD_FAILED" : code/,
+  );
+  assert.match(
+    socialOperationsRouteSource,
+    /status === 500 \? "SOCIAL_OPERATIONS_FAILED" : code/,
+  );
+  assert.match(socialAdvertisingRouteSource, /allowSocialAdMutation/);
+});
+
+test("institution admissions hides unexpected infrastructure failures", () => {
+  assert.match(
+    institutionAdmissionsRouteSource,
+    /\^institution_\[a-z0-9_\]\{2,96\}\$/,
+  );
+  assert.match(
+    institutionAdmissionsRouteSource,
+    /status === 500 \? "institution_request_failed" : code/,
+  );
+  assert.doesNotMatch(
+    institutionAdmissionsRouteSource,
+    /console\.error\("\[institution-admissions\]", error\)/,
+  );
+});
+
+test("cross-platform test environment runner has no shell or arbitrary command surface", () => {
+  assert.match(testEnvRunnerSource, /requested === "node"/);
+  assert.match(testEnvRunnerSource, /requested === "tsx"/);
+  assert.match(testEnvRunnerSource, /throw new Error\("unsupported_command"\)/);
+  assert.match(testEnvRunnerSource, /shell: false/);
+  assert.match(testEnvRunnerSource, /\^\[A-Z\]\[A-Z0-9_\]\*\$/);
+});
+
 test("public embed output sanitizes URLs and escapes visitor-controlled attributes", () => {
   assert.match(embedRouteSource, /universityLogoUrl: publicUniversityLogoPath\(row\.universityId, row\.universityLogoUrl\)/);
   assert.match(embedRouteSource, /return `\/api\/universities\/\$\{id\}\/logo`/);
@@ -558,6 +648,11 @@ test("public embed output sanitizes URLs and escapes visitor-controlled attribut
 });
 
 test("sensitive settings, AI work, sessions, assets and webhooks fail closed", () => {
+  assert.match(routesIndexSource, /code: "AGENT_ONBOARDING_UNAVAILABLE"/);
+  assert.doesNotMatch(
+    routesIndexSource,
+    /catch \(err\) \{\s*console\.error\("\[agent-onboarding-gate\]", err\);\s*next\(\);/,
+  );
   assert.match(settingsRouteSource, /router\.get\("\/settings\/client", requireAuth/);
   assert.match(settingsRouteSource, /router\.get\("\/settings", requireAuth, requireRole\(\.\.\.MANAGER_ROLES\)/);
   assert.match(settingsRouteSource, /router\.patch\("\/settings", requireAuth, requireRole\("super_admin"\)/);

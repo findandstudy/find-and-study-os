@@ -11,11 +11,6 @@ interface OfferExpiryCopy {
   body: (subject: string, stage: string, date: string, days: number) => string;
 }
 
-const DATE_LOCALES: Record<string, string> = {
-  en: "en-US", tr: "tr-TR", ar: "ar-SA", fa: "fa-IR", fr: "fr-FR",
-  es: "es-ES", ru: "ru-RU", zh: "zh-CN", hi: "hi-IN", id: "id-ID",
-};
-
 const COPY: Record<string, OfferExpiryCopy> = {
   en: {
     offerLetter: "Offer Letter",
@@ -67,6 +62,41 @@ const COPY: Record<string, OfferExpiryCopy> = {
     title: (stage, days) => `${stage} akan kedaluwarsa dalam ${days} hari`,
     body: (subject, stage, date, days) => `${subject}: dokumen ${stage} berlaku hingga ${date} (${days} hari tersisa).`,
   },
+  bn: {
+    offerLetter: "ভর্তি পত্র",
+    title: (stage, days) => `${stage}-এর মেয়াদ ${days} দিনের মধ্যে শেষ হবে`,
+    body: (subject, stage, date, days) => `${subject}: ${stage} নথিটি ${date} পর্যন্ত বৈধ (${days} দিন বাকি)।`,
+  },
+  pt: {
+    offerLetter: "Carta de admissão",
+    title: (stage, days) => `${stage} expira em ${days} dia${days === 1 ? "" : "s"}`,
+    body: (subject, stage, date, days) => `${subject}: o documento ${stage} é válido até ${date} (${days} dia${days === 1 ? "" : "s"} restante${days === 1 ? "" : "s"}).`,
+  },
+  ne: {
+    offerLetter: "भर्ना पत्र",
+    title: (stage, days) => `${stage} को म्याद ${days} दिनमा समाप्त हुन्छ`,
+    body: (subject, stage, date, days) => `${subject}: ${stage} कागजात ${date} सम्म मान्य छ (${days} दिन बाँकी)।`,
+  },
+  vi: {
+    offerLetter: "Thư nhập học",
+    title: (stage, days) => `${stage} sẽ hết hạn sau ${days} ngày`,
+    body: (subject, stage, date, days) => `${subject}: tài liệu ${stage} có hiệu lực đến ${date} (còn ${days} ngày).`,
+  },
+  ko: {
+    offerLetter: "입학 허가서",
+    title: (stage, days) => `${stage}의 유효 기간이 ${days}일 후 만료됩니다`,
+    body: (subject, stage, date, days) => `${subject}: ${stage} 문서는 ${date}까지 유효합니다(${days}일 남음).`,
+  },
+  uk: {
+    offerLetter: "Лист про зарахування",
+    title: (stage, days) => `Термін дії «${stage}» закінчується через ${days} дн.`,
+    body: (subject, stage, date, days) => `${subject}: документ «${stage}» дійсний до ${date} (залишилося ${days} дн.).`,
+  },
+  it: {
+    offerLetter: "Lettera di ammissione",
+    title: (stage, days) => `${stage} scade tra ${days} giorn${days === 1 ? "o" : "i"}`,
+    body: (subject, stage, date, days) => `${subject}: il documento ${stage} è valido fino al ${date} (${days} giorn${days === 1 ? "o" : "i"} rimanent${days === 1 ? "e" : "i"}).`,
+  },
 };
 
 function asText(value: unknown): string {
@@ -76,7 +106,7 @@ function asText(value: unknown): string {
 function formatLocalizedDate(value: unknown, lang: string): string {
   const date = new Date(asText(value));
   if (Number.isNaN(date.getTime())) return asText(value);
-  return new Intl.DateTimeFormat(DATE_LOCALES[lang] || DATE_LOCALES.en, {
+  return new Intl.DateTimeFormat(getLocale(isValidLanguage(lang) ? lang : "en"), {
     day: "2-digit",
     month: "long",
     year: "numeric",
@@ -119,3 +149,4 @@ export function localizeNotification(
     body: copy.body(subject, stage, date, days),
   };
 }
+import { getLocale, isValidLanguage } from "@/lib/i18n";

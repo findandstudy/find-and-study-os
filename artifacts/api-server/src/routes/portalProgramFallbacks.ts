@@ -13,7 +13,7 @@
  */
 
 import { Router, type IRouter } from "express";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   db,
@@ -25,6 +25,32 @@ import { ADMIN_ROLES } from "../lib/roles";
 import { getValidated, validate } from "../middlewares/validate";
 
 const router: IRouter = Router();
+
+class DuplicatePortalProgramFallbackError extends Error {
+  constructor() {
+    super("An active fallback rule already exists for this portal programme");
+    this.name = "DuplicatePortalProgramFallbackError";
+  }
+}
+
+function isFallbackUniqueViolation(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth += 1) {
+    const candidate = current as {
+      code?: unknown;
+      constraint?: unknown;
+      cause?: unknown;
+    };
+    if (
+      candidate.code === "23505" &&
+      candidate.constraint === "portal_prog_fallback_key_source_uniq"
+    ) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+  return false;
+}
 
 const idParamsSchema = z.object({ id: z.coerce.number().int().positive() });
 type IdSchemas = { params: typeof idParamsSchema };
@@ -126,37 +152,62 @@ router.post(
     const body = getValidated<CreateSchemas>(req).body;
     const user = req.user!;
 
-    // Uniqueness: one active rule per (universityKey, sourceProgramId).
-    const [existing] = await db
-      .select({ id: portalProgramFallbacksTable.id })
-      .from(portalProgramFallbacksTable)
-      .where(
-        and(
-          eq(portalProgramFallbacksTable.universityKey, body.universityKey),
-          eq(portalProgramFallbacksTable.sourceProgramId, body.sourceProgramId),
-          isNull(portalProgramFallbacksTable.deletedAt),
-        ),
-      )
-      .limit(1);
+    let row: FallbackRow;
+    try {
+      row = await db.transaction(async (tx) => {
+        // Serialize same-key creates before the active-row check. The partial
+        // unique index remains the database-level final guard for writers that
+        // do not use this route.
+        const businessKey = `portal-program-fallback:${body.universityKey}:${body.sourceProgramId}`;
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${businessKey}, 0))`,
+        );
 
-    if (existing) {
-      res.status(409).json({
-        error: "DUPLICATE_SOURCE",
-        message: `A fallback rule for source program ${body.sourceProgramId} already exists for '${body.universityKey}'`,
+        const [existing] = await tx
+          .select({ id: portalProgramFallbacksTable.id })
+          .from(portalProgramFallbacksTable)
+          .where(
+            and(
+              eq(portalProgramFallbacksTable.universityKey, body.universityKey),
+              eq(portalProgramFallbacksTable.sourceProgramId, body.sourceProgramId),
+              isNull(portalProgramFallbacksTable.deletedAt),
+            ),
+          )
+          .limit(1);
+
+        if (existing) {
+          throw new DuplicatePortalProgramFallbackError();
+        }
+
+        const [created] = await tx
+          .insert(portalProgramFallbacksTable)
+          .values({
+            universityKey: body.universityKey,
+            sourceProgramId: body.sourceProgramId,
+            fallbackProgramIds: body.fallbackProgramIds,
+            autoSubmit: body.autoSubmit ?? true,
+            enabled: body.enabled ?? true,
+          })
+          .returning();
+
+        if (!created) {
+          throw new Error("Portal program fallback insert returned no row");
+        }
+        return created;
       });
-      return;
+    } catch (error) {
+      if (
+        error instanceof DuplicatePortalProgramFallbackError ||
+        isFallbackUniqueViolation(error)
+      ) {
+        res.status(409).json({
+          error: "DUPLICATE_SOURCE",
+          message: `A fallback rule for source program ${body.sourceProgramId} already exists for '${body.universityKey}'`,
+        });
+        return;
+      }
+      throw error;
     }
-
-    const [row] = await db
-      .insert(portalProgramFallbacksTable)
-      .values({
-        universityKey: body.universityKey,
-        sourceProgramId: body.sourceProgramId,
-        fallbackProgramIds: body.fallbackProgramIds,
-        autoSubmit: body.autoSubmit ?? true,
-        enabled: body.enabled ?? true,
-      })
-      .returning();
 
     logAudit(
       user.id,

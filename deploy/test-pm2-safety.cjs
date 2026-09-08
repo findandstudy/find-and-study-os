@@ -81,13 +81,26 @@ const canonical = [
   ),
 ];
 
+const adoptedControlWorkers = [
+  processEntry(
+    "findandstudy-portal-status-worker",
+    "/app/artifacts/api-server/src/workers/portalStatusWorker.ts",
+  ),
+  processEntry(
+    "findandstudy-portal-lifecycle-worker",
+    "/app/artifacts/api-server/src/workers/portalLifecycleWorker.ts",
+  ),
+];
+
 test("authoritative config uses canonical fork/1 topology", () => {
   const config = require(configPath);
   assert.deepEqual(config.processNames, {
     api: "fasos-apply-api",
     portalWorker: "findandstudy-portal-worker",
+    portalStatusWorker: "findandstudy-portal-status-worker",
+    portalLifecycleWorker: "findandstudy-portal-lifecycle-worker",
   });
-  assert.equal(config.apps.length, 2);
+  assert.equal(config.apps.length, 4);
   for (const app of config.apps) {
     assert.equal(app.exec_mode, "fork");
     assert.equal(app.instances, 1);
@@ -96,8 +109,16 @@ test("authoritative config uses canonical fork/1 topology", () => {
   const portalWorker = config.apps.find(
     (app) => app.name === config.processNames.portalWorker,
   );
+  const portalStatusWorker = config.apps.find(
+    (app) => app.name === config.processNames.portalStatusWorker,
+  );
+  const portalLifecycleWorker = config.apps.find(
+    (app) => app.name === config.processNames.portalLifecycleWorker,
+  );
   assert.equal(String(api?.env_production.PORT), process.env.PORT || "5000");
   assert.equal(portalWorker?.env_production.PORT, "");
+  assert.equal(portalStatusWorker?.env_production.PORT, "");
+  assert.equal(portalLifecycleWorker?.env_production.PORT, "");
   assert.equal(
     portalWorker?.interpreter,
     path.join(
@@ -107,18 +128,37 @@ test("authoritative config uses canonical fork/1 topology", () => {
       "artifacts/portal-automation-worker/node_modules/.bin/tsx",
     ),
   );
+  assert.equal(
+    portalStatusWorker?.interpreter,
+    path.join(
+      process.env.CURRENT_RELEASE_LINK
+        ? path.resolve(process.env.CURRENT_RELEASE_LINK)
+        : path.resolve(__dirname, ".."),
+      "artifacts/api-server/node_modules/.bin/tsx",
+    ),
+  );
+  assert.equal(portalLifecycleWorker?.interpreter, portalStatusWorker?.interpreter);
 });
 
-test("valid existing canonical topology passes", () => {
+test("valid canonical topology passes before and after optional control-worker adoption", () => {
   const result = runPreflight(canonical);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /OK: fasos-apply-api \(fork\/1/);
+  assert.match(result.stdout, /portal-status-worker \(not adopted\)/);
+  const adopted = runPreflight([...canonical, ...adoptedControlWorkers]);
+  assert.equal(adopted.status, 0, adopted.stderr);
+  assert.match(adopted.stdout, /portal-status-worker \(fork\/1\)/);
+  assert.match(adopted.stdout, /portal-lifecycle-worker \(fork\/1\)/);
 });
 
 test("missing or duplicate canonical processes are rejected", () => {
   assert.equal(runPreflight(canonical.slice(0, 1)).status, 1);
   assert.equal(runPreflight([...canonical, canonical[0]]).status, 1);
   assert.equal(runPreflight([...canonical, canonical[1]]).status, 1);
+  assert.equal(
+    runPreflight([...canonical, ...adoptedControlWorkers, adoptedControlWorkers[0]]).status,
+    1,
+  );
 });
 
 test("legacy names, duplicate API port and alternate worker are rejected", () => {
@@ -126,6 +166,26 @@ test("legacy names, duplicate API port and alternate worker are rejected", () =>
     runPreflight([
       ...canonical,
       processEntry("edconsult-os-api", "/app/api.cjs"),
+    ]).status,
+    1,
+  );
+  assert.equal(
+    runPreflight([
+      ...canonical,
+      processEntry(
+        "other-status-worker",
+        "/app/artifacts/api-server/src/workers/portalStatusWorker.ts",
+      ),
+    ]).status,
+    1,
+  );
+  assert.equal(
+    runPreflight([
+      ...canonical,
+      processEntry(
+        "other-lifecycle-worker",
+        "/app/artifacts/api-server/src/workers/portalLifecycleWorker.ts",
+      ),
     ]).status,
     1,
   );
@@ -164,6 +224,14 @@ test("release cutover rejects canonical processes outside the current symlink", 
     processEntry(
       "findandstudy-portal-worker",
       "/srv/fasos/current/artifacts/portal-automation-worker/src/worker.ts",
+    ),
+    processEntry(
+      "findandstudy-portal-status-worker",
+      "/srv/fasos/current/artifacts/api-server/src/workers/portalStatusWorker.ts",
+    ),
+    processEntry(
+      "findandstudy-portal-lifecycle-worker",
+      "/srv/fasos/current/artifacts/api-server/src/workers/portalLifecycleWorker.ts",
     ),
   ];
   assert.equal(runPreflight(underCurrent, "/srv/fasos/current").status, 0);
@@ -217,6 +285,14 @@ test("deploy entrypoints use preflight and contain no blind fallback", () => {
   assert.match(
     deploy,
     /restart_pm2_process "\$PORTAL_WORKER_PROCESS_NAME" true/,
+  );
+  assert.match(
+    deploy,
+    /restart_optional_pm2_process "\$PORTAL_STATUS_WORKER_PROCESS_NAME"/,
+  );
+  assert.match(
+    deploy,
+    /restart_optional_pm2_process "\$PORTAL_LIFECYCLE_WORKER_PROCESS_NAME"/,
   );
   assert.match(deploy, /restart_pm2_process "\$API_PROCESS_NAME"/);
   assert.match(deploy, /pm2_process_exists_once/);

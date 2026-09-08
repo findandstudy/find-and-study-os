@@ -1,4 +1,5 @@
 import { pgTable, serial, text, timestamp, integer, boolean, jsonb, real, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 
 export const userSessionsTable = pgTable("user_sessions_activity", {
@@ -14,7 +15,17 @@ export const userSessionsTable = pgTable("user_sessions_activity", {
   userAgent: text("user_agent"),
   ipAddress: text("ip_address"),
   isActive: boolean("is_active").notNull().default(true),
-});
+}, (table) => [
+  index("user_sessions_activity_user_started_idx").on(table.userId, table.startedAt.desc()),
+  index("user_sessions_activity_overlap_idx").on(
+    sql`COALESCE(${table.endedAt}, ${table.lastSeenAt})`,
+    table.startedAt,
+    table.userId,
+  ),
+  index("user_sessions_activity_active_last_seen_idx")
+    .on(table.lastSeenAt, table.id)
+    .where(sql`${table.isActive} = true`),
+]);
 
 export const userPageVisitsTable = pgTable("user_page_visits", {
   id: serial("id").primaryKey(),
@@ -27,7 +38,10 @@ export const userPageVisitsTable = pgTable("user_page_visits", {
   totalDurationSeconds: integer("total_duration_seconds").notNull().default(0),
   activeDurationSeconds: integer("active_duration_seconds").notNull().default(0),
   idleDurationSeconds: integer("idle_duration_seconds").notNull().default(0),
-});
+}, (table) => [
+  index("user_page_visits_user_entered_idx").on(table.userId, table.enteredAt.desc()),
+  index("user_page_visits_module_entered_idx").on(table.moduleName, table.enteredAt.desc()),
+]);
 
 export const userActivityEventsTable = pgTable("user_activity_events", {
   id: serial("id").primaryKey(),
@@ -37,7 +51,9 @@ export const userActivityEventsTable = pgTable("user_activity_events", {
   route: text("route"),
   metadata: jsonb("metadata").default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("user_activity_events_user_created_idx").on(table.userId, table.createdAt.desc()),
+]);
 
 export const userPresenceTable = pgTable("user_presence", {
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }).primaryKey(),
@@ -46,7 +62,11 @@ export const userPresenceTable = pgTable("user_presence", {
   currentRoute: text("current_route"),
   sessionId: integer("session_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("user_presence_status_last_active_idx")
+    .on(table.status, table.lastActiveAt.desc())
+    .where(sql`${table.status} <> 'offline'`),
+]);
 
 export type UserSessionActivity = typeof userSessionsTable.$inferSelect;
 export type UserPageVisit = typeof userPageVisitsTable.$inferSelect;

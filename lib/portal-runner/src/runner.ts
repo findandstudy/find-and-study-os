@@ -30,8 +30,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  adapterByKey,
-  adapterForUniversity,
+  resolveAdapterByKey,
+  resolveAdapterForUniversity,
   setCredsOverride,
   clearCredsOverride,
   isSitMember,
@@ -169,9 +169,9 @@ export async function runSubmission(
   const resolvedAdapterKey = opts?.adapterKey ?? resolved.adapterKey;
 
   const adapter =
-    adapterByKey(resolvedAdapterKey) ??
-    adapterByKey(submission.universityKey) ??
-    adapterForUniversity(submission.universityName);
+    (await resolveAdapterByKey(resolvedAdapterKey)) ??
+    (await resolveAdapterByKey(submission.universityKey)) ??
+    (await resolveAdapterForUniversity(submission.universityName));
 
   if (!adapter) {
     await cleanup(tempDir);

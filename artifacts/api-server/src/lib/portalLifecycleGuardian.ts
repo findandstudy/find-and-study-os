@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import {
-  aiActionQueueTable,
   aiPersonasTable,
   applicationStageDocumentsTable,
   applicationsTable,
   db,
   pipelineStagesTable,
+  portalLifecycleProposalsTable,
 } from "@workspace/db";
 import {
   planPortalLifecycle,
@@ -164,38 +164,30 @@ export async function queuePortalLifecycleReview(input: {
   const idempotencyKey = `portal_lifecycle:${fingerprint}`;
 
   const [action] = await db
-    .insert(aiActionQueueTable)
+    .insert(portalLifecycleProposalsTable)
     .values({
-      personaId: persona.id,
-      actionType: PORTAL_LIFECYCLE_ACTION,
-      idempotencyKey,
-      payload: {
-        context: {
-          submissionId: input.submissionId,
-          applicationId: input.applicationId,
-          observationId: input.observationId,
-          observationHash: input.observationHash,
-          fingerprint,
-          reviewOnly: true,
-        },
-        portalStatus: input.rawStatus.slice(0, 250),
-        currentStage: application.stage,
-        artifacts,
-        missingDocuments: input.missingDocuments ?? [],
-        applicationReferenceSync: input.applicationReferenceSync ?? null,
-        decision,
-      },
-      preview: decision.reason.slice(0, 400),
-      status: "pending_approval",
+      submissionId: input.submissionId,
+      applicationId: input.applicationId,
+      observationId: input.observationId,
+      proposalKey: idempotencyKey,
+      observationHash: input.observationHash,
+      rawStatus: input.rawStatus.slice(0, 250),
+      currentStage: application.stage,
+      decision: decision as unknown as Record<string, unknown>,
+      artifacts,
+      missingDocuments: input.missingDocuments ?? [],
+      applicationReferenceSync: input.applicationReferenceSync ?? null,
+      status: "pending_review",
+      proposedByService: "portal-status-worker",
     })
     .onConflictDoNothing()
-    .returning({ id: aiActionQueueTable.id });
+    .returning({ id: portalLifecycleProposalsTable.id });
   if (action) return { queued: true, actionId: action.id, decision };
 
   const [duplicate] = await db
-    .select({ id: aiActionQueueTable.id })
-    .from(aiActionQueueTable)
-    .where(eq(aiActionQueueTable.idempotencyKey, idempotencyKey))
+    .select({ id: portalLifecycleProposalsTable.id })
+    .from(portalLifecycleProposalsTable)
+    .where(eq(portalLifecycleProposalsTable.proposalKey, idempotencyKey))
     .limit(1);
   return {
     queued: false,

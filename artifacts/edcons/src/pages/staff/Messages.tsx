@@ -60,6 +60,7 @@ import {
   shouldProxyInboxAttachment,
 } from "@/components/inbox/attachmentMediaUrl";
 import { WhatsAppTemplatePicker } from "@/components/inbox/WhatsAppTemplatePicker";
+import { SYSTEM_LANGUAGE_OPTIONS } from "@/lib/i18n";
 
 interface Conversation {
   id: number;
@@ -4845,16 +4846,10 @@ const TEMPLATE_CHANNELS = [
   { value: "sms", label: "SMS" },
 ];
 
-const TEMPLATE_LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "tr", label: "Türkçe" },
-  { value: "ar", label: "العربية" },
-  { value: "fr", label: "Français" },
-  { value: "ru", label: "Русский" },
-  { value: "es", label: "Español" },
-  { value: "de", label: "Deutsch" },
-  { value: "zh", label: "中文" },
-];
+const TEMPLATE_LANGUAGES = SYSTEM_LANGUAGE_OPTIONS.map(({ code, label }) => ({
+  value: code,
+  label,
+}));
 
 const WHATSAPP_TEMPLATE_VARIABLES = [
   { value: "studentName", labelKey: "messagesPage.variableStudentName" },

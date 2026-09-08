@@ -13,6 +13,10 @@ import {
 import { checkAndIncrementRateLimit } from "../lib/pgRateLimiter";
 import { validateApplicationDocumentFile, validateUploadedFile } from "../lib/fileUploadValidation";
 import { processUpload, UploadTooLargeError } from "../lib/uploads/processUpload";
+import {
+  socialMediaSyntheticFileName,
+  validateSocialMediaBuffer,
+} from "../lib/socialMediaAssets";
 import { agentsTable, db } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -281,12 +285,13 @@ router.put("/storage/local-upload/:encoded", requireAuth, async (req: Request, r
     let body: Buffer = rawBody;
     let finalContentType = contentType;
     const localInboxMediaRule = INBOX_MEDIA_RULES[contentType.toLowerCase()];
+    const isSocialMediaUpload = relPath.startsWith("social-media/staging/");
     const isAudioOrVideo = contentType.startsWith("audio/") || contentType.startsWith("video/");
-    if (isAudioOrVideo && !localInboxMediaRule) {
+    if (isAudioOrVideo && !localInboxMediaRule && !isSocialMediaUpload) {
       res.status(400).json({ error: "Unsupported inbox media type" });
       return;
     }
-    if (localInboxMediaRule && rawBody.length > localInboxMediaRule.maxBytes) {
+    if (!isSocialMediaUpload && localInboxMediaRule && rawBody.length > localInboxMediaRule.maxBytes) {
       res.status(413).json({
         error: `Inbox media exceeds the ${Math.round(localInboxMediaRule.maxBytes / (1024 * 1024))}MB limit`,
       });
@@ -296,7 +301,18 @@ router.put("/storage/local-upload/:encoded", requireAuth, async (req: Request, r
     // Inbox audio/video is already constrained by the exact MIME allowlist
     // above. Passing it through the document compressor would apply the
     // unrelated 15MB document cap and reject otherwise valid WhatsApp media.
-    if (!isAudioOrVideo) {
+    if (isSocialMediaUpload) {
+      try {
+        await validateSocialMediaBuffer({
+          fileName: socialMediaSyntheticFileName(contentType),
+          mimeType: contentType,
+          buffer: rawBody,
+        });
+      } catch {
+        res.status(400).json({ error: "Social media file content is invalid" });
+        return;
+      }
+    } else if (!isAudioOrVideo) {
       try {
         const processed = await processUpload(rawBody, nodePath.basename(relPath), contentType);
         body = Buffer.from(processed.buffer);

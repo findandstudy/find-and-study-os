@@ -304,7 +304,7 @@ sudo nano /etc/findandstudy.env
 
 The one-time PM2 bootstrap must be performed deliberately from an already built
 immutable release, after confirming that no legacy/duplicate API or portal
-worker exists. It must configure both canonical processes with
+worker exists. It must configure the canonical API and submission worker with
 `CURRENT_RELEASE_LINK=/opt/findandstudy/current`. The normal deploy script will
 hard-fail until this topology exists; it never creates a surprise second
 process.
@@ -332,6 +332,36 @@ Bu işlem:
 6. Canonical PM2 processlerinin `current` symlink'i altında olduğunu doğrular.
 7. Symlink'i atomik değiştirir, worker/API'yi bounded drain ile yeniden başlatır.
 8. Health başarısızsa yalnız kod symlink'ini önceki release'e döndürür.
+
+### Optional status/lifecycle worker adoption
+
+The status and lifecycle workers are declared in `deploy/ecosystem.config.cjs`
+but are intentionally optional in the baseline topology. A normal deploy never
+creates them. Once an independently reviewed staging run has proved portal
+identity binding, maker-checker behavior, resource limits and rollback, adopt
+them once from the already-attested current release:
+
+```bash
+cd /opt/findandstudy/current
+set -a
+. /etc/findandstudy.env
+set +a
+test "$PORTAL_STATUS_WORKER_MODES" = "status_check"
+test "$PORTAL_LIFECYCLE_WORKER_MODES" = "lifecycle_execute"
+test -n "$RELEASE_ID"
+CURRENT_RELEASE_LINK=/opt/findandstudy/current \
+  pm2 start deploy/ecosystem.config.cjs \
+  --only findandstudy-portal-status-worker,findandstudy-portal-lifecycle-worker \
+  --env production
+node deploy/pm2-preflight.cjs --release-link /opt/findandstudy/current
+pm2 save
+```
+
+Do not add `artifact` or `real` in this adoption step. `artifact` needs a
+separate adapter-by-adapter download/storage proof; `real` belongs only to the
+submission worker and requires its own production rollout approval. If either
+new process fails readiness, stop only those exact names and keep the feature
+unavailable; do not reset running submissions from the API.
 
 **Çalıştığını doğrulayın:**
 
@@ -557,8 +587,9 @@ Bu bilinçli bir tasarım tercihidir — nginx rate limiting ile korunurlar.
 ## Rollback
 
 `deploy/deploy.sh`, cutover sonrası health başarısızlığında `current` symlink'ini
-otomatik olarak önceki immutable release'e döndürür ve yalnız canonical API ile
-portal worker'ı yeniden başlatır. Manuel rollback gerekirse aynı doğrulanmış
+otomatik olarak önceki immutable release'e döndürür; canonical API/submission
+worker'ını ve daha önce benimsenmişse status/lifecycle worker'larını yeniden
+başlatır. Manuel rollback gerekirse aynı doğrulanmış
 symlink işlemi ve exact process adları kullanılmalıdır. `pm2 delete all`,
 `restart all`, database restore veya storage rollback bu runbook'un parçası
 değildir.

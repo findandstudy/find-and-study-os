@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Info, DollarSign, ArrowRight, Eraser } from "lucide-react";
+import { Info, DollarSign, ArrowRight, Eraser, AlertTriangle } from "lucide-react";
 
 const MAX_MARKUP = 100_000;
 
@@ -15,6 +15,7 @@ type PdfMarkupModalProps = {
   currency?: string;
   sampleFee?: number | null;
   allowNegative?: boolean;
+  hasMultipleCurrencies?: boolean;
 };
 
 function formatCurrency(amount: number, currency = "USD"): string {
@@ -25,7 +26,16 @@ function formatCurrency(amount: number, currency = "USD"): string {
   }
 }
 
-export function PdfMarkupModal({ open, onOpenChange, currentMarkup, onApply, currency = "USD", sampleFee, allowNegative = false }: PdfMarkupModalProps) {
+export function PdfMarkupModal({
+  open,
+  onOpenChange,
+  currentMarkup,
+  onApply,
+  currency = "USD",
+  sampleFee,
+  allowNegative = false,
+  hasMultipleCurrencies = false,
+}: PdfMarkupModalProps) {
   const [amount, setAmount] = useState("");
 
   useEffect(() => {
@@ -37,12 +47,14 @@ export function PdfMarkupModal({ open, onOpenChange, currentMarkup, onApply, cur
   const parsed = Number(amount) || 0;
   const minVal = allowNegative ? -MAX_MARKUP : 0;
   const numericAmount = Math.min(Math.max(minVal, Math.floor(parsed)), MAX_MARKUP);
-  const preview = sampleFee != null && sampleFee > 0 ? sampleFee : 1000;
+  const preview = sampleFee != null && sampleFee > 0 ? sampleFee : 0;
   const adjustedPreview = Math.max(0, preview + numericAmount);
   const isNegative = numericAmount < 0;
   const isPositive = numericAmount > 0;
+  const canApply = !hasMultipleCurrencies;
 
   function handleApply() {
+    if (!canApply) return;
     onApply(numericAmount);
     onOpenChange(false);
   }
@@ -70,9 +82,19 @@ export function PdfMarkupModal({ open, onOpenChange, currentMarkup, onApply, cur
             </p>
           </div>
 
+          {hasMultipleCurrencies && (
+            <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                Selected programs use different currencies. A flat fee adjustment can only be applied when all selected programs use the same currency.
+              </p>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label className="text-sm font-medium">
-              {allowNegative ? "Service Fee Adjustment" : "Additional Service Fee"} ({currency})
+              {allowNegative ? "Service Fee Adjustment" : "Additional Service Fee"}
+              {!hasMultipleCurrencies && ` (${currency})`}
             </Label>
             <div className="relative">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -83,6 +105,7 @@ export function PdfMarkupModal({ open, onOpenChange, currentMarkup, onApply, cur
                 step={1}
                 placeholder="0"
                 value={amount}
+                disabled={hasMultipleCurrencies}
                 onChange={e => {
                   const v = e.target.value;
                   if (v === "" || v === "-") {
@@ -104,7 +127,7 @@ export function PdfMarkupModal({ open, onOpenChange, currentMarkup, onApply, cur
             </p>
           </div>
 
-          {numericAmount !== 0 && (
+          {numericAmount !== 0 && !hasMultipleCurrencies && (
             <div className="p-4 bg-muted/50 rounded-xl border space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Preview (per program)</p>
               <div className="flex items-center gap-3 flex-wrap">
@@ -137,7 +160,7 @@ export function PdfMarkupModal({ open, onOpenChange, currentMarkup, onApply, cur
             )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button onClick={handleApply} className="gap-1.5">
+              <Button onClick={handleApply} disabled={!canApply} className="gap-1.5">
                 Apply to PDF
               </Button>
             </div>

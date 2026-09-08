@@ -93,21 +93,34 @@ geçilmeden UI veya API üzerinden etkinleştirilemez.
   fail-closed kalır.
 - Portal credential şifreli UI'dan girilir; API yalnız `hasCredentials`
   boolean'ını döndürür.
-- Test-login yalnız bu tek hesap için çalıştırılır. Loglarda credential, cookie,
-  PII ve application number bulunmadığı doğrulanır.
+- Test-login yalnız bu tek hesap için `job_kind=test_login` olarak dedicated
+  worker'a kuyruğa alınır; API tarayıcı başlatmaz ve `202 + status URL` döner.
+  Loglarda credential, cookie, PII ve application number bulunmadığı doğrulanır.
+- Test Login sonucu yalnız mevcut partner generation, enabled adapter
+  version/hash, encrypted credential sürümü ve runtime release kimliğiyle bağlı
+  append-only receipt olarak geçerlidir. Aynı request key farklı sonuç veya
+  evidence için tekrar kullanılamaz.
 
 ### P4 — Strict dry-run
 
 - Scope `selected`, yalnız pilot kurum; trigger stage canlı Application Pipeline
   kataloğundaki bir non-terminal stage olur.
-- Worker ve scheduler kapalı kalır. Dry-run yalnız admin tarafından tek kayıt
-  için tetiklenir.
+- Dedicated worker yalnız `WORKER_EXECUTION_MODES=test_login,dry` ile çalışır;
+  `real`, fan-out, fallback ve scheduler kapalı kalır. Dry-run yalnız admin
+  tarafından tek kayıt için kuyruğa alınır; API tarayıcı başlatmaz ve
+  `202 + status URL` döner.
+- API ve worker aynı exact release artefaktını ve aynı `RELEASE_ID` değerini
+  kullanır. Receipt release bağı uyuşmazsa yürütme fail-closed reddedilir.
 - Spec v2 strict dry-run login/read-only gözlem yapabilir fakat application
   workflow mutation, upload, field fill, final click, HTTP mutation veya GraphQL
   çalıştıramaz.
 - Beklenen sonuç: portal state doğru algılanır, program ve identity hedefi
   benzersizdir, hiçbir submission başarı olarak yazılmaz ve dış yazı
   denominator'ları değişmez.
+- Başarılı Strict Dry Run receipt'i exact application ve portal submission
+  çiftine composite FK ile bağlı olmalıdır; serbest bir ekran testi otomasyon
+  kilidini açamaz. Sonraki başarısız kontrol önceki başarılı receipt'i geçersiz
+  kılar.
 
 ### P5 — Tek gerçek manual canary
 
@@ -127,7 +140,11 @@ geçilmeden UI veya API üzerinden etkinleştirilemez.
 
 ### P6 — Kapalı döngü takip
 
-- Status sweep önce manuel ve tek submission için çalıştırılır.
+- Status sweep önce manuel ve tek submission için `job_kind=status_check`
+  olarak dedicated worker'a kuyruğa alınır. API yalnız
+  `status_check_next_at=now()` yazar; tarayıcı veya artifact collector çalıştırmaz.
+- Status gözlemi ve artifact collection yalnız worker'da yürür. Pilot boyunca
+  scheduler kapalıdır ve API `202 + status URL` döner.
 - `MISSING_DOCUMENT` sonucu bounded belge kodu/etiketi ve redacted observation
   üretmelidir; öğrenciye dış mesaj bu pilotta otomatik gönderilmez.
 - Offer/final status tek başına stage değiştiremez. Exact allowlisted origin,
@@ -166,6 +183,9 @@ geçilmeden UI veya API üzerinden etkinleştirilemez.
   review-required hata koduyla iptal edilir. Çalışmakta olan submission varsa
   değişiklik `409` ile fail-closed reddedilir ve transaction bütünüyle geri
   alınır; yarım credential/spec değişikliği oluşmaz.
+- Aynı kural university key/ad/name, adapter key, CRM catalog bağı, defaults ve
+  multi-portal routing değişiklikleri için de uygulanır; queue eski routing ile
+  çalışmaya devam edemez.
 - Yüklenen/unknown adapterın üç başarılı kanıt sayacı, o anda etkin olan spec
   versiyonunun activation epoch'undan itibaren hesaplanır. Eski versiyonun
   başarıları yeni versiyonu otomatik moda mezun edemez.

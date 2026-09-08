@@ -155,6 +155,11 @@ async function outboundCount(conversationId: number): Promise<number> {
 test("aiAgentConfigSchema accepts the defaults and rejects bad values", () => {
   assert.doesNotThrow(() => aiAgentConfigSchema.parse(DEFAULT_AI_AGENT_CONFIG));
   assert.equal(DEFAULT_AI_AGENT_CONFIG.externalAutoReplyEnabled, false);
+  assert.equal(DEFAULT_AI_AGENT_CONFIG.languages.length, 23);
+  assert.deepEqual(
+    Object.keys(DEFAULT_AI_AGENT_CONFIG.handoffMessages).sort(),
+    [...DEFAULT_AI_AGENT_CONFIG.languages].sort(),
+  );
 
   // temperature out of range
   assert.throws(() => aiAgentConfigSchema.parse({ ...DEFAULT_AI_AGENT_CONFIG, temperature: 5 }));
@@ -241,7 +246,8 @@ test("engine reads escalation keywords from the live config", async () => {
     const outcome = await maybeAutoReply({ conversationId, inboundMessageId: msgId });
     assert.equal(outcome.reason, "escalated");
     assert.equal(outcome.topic, "contract");
-    assert.equal(sentCalls.length, 0);
+    assert.equal(sentCalls.length, 1);
+    assert.ok(sentCalls[0].text.trim().length > 0);
     const [conv] = await db
       .select({ botEnabled: conversationsTable.botEnabled, needsHuman: conversationsTable.needsHuman })
       .from(conversationsTable)
@@ -313,7 +319,7 @@ test("the infrastructure kill switch is explicit and fail-safe", () => {
 // ---------------------------------------------------------------------------
 // Consecutive-reply handoff
 // ---------------------------------------------------------------------------
-test("at the handoff threshold → handoff message sent once, needs-human, bot OFF", async () => {
+test("a new inbound resets the stale reply streak before generating a reply", async () => {
   resetMocks();
   const handoffMessage = `HANDOFF_${RUN_ID}`;
   __setAiAgentConfigOverrideForTests({
@@ -326,15 +332,19 @@ test("at the handoff threshold → handoff message sent once, needs-human, bot O
     const { conversationId } = await seedConversation({ botEnabled: true, botReplyCount: 2 });
     const msgId = await seedInbound(conversationId, "Hello, any update?");
     const outcome = await maybeAutoReply({ conversationId, inboundMessageId: msgId });
-    assert.equal(outcome.reason, "handoff");
+    assert.equal(outcome.reason, "sent");
     assert.equal(sentCalls.length, 1);
-    assert.equal(sentCalls[0].text, handoffMessage);
     const [conv] = await db
-      .select({ botEnabled: conversationsTable.botEnabled, needsHuman: conversationsTable.needsHuman })
+      .select({
+        botEnabled: conversationsTable.botEnabled,
+        needsHuman: conversationsTable.needsHuman,
+        botReplyCount: conversationsTable.botReplyCount,
+      })
       .from(conversationsTable)
       .where(eq(conversationsTable.id, conversationId));
-    assert.equal(conv.botEnabled, false);
-    assert.equal(conv.needsHuman, true);
+    assert.equal(conv.botEnabled, true);
+    assert.equal(conv.needsHuman, false);
+    assert.equal(conv.botReplyCount, 1);
   } finally {
     __setAiAgentConfigOverrideForTests(null);
   }
@@ -357,7 +367,7 @@ test("below the handoff threshold → normal reply, bot_reply_count increments",
       .select({ botReplyCount: conversationsTable.botReplyCount, botEnabled: conversationsTable.botEnabled })
       .from(conversationsTable)
       .where(eq(conversationsTable.id, conversationId));
-    assert.equal(conv.botReplyCount, 2);
+    assert.equal(conv.botReplyCount, 1);
     assert.equal(conv.botEnabled, true);
   } finally {
     __setAiAgentConfigOverrideForTests(null);

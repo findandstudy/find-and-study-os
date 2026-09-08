@@ -79,6 +79,8 @@ interface ClaimFilters {
   triggerStages?: string[];
   excludeUniversityKeys?: string[];
   excludeLaneKeys?: string[];
+  executionModes?: Array<"dry" | "real">;
+  automaticMode?: "dry" | "real";
 }
 
 function buildClaimConditions(filters: ClaimFilters): {
@@ -90,7 +92,7 @@ function buildClaimConditions(filters: ClaimFilters): {
   const isManualCond = `(meta->>'manual')::boolean IS TRUE`;
   const gatedConditions: string[] = [];
 
-  if (filters.universityKeys && filters.universityKeys.length > 0) {
+  if (filters.universityKeys !== undefined) {
     params.push(filters.universityKeys);
     gatedConditions.push(`university_key = ANY($${params.length}::text[])`);
   }
@@ -112,6 +114,11 @@ function buildClaimConditions(filters: ClaimFilters): {
     gatedConditions.push(`university_key <> ALL($${params.length}::text[])`);
   }
 
+  if (filters.automaticMode !== undefined) {
+    params.push(filters.automaticMode);
+    gatedConditions.push(`mode::text = $${params.length}`);
+  }
+
   if (gatedConditions.length > 0) {
     conditions.push(`(${isManualCond} OR (${gatedConditions.join(" AND ")}))`);
   }
@@ -123,6 +130,45 @@ function buildClaimConditions(filters: ClaimFilters): {
     params.push(filters.excludeLaneKeys.map((key) => key.toLowerCase()));
     conditions.push(`${PORTAL_LANE_SQL} <> ALL($${params.length}::text[])`);
   }
+
+  // Execution mode is a worker capability boundary and therefore cannot be
+  // bypassed by a manually enqueued row. A dry-only worker must never claim a
+  // real submission, even when an operator clicked "Run now".
+  if (filters.executionModes !== undefined) {
+    params.push(filters.executionModes);
+    conditions.push(`mode::text = ANY($${params.length}::text[])`);
+  }
+
+  // A committed real submission is never claimed again through the generic
+  // submit queue, even if a stale/legacy writer inserted another queued row.
+  // A deliberate amendment or withdrawal needs its own explicit action.
+  conditions.push(`(
+    mode <> 'real'
+    OR (
+      provider_committed_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM portal_submissions committed
+        WHERE committed.id <> portal_submissions.id
+          AND committed.application_id = portal_submissions.application_id
+          AND committed.mode = 'real'
+          AND committed.submission_action = 'submit'
+          AND committed.provider_committed_at IS NOT NULL
+          AND committed.deleted_at IS NULL
+          AND (
+            (
+              portal_submissions.target_identity_sha256 IS NOT NULL
+              AND committed.target_identity_sha256 = portal_submissions.target_identity_sha256
+            )
+            OR (
+              portal_submissions.target_identity_sha256 IS NULL
+              AND committed.target_identity_sha256 IS NULL
+              AND committed.university_key = portal_submissions.university_key
+            )
+          )
+      )
+    )
+  )`);
 
   return { conditions, params };
 }
@@ -163,7 +209,7 @@ export function executionLaneKey(submission: Pick<ClaimedSubmission, "adapterKey
  *
  * Returns null when the queue is empty or all rows are locked by other workers.
  */
-export async function claimNext(workerId: string, universityKeys?: string[], triggerStages?: string[], excludeUniversityKeys?: string[]): Promise<ClaimedSubmission | null> {
+export async function claimNext(workerId: string, universityKeys?: string[], triggerStages?: string[], excludeUniversityKeys?: string[], executionModes?: Array<"dry" | "real">): Promise<ClaimedSubmission | null> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -180,6 +226,7 @@ export async function claimNext(workerId: string, universityKeys?: string[], tri
       universityKeys,
       triggerStages,
       excludeUniversityKeys,
+      executionModes,
     });
 
     const sel = await client.query<ClaimedSubmission>(
@@ -230,6 +277,8 @@ export interface PortalLaneClaimOptions {
   excludeUniversityKeys?: string[];
   defaultLaneConcurrency: number;
   laneConcurrency?: ReadonlyMap<string, number>;
+  executionModes?: Array<"dry" | "real">;
+  automaticMode?: "dry" | "real";
 }
 
 export interface ClaimedSubmissionLease {
@@ -278,6 +327,8 @@ export async function claimNextWithLaneLease(workerId: string, options: PortalLa
         triggerStages: options.triggerStages,
         excludeUniversityKeys: options.excludeUniversityKeys,
         excludeLaneKeys: excludedLaneKeys,
+        executionModes: options.executionModes,
+        automaticMode: options.automaticMode,
       });
 
       const selected = await client.query<ClaimedSubmission>(
@@ -406,6 +457,33 @@ export async function claimById(id: number, workerId: string): Promise<ClaimedSu
       WHERE id = $1
         AND status = 'queued'
         AND deleted_at IS NULL
+        AND (
+          mode <> 'real'
+          OR (
+            provider_committed_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM portal_submissions committed
+              WHERE committed.id <> portal_submissions.id
+                AND committed.application_id = portal_submissions.application_id
+                AND committed.mode = 'real'
+                AND committed.submission_action = 'submit'
+                AND committed.provider_committed_at IS NOT NULL
+                AND committed.deleted_at IS NULL
+                AND (
+                  (
+                    portal_submissions.target_identity_sha256 IS NOT NULL
+                    AND committed.target_identity_sha256 = portal_submissions.target_identity_sha256
+                  )
+                  OR (
+                    portal_submissions.target_identity_sha256 IS NULL
+                    AND committed.target_identity_sha256 IS NULL
+                    AND committed.university_key = portal_submissions.university_key
+                  )
+                )
+            )
+          )
+        )
       LIMIT 1
       FOR UPDATE SKIP LOCKED
     `,
@@ -471,16 +549,17 @@ export async function cancelStaleIneligibleQueued(universityKeys: string[], trig
 // ---------------------------------------------------------------------------
 
 /**
- * Resets submissions that have been in "running" state longer than
- * `thresholdMs` milliseconds back to "queued" (worker crash recovery).
+ * Recovers submissions that have been in "running" state longer than
+ * `thresholdMs` milliseconds. Dry runs may be requeued; real runs become a
+ * reconciliation-required failure because the provider outcome is unknown.
  *
- * Also resets attempts = 0 so the row is immediately claimable again —
- * without this, a submission whose attempts reached max_attempts while
- * running would be requeued into a state that claimNext could never pick up
- * (permanent lock). Clearing attempts on crash-recovery is safe: the crash
- * itself is the reason we're retrying.
+ * Retryable dry rows reset attempts so they are immediately claimable again.
+ * A real row never resets its attempts and is never automatically requeued:
+ * losing its worker lease makes the provider outcome ambiguous, so an
+ * operator must reconcile the provider portal before any deliberate action.
  *
- * Returns the IDs of rows that were reset.
+ * Returns the IDs of rows whose stale lease was resolved (requeued or moved
+ * to the reconciliation-required failure state).
  */
 export async function releaseStale(thresholdMs: number): Promise<number[]> {
   // FIX-CRASHLOOP: a submission that deterministically crashes the worker
@@ -497,11 +576,15 @@ export async function releaseStale(thresholdMs: number): Promise<number[]> {
   const res = await pool.query<{ id: number }>(
     `UPDATE portal_submissions
      SET status     = CASE
+                         WHEN mode = 'real'
+                           THEN 'failed'::portal_submission_status
                          WHEN COALESCE((meta->>'crash_recoveries')::int, 0) + 1 >= 3
                            THEN 'failed'::portal_submission_status
                          ELSE 'queued'::portal_submission_status
                        END,
          attempts   = CASE
+                         WHEN mode = 'real'
+                           THEN attempts
                          WHEN COALESCE((meta->>'crash_recoveries')::int, 0) + 1 >= 3
                            THEN attempts
                          ELSE 0
@@ -509,14 +592,20 @@ export async function releaseStale(thresholdMs: number): Promise<number[]> {
          locked_at  = NULL,
          locked_by  = NULL,
          error      = CASE
+                         WHEN mode = 'real'
+                           THEN 'PROVIDER_OUTCOME_UNKNOWN: real portal execution lost its worker lease; reconcile portal state before any retry.'
                          WHEN COALESCE((meta->>'crash_recoveries')::int, 0) + 1 >= 3
                            THEN 'WORKER CRASH LOOP - bu basvuru worker surecini ust uste 3+ kez cokerterek (SIGBUS/anormal exit) durdurdu. Otomatik izole edildi (failed); manuel inceleme gerekiyor.'
                          ELSE error
                        END,
          meta       = jsonb_set(
-                         COALESCE(meta, '{}'::jsonb),
-                         '{crash_recoveries}',
-                         to_jsonb(COALESCE((meta->>'crash_recoveries')::int, 0) + 1)
+                         jsonb_set(
+                           COALESCE(meta, '{}'::jsonb),
+                           '{crash_recoveries}',
+                           to_jsonb(COALESCE((meta->>'crash_recoveries')::int, 0) + 1)
+                         ),
+                         '{recoveryDisposition}',
+                         to_jsonb(CASE WHEN mode = 'real' THEN 'reconciliation_required' ELSE 'retryable' END::text)
                        ),
          updated_at = NOW()
      WHERE status = 'running'

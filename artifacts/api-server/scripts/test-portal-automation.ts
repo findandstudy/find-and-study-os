@@ -7,7 +7,7 @@
  * T4  list isolation — applicationId filter returns only correct submission
  * T5  cancel → queued→canceled; second cancel → 409 NOT_CANCELABLE
  * T6  retry → canceled→queued
- * T7  GET /university-portals — hasCredentials boolean, no secret values
+ * T7  GET /university-portals — verified readiness booleans, no secret values
  *
  * Run:
  *   pnpm --filter @workspace/api-server run test:portal-automation
@@ -23,8 +23,20 @@ import {
   portalSubmissionsTable,
   portalUniversitiesTable,
   studentsTable,
+  usersTable,
 } from "@workspace/db";
 import portalAutomationRouter from "../src/routes/portalAutomation.js";
+import {
+  loadPortalPartnerVerificationBinding,
+  PortalVerificationIdempotencyConflictError,
+  recordPortalPartnerVerificationReceipt,
+} from "@workspace/portal-runner";
+import {
+  assertDisposablePortalVerificationTarget,
+  seedVerifiedPortalPartnerFixture,
+} from "./portalVerificationFixture.js";
+
+assertDisposablePortalVerificationTarget();
 
 const RUN_ID = `pa_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -34,6 +46,7 @@ const RUN_ID = `pa_${Date.now().toString(36)}_${Math.random().toString(36).slice
 // The portal account is created for this run so production configuration does
 // not affect the API contract test.
 const QUEUE_TEST_UNIVERSITY = `${RUN_ID}_queue`;
+const QUEUE_TEST_ADAPTER = `${RUN_ID}_adapter`;
 
 // ---------------------------------------------------------------------------
 // Cleanup registry
@@ -42,18 +55,39 @@ const cleanupSubmissionIds: number[] = [];
 const cleanupAppIds: number[] = [];
 const cleanupStudentIds: number[] = [];
 let cleanupPortalUniversityId: number | null = null;
+let cleanupUserId: number | null = null;
 
 before(async () => {
+  const [user] = await db
+    .insert(usersTable)
+    .values({
+      email: `${RUN_ID}.admin@example.com`,
+      firstName: "Portal",
+      lastName: "Queue Admin",
+      role: "super_admin",
+      isActive: true,
+      emailVerified: true,
+    })
+    .returning({ id: usersTable.id });
+  cleanupUserId = user.id;
+  currentUser.id = user.id;
+
   const [portalUniversity] = await db
     .insert(portalUniversitiesTable)
     .values({
       universityKey: QUEUE_TEST_UNIVERSITY,
       universityName: `Portal queue test ${RUN_ID}`,
-      adapterKey: "medipol",
+      adapterKey: QUEUE_TEST_ADAPTER,
       isActive: true,
     })
     .returning({ id: portalUniversitiesTable.id });
   cleanupPortalUniversityId = portalUniversity.id;
+  await seedVerifiedPortalPartnerFixture({
+    portalUniversityId: portalUniversity.id,
+    universityKey: QUEUE_TEST_UNIVERSITY,
+    universityName: `Portal queue test ${RUN_ID}`,
+    adapterKey: QUEUE_TEST_ADAPTER,
+  });
 });
 
 after(async () => {
@@ -85,6 +119,12 @@ after(async () => {
     await db
       .delete(portalUniversitiesTable)
       .where(eq(portalUniversitiesTable.id, cleanupPortalUniversityId))
+      .catch(() => {});
+  }
+  if (cleanupUserId !== null) {
+    await db
+      .delete(usersTable)
+      .where(eq(usersTable.id, cleanupUserId))
       .catch(() => {});
   }
   setImmediate(() => process.exit(process.exitCode ?? 0));
@@ -409,7 +449,7 @@ test("T6: retry canceled submission sets status back to queued", async () => {
 // ---------------------------------------------------------------------------
 // T7 — GET /university-portals: hasCredentials boolean, no secret values
 // ---------------------------------------------------------------------------
-test("T7: /university-portals returns array with boolean hasCredentials only", async () => {
+test("T7: /university-portals returns verified readiness booleans without secrets", async () => {
   const app = buildApp();
   const server = await listen(app);
   try {
@@ -423,6 +463,8 @@ test("T7: /university-portals returns array with boolean hasCredentials only", a
       assert.ok("label" in portal, "Missing label");
       assert.ok("hasCredentials" in portal, "Missing hasCredentials");
       assert.equal(typeof portal.hasCredentials, "boolean", "hasCredentials must be boolean");
+      assert.equal(portal.dryRunReady, true, "listed portals must be safe for strict dry run");
+      assert.equal(typeof portal.realRunReady, "boolean", "realRunReady must be explicit");
       // Ensure no credential values are leaked
       const keys = Object.keys(portal);
       const secretKeys = keys.filter(
@@ -433,4 +475,30 @@ test("T7: /university-portals returns array with boolean hasCredentials only", a
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
   }
+});
+
+test("T8: verification request keys allow exact replay and reject conflicting evidence", async () => {
+  assert.notEqual(cleanupPortalUniversityId, null);
+  const binding = await loadPortalPartnerVerificationBinding(cleanupPortalUniversityId!);
+  assert.ok(binding);
+  const requestKey = `test-login:idempotency:${RUN_ID}`;
+  const exact = {
+    binding,
+    verificationType: "TEST_LOGIN" as const,
+    outcome: "PASSED" as const,
+    requestKey,
+    performedBy: cleanupUserId,
+    evidence: { headless: true, source: "idempotency-test" },
+  };
+
+  await recordPortalPartnerVerificationReceipt(exact);
+  await recordPortalPartnerVerificationReceipt(exact);
+  await assert.rejects(
+    recordPortalPartnerVerificationReceipt({
+      ...exact,
+      outcome: "FAILED",
+      failureCode: "PORTAL_LOGIN_FAILED",
+    }),
+    PortalVerificationIdempotencyConflictError,
+  );
 });

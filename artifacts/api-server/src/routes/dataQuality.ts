@@ -3,6 +3,7 @@ import { applicationsTable, db, leadsTable, studentsTable } from "@workspace/db"
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { logAudit, requireAuth, requireRole } from "../lib/auth";
 import { ADMIN_ROLES } from "../lib/roles";
+import { duplicateCandidatesCte } from "../lib/reportingDuplicateSemantics";
 
 const router: IRouter = Router();
 
@@ -29,46 +30,13 @@ type ApplicationLeadCandidate = {
  * finance and audit ownership in one reviewed transaction.
  */
 router.get("/admin/data-quality/duplicates", requireAuth, requireRole(...ADMIN_ROLES), async (_req, res): Promise<void> => {
-  const result = await db.execute(sql`
-    WITH candidates AS (
-      SELECT 'student'::text AS entity, 'email'::text AS match_key,
-             lower(trim(email)) AS normalized_value, array_agg(id ORDER BY id) AS record_ids,
-             count(*)::int AS record_count
-      FROM students
-      WHERE deleted_at IS NULL AND nullif(trim(email), '') IS NOT NULL
-      GROUP BY lower(trim(email)) HAVING count(*) > 1
-      UNION ALL
-      SELECT 'student', 'phone', coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')),
-             array_agg(id ORDER BY id), count(*)::int
-      FROM students
-      WHERE deleted_at IS NULL
-        AND nullif(coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')), '') IS NOT NULL
-      GROUP BY coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')) HAVING count(*) > 1
-      UNION ALL
-      SELECT 'student', 'passport', upper(regexp_replace(trim(passport_number), '[^A-Za-z0-9]+', '', 'g')),
-             array_agg(id ORDER BY id), count(*)::int
-      FROM students
-      WHERE deleted_at IS NULL
-        AND nullif(regexp_replace(trim(coalesce(passport_number, '')), '[^A-Za-z0-9]+', '', 'g'), '') IS NOT NULL
-      GROUP BY upper(regexp_replace(trim(passport_number), '[^A-Za-z0-9]+', '', 'g')) HAVING count(*) > 1
-      UNION ALL
-      SELECT 'lead', 'email', lower(trim(email)), array_agg(id ORDER BY id), count(*)::int
-      FROM leads
-      WHERE deleted_at IS NULL AND nullif(trim(email), '') IS NOT NULL
-      GROUP BY lower(trim(email)) HAVING count(*) > 1
-      UNION ALL
-      SELECT 'lead', 'phone', coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')),
-             array_agg(id ORDER BY id), count(*)::int
-      FROM leads
-      WHERE deleted_at IS NULL
-        AND nullif(coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')), '') IS NOT NULL
-      GROUP BY coalesce(nullif(trim(phone_e164), ''), regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g')) HAVING count(*) > 1
-    )
+  const result = await db.execute(sql.raw(`
+    WITH ${duplicateCandidatesCte("global")}
     SELECT entity, match_key, normalized_value, record_ids, record_count
-    FROM candidates
+    FROM duplicate_candidates
     ORDER BY record_count DESC, entity, match_key
     LIMIT 500
-  `);
+  `));
 
   const rows = (result.rows ?? []) as Array<Record<string, unknown>>;
   const data: DuplicateRow[] = rows.map((row) => ({

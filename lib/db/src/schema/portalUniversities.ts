@@ -21,6 +21,11 @@ export const portalUniversitiesTable = pgTable(
     universityKey: text("university_key").notNull(),
     universityName: text("university_name").notNull(),
     adapterKey: text("adapter_key").notNull(),
+    /**
+     * Monotonic identity for the effective adapter/credential/routing setup.
+     * Verification receipts are accepted only for the current generation.
+     */
+    verificationGeneration: integer("verification_generation").notNull().default(1),
     isActive: boolean("is_active").notNull().default(true),
     /** When true, scheduled drain-once.ts will include this university's queued submissions. */
     autoProcess: boolean("auto_process").notNull().default(false),

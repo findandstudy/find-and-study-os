@@ -28,6 +28,7 @@ import { validateFileObj as validateFile, sanitizeFileName, ACCEPT_ATTRIBUTE, FI
 import { StudentDocChecklist } from "@/components/StudentDocChecklist";
 import { performLogout } from "@/lib/logout";
 import { DocumentScanner } from "@/components/DocumentScanner";
+import { SYSTEM_LANGUAGE_OPTIONS } from "@/lib/i18n";
 
 const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") || "";
 
@@ -43,18 +44,7 @@ const DOC_TYPES = [
   { key: "other" },
 ];
 
-const LANGUAGES = [
-  { code: "en", label: "English",   country: "GB" },
-  { code: "tr", label: "Türkçe",    country: "TR" },
-  { code: "ar", label: "العربية",   country: "SA" },
-  { code: "fr", label: "Français",  country: "FR" },
-  { code: "ru", label: "Русский",   country: "RU" },
-  { code: "fa", label: "فارسی",     country: "IR" },
-  { code: "zh", label: "中文",       country: "CN" },
-  { code: "hi", label: "हिन्दी",       country: "IN" },
-  { code: "es", label: "Español",   country: "ES" },
-  { code: "id", label: "Bahasa",    country: "ID" },
-];
+const LANGUAGES = SYSTEM_LANGUAGE_OPTIONS;
 
 export default function StudentAccount() {
   const { user } = useAuth(true);

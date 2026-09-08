@@ -503,3 +503,82 @@ sekmelerini geçmiştir; dış eylem yoktur. İlk pilotin kanonik runbook'u
 exact login origin, hesap/otomasyon izni ve encrypted UI credential girişi
 gelmeden worker, real submit, status sweep, fallback veya fan-out NO-GO'dur;
 credential chat'e yazılmaz. Production, `Next` ve merge değişmemiştir.
+
+## 5 Eylül 2026 — Portal partner execution verification yerel eki
+
+`codex/reporting-intelligence-center-20260903` çalışma ağacında, commit/push
+yapılmadan Portal Automation onboarding ve execution kapıları sertleştirildi.
+Additive `0092_portal_partner_verification_receipts.sql` ve fallback soft-delete
+benzersizliğini düzelten `0093_portal_program_fallback_active_uniqueness.sql`
+ile kanonik yerel ledger `94/94` oldu. Test Login ve Strict Dry Run artık partner generation,
+adapter key, enabled spec ID/version/SHA-256, encrypted credential row/update
+time ve runtime release kimliğine bağlı append-only receipt'tir; geçmiş çalışma
+otomatik kanıt sayılmaz. En yeni current-binding sonuç otoritedir, başarısız
+tekrar eski PASS'i iptal eder ve aynı idempotency key farklı evidence ile
+kullanılamaz. Strict Dry Run receipt'i database composite FK ile exact
+submission/application çiftine bağlıdır.
+
+Manual/per-application enqueue, automatic trigger, inline drain, dedicated
+worker, fallback, program refresh ve status-monitoring yolları execution öncesi
+current evidence'i fail-closed yeniden doğrular. Dry run current Test Login +
+strict v2 adapter; real submit/fallback/poll ayrıca current Strict Dry Run
+ister. Credential, adapter version/approval veya partner routing değişikliği
+queued işleri sabit review-required koduyla iptal eder, partneri inactive,
+auto-process/fan-out'u off yapar ve generation artırır; running browser işi
+varsa mutation `409` ile transaction bütünüyle reddedilir. Submit seçim listesi
+yalnız current evidence'i olan aktif DB partnerlerini ve secret-free
+`dryRunReady`/`realRunReady` durumunu döndürür. Environment-only credential ve
+orphan registry adapter yeni partneri açamaz.
+
+Partner Setup UI server-authoritative configuration → Test Login → activation
+for verification → Strict Dry Run → manual pilot → automation → operations
+akışını ve doğrudan next-action düğmelerini gösterir. Trigger stage seçimi
+Application Pipeline kataloğundan dinamik kalır; yeni/drift etmiş/terminal
+stage otomatik seçilemez. Uploaded specs common async runner'da inline ve worker
+yollarında çözülür. Legacy dry diagnostic'ler hard dry mode'a alındı;
+record-specific `complete-1959` package komutu kaldırıldı.
+
+Temiz disposable PostgreSQL 16 kanıtı: fresh `0→94`, replay `94→94`, production
+prefix `66→94→94` ve DB portal suite `91/91` (fallback API `7/7` dahil),
+static portal contracts `61/61`, worker
+lane/target/queue/writeback `4/4 + 2/2 + 5/5 + 9/9`, fallback runner `31/31`,
+package manager `6/6`, migration
+authority `31 PASS + 1` Bash-unavailable SKIP, workspace typecheck, 10 dil i18n,
+API ve Edcons production build PASS. Soft-delete edilmiş fallback business key
+partial unique index ile yeniden kullanılabilir; eşzamanlı aynı-key create
+transaction kilidiyle tam bir `201` ve bir kontrollü `409` üretir. Hiçbir partner portalına browser çağrısı
+yapılmadı. Staging, production, GitHub, live worker/credential/PII/external
+delivery, merge ve `Next` değiştirilmedi. Yeni migration hiçbir historical
+receipt üretmediği için adoption sonrasında her partner Test Login + Strict Dry
+Run akışından ayrı geçirilmeksizin execution açılamaz.
+
+## 5 Eylül 2026 — Operations & Growth foundation yerel eki
+
+Claude review worktree'inde commit/push/deploy yapılmadan, mevcut
+application/task/document/portal/integration omurgasını yeniden yazmayan ilk
+operasyon dilimi eklendi. `/admin/operations` ve `/staff/work`; görev,
+başvuru, belge, portal observation/proposal ve offer son tarihlerini bounded,
+deterministik, read-only bir iş/istisna projeksiyonunda birleştirir. Evidence,
+Integration, Offer/Visa/Enrolment ve Communication/Consent aynı workspace'te
+mevcut kaynaklara bağlanır; consent/guardian authority veya workflow mutation
+üretmez. Non-live integration testleri artık başarı sayılmaz; `simulated` veya
+`not_supported` olarak görünür.
+
+Additive `0097_social_operations_foundation.sql` ile sosyal hesap registry,
+content brief, append-only maker-checker review, publication intent ve
+append-only performance snapshot tabloları eklendi. Beş tablo FORCE RLS ve
+tenant+organization scope kullanır. `/admin/social` ile `/api/social/*` yalnız
+planlama, hesap referansı, takvim ve içerik onay foundation'ını açar; ham secret
+ve external account ref tutulmaz, provider publishing/ad-spend/video üretimi
+kapalıdır. Production rollout default-off, exact UUIDv7 scope ve least-privilege
+executor kimliği ister. Manager approve edemez; creator kendi brief'ini
+onaylayamaz.
+
+Yerel PostgreSQL 16.15 ledger'ı veri reseti olmadan `97→98` taşındı; `5/5`
+social tablo FORCE RLS ve 13 policy doğrulandı. Migration catalog `98/98`, pure
+social `3/3`, operations queue `4/4`, workspace/API/Edcons typecheck, 10 dil
+i18n, OpenAPI codegen ve API/Edcons production build PASS'tir. Local
+Control Plane'de tenant/org seed olmadığı için sosyal UI güvenli biçimde
+configuration-required gösterir. Staging, production, GitHub, `Next`, external
+provider ve gerçek PII değiştirilmemiştir. Kanonik kayıt:
+`OPERATIONS_GROWTH_FOUNDATION_IMPLEMENTATION_2026-09-05.md`.

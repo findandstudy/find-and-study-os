@@ -451,8 +451,23 @@ export function IntegrationsManager() {
   async function handleTest(key: string) {
     setTesting(key);
     try {
-      const res = await customFetch(`/api/integrations/${key}/test`, { method: "POST" });
-      toast({ title: (res as any)?.message || "Connection test passed" });
+      const res = await customFetch<{
+        success?: boolean;
+        verified?: boolean;
+        simulated?: boolean;
+        status?: "verified" | "failed" | "simulated" | "not_supported";
+        message?: string;
+      }>(`/api/integrations/${key}/test`, { method: "POST" });
+      if (res.status === "simulated" || res.status === "not_supported") {
+        toast({
+          title: res.status === "simulated" ? "Verification not run" : "Verification unavailable",
+          description: res.message,
+        });
+      } else if (res.success && (res.verified === undefined || res.verified)) {
+        toast({ title: res.message || "Connection verified" });
+      } else {
+        toast({ title: "Connection test failed", description: res.message, variant: "destructive" });
+      }
     } catch {
       toast({ title: "Connection test failed", variant: "destructive" });
     } finally {

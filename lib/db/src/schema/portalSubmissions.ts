@@ -8,7 +8,9 @@ import {
   jsonb,
   index,
   unique,
+  uniqueIndex,
   check,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -83,6 +85,19 @@ export const portalSubmissionsTable = pgTable(
     /** Free-form metadata (e.g. supersession context, fallback chain). */
     meta: jsonb("meta"),
 
+    /** Immutable command/idempotency identity for this portal action. */
+    submitIntentKey: text("submit_intent_key"),
+    /** SHA-256 of targetIdentity's canonical JSON representation. */
+    targetIdentitySha256: text("target_identity_sha256"),
+    /** Versioned program/intake/partner-generation snapshot used for routing. */
+    targetIdentity: jsonb("target_identity").$type<Record<string, unknown> | null>(),
+    submissionAction: text("submission_action").notNull().default("submit"),
+    supersedesSubmissionId: integer("supersedes_submission_id").references(
+      (): AnyPgColumn => portalSubmissionsTable.id,
+      { onDelete: "restrict" },
+    ),
+    providerCommittedAt: timestamp("provider_committed_at", { withTimezone: true }),
+
     attempts: integer("attempts").notNull().default(0),
     maxAttempts: integer("max_attempts").notNull().default(3),
 
@@ -143,6 +158,35 @@ export const portalSubmissionsTable = pgTable(
       ),
     index("portal_submissions_status_check_lock_idx").on(
       table.statusCheckLockedAt,
+    ),
+    index("portal_submissions_target_identity_idx")
+      .on(table.targetIdentitySha256, table.createdAt.desc())
+      .where(sql`${table.targetIdentitySha256} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    uniqueIndex("portal_submissions_intent_key_uq")
+      .on(sql`coalesce(${table.organizationId}, 0)`, table.submitIntentKey)
+      .where(sql`${table.submitIntentKey} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    uniqueIndex("portal_submissions_real_target_success_uq")
+      .on(table.applicationId, table.targetIdentitySha256)
+      .where(sql`${table.mode} = 'real' AND ${table.submissionAction} = 'submit' AND ${table.targetIdentitySha256} IS NOT NULL AND ${table.providerCommittedAt} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+    check(
+      "portal_submissions_intent_key_chk",
+      sql`${table.submitIntentKey} IS NULL OR (length(${table.submitIntentKey}) BETWEEN 1 AND 160 AND ${table.submitIntentKey} ~ '^[A-Za-z0-9._:-]+$')`,
+    ),
+    check(
+      "portal_submissions_target_hash_chk",
+      sql`(${table.targetIdentitySha256} IS NULL AND ${table.targetIdentity} IS NULL) OR (${table.targetIdentitySha256} ~ '^[0-9a-f]{64}$' AND jsonb_typeof(${table.targetIdentity}) = 'object')`,
+    ),
+    check(
+      "portal_submissions_action_chk",
+      sql`${table.submissionAction} IN ('submit', 'amend', 'withdraw')`,
+    ),
+    check(
+      "portal_submissions_supersede_chk",
+      sql`(${table.submissionAction} = 'submit' AND ${table.supersedesSubmissionId} IS NULL) OR (${table.submissionAction} IN ('amend', 'withdraw') AND ${table.supersedesSubmissionId} IS NOT NULL)`,
+    ),
+    check(
+      "portal_submissions_provider_commit_chk",
+      sql`${table.providerCommittedAt} IS NULL OR (${table.mode} = 'real' AND ${table.submissionAction} = 'submit')`,
     ),
     check(
       "portal_submissions_status_check_attempts_chk",

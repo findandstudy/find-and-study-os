@@ -3169,17 +3169,6 @@ async function seedClaudeIntegration() {
       const { startFollowUpChecker } = await import("./lib/followUpChecker");
       return startFollowUpChecker();
     } },
-    { name: "portalMaintenance", offsetMs: 28_000, start: async () => {
-      const { startPortalStuckReset, startPortalStatusSync } = await import("./routes/portalAutomation");
-      const stopStuckReset = startPortalStuckReset();
-      const stopStatusSync = startPortalStatusSync();
-      return async () => {
-        await Promise.allSettled([
-          Promise.resolve().then(stopStatusSync),
-          Promise.resolve().then(stopStuckReset),
-        ]);
-      };
-    } },
     { name: "portalUniversityLinker", offsetMs: 31_000, start: async () => {
       const { startPortalUniversityLinker } = await import("./lib/portalUniversityLinker");
       return startPortalUniversityLinker();
@@ -3211,6 +3200,14 @@ async function seedClaudeIntegration() {
     { name: "messageCampaignWorker", offsetMs: 46_000, start: async () => {
       const { startMessageCampaignWorker } = await import("./lib/inbox/messageCampaignWorker");
       return startMessageCampaignWorker();
+    } },
+    { name: "programTranslationWorker", offsetMs: 48_000, start: async () => {
+      const { startProgramTranslationWorker } = await import("./lib/programTranslationWorker");
+      return startProgramTranslationWorker();
+    } },
+    { name: "activityStaleSessionCleanup", offsetMs: 47_000, start: async () => {
+      const { startActivityStaleSessionCleanup } = await import("./routes/activity");
+      return startActivityStaleSessionCleanup();
     } },
   ]);
   const backgroundJobsRequested = backgroundJobsEnabled();

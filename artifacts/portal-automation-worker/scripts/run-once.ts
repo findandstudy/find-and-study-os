@@ -17,9 +17,19 @@
  */
 
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { db, portalSubmissionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { claimNext, claimById, writebackResult, runSubmission, resolveAdapterKey } from "@workspace/portal-runner";
+import {
+  claimNext,
+  claimById,
+  writebackResult,
+  runSubmission,
+  resolveAdapterKey,
+  getPortalExecutionVerification,
+  recordPortalPartnerVerificationReceipt,
+  samePortalPartnerVerificationBinding,
+} from "@workspace/portal-runner";
 import { buildStudentProfile } from "../src/profile.js";
 import { resolvePortalCreds } from "../src/credResolver.js";
 
@@ -116,6 +126,13 @@ async function main(): Promise<void> {
   // Dry mode performs a real browser login + full form-fill smoke-test;
   // only the final submit click is skipped (doSubmit=false).
   let runResult: Awaited<ReturnType<typeof runSubmission>>;
+  let verificationBefore: Awaited<ReturnType<typeof getPortalExecutionVerification>> = null;
+  let adapterRunStarted = false;
+  let executionUniversityKey = sub.universityKey;
+  let executionAdapterKey = sub.adapterKey;
+  const dryRunRequestKey = effectiveMode === "dry"
+    ? `dry-run:${sub.id}:${randomUUID()}`
+    : null;
   try {
     // Multi-portal / aggregator routing: a member university (e.g. "aydin")
     // routed to an aggregator (SIT=study_in_turkey→adapter "sit") must log in
@@ -125,7 +142,24 @@ async function main(): Promise<void> {
     // instead of the member's own credentials. For direct portals routedVia is
     // null and adapterKey === universityKey, so behaviour is unchanged.
     const { adapterKey, routedVia } = await resolveAdapterKey(sub.universityKey);
+    executionUniversityKey = routedVia ?? sub.universityKey;
+    executionAdapterKey = adapterKey;
+    verificationBefore = await getPortalExecutionVerification({
+      universityKey: executionUniversityKey,
+      adapterKey,
+    });
+    const verified = effectiveMode === "dry"
+      ? verificationBefore?.testLoginPassed === true && verificationBefore.binding?.strictDryRunCapable === true
+      : verificationBefore?.testLoginPassed === true && verificationBefore.strictDryRunPassed === true;
+    if (!verified) {
+      throw new Error(
+        effectiveMode === "dry"
+          ? "PORTAL_TEST_LOGIN_OR_STRICT_ADAPTER_REQUIRED"
+          : "PARTNER_VERIFICATION_REQUIRED",
+      );
+    }
     const creds = await resolvePortalCreds(routedVia ?? sub.universityKey, adapterKey);
+    adapterRunStarted = true;
     runResult = await runSubmission(
       { ...sub, mode: effectiveMode },
       profileResult.profile,
@@ -133,6 +167,36 @@ async function main(): Promise<void> {
       profileResult.tempDir,
       creds,
     );
+    if (effectiveMode === "dry" && runResult.meta["dryRun"] === true) {
+      const verificationAfter = await getPortalExecutionVerification({
+        universityKey: executionUniversityKey,
+        adapterKey: executionAdapterKey,
+      });
+      if (
+        !verificationBefore?.binding ||
+        !samePortalPartnerVerificationBinding(
+          verificationBefore.binding,
+          verificationAfter?.binding ?? null,
+        )
+      ) {
+        throw new Error("STRICT_DRY_RUN_BINDING_CHANGED");
+      }
+      await recordPortalPartnerVerificationReceipt({
+        binding: verificationBefore.binding,
+        verificationType: "STRICT_DRY_RUN",
+        outcome: "PASSED",
+        requestKey: dryRunRequestKey!,
+        performedBy: sub.enqueuedBy,
+        applicationId: sub.applicationId,
+        portalSubmissionId: sub.id,
+        evidence: {
+          mode: "dry",
+          status: "dry_run",
+          mutationBoundary: "strict",
+          executor: "run-once",
+        },
+      });
+    }
     console.log("[run-once] Run complete:");
     console.log("  submitted     :", runResult.result.submitted);
     console.log("  alreadyExists :", runResult.result.alreadyExists);
@@ -142,6 +206,33 @@ async function main(): Promise<void> {
     console.log("  meta          :", runResult.meta);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (effectiveMode === "dry" && adapterRunStarted && verificationBefore?.binding) {
+      const verificationAfter = await getPortalExecutionVerification({
+        universityKey: executionUniversityKey,
+        adapterKey: executionAdapterKey,
+      }).catch(() => null);
+      if (samePortalPartnerVerificationBinding(
+        verificationBefore.binding,
+        verificationAfter?.binding ?? null,
+      )) {
+        await recordPortalPartnerVerificationReceipt({
+          binding: verificationBefore.binding,
+          verificationType: "STRICT_DRY_RUN",
+          outcome: "FAILED",
+          requestKey: dryRunRequestKey!,
+          performedBy: sub.enqueuedBy,
+          failureCode: "STRICT_DRY_RUN_FAILED",
+          applicationId: sub.applicationId,
+          portalSubmissionId: sub.id,
+          evidence: {
+            mode: "dry",
+            status: "failed",
+            mutationBoundary: "strict",
+            executor: "run-once",
+          },
+        }).catch(() => undefined);
+      }
+    }
     console.error(`[run-once] Run failed: ${msg}`);
     await writebackResult(sub.id, null, msg);
     process.exit(1);

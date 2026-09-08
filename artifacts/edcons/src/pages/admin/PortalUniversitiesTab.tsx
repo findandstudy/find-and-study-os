@@ -15,6 +15,7 @@ import { customFetch } from "@workspace/api-client-react";
 import { useI18n } from "@/hooks/use-i18n";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { runPortalTestLoginJob } from "@/lib/portalWorkerJobs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -129,6 +130,7 @@ interface PortalUniversity {
   graduated?: boolean | null;
   readiness?: {
     configurationReady: boolean;
+    activationEligible: boolean;
     manualPilotEligible: boolean;
     automaticEligible: boolean;
     blockers: string[];
@@ -854,9 +856,10 @@ function UniversityRow({ uni, onToggle, onToggleAutoProcess, onSetFanOutMode, on
   const isTesting             = testingId             === uni.id;
   const defaults   = (uni.defaults ?? {}) as UniversityDefaults;
   const hasDefaults = !!(defaults.intakeType || defaults.semester || defaults.degreeLevel);
-  const configurationReady = uni.readiness?.configurationReady === true;
+  const activationEligible = uni.readiness?.activationEligible === true;
+  const manualPilotEligible = uni.readiness?.manualPilotEligible === true;
   const automaticEligible = uni.readiness?.automaticEligible === true;
-  const activationEnableBlocked = !uni.isActive && !configurationReady;
+  const activationEnableBlocked = !uni.isActive && !activationEligible;
   const autoProcessEnableBlocked = !uni.autoProcess && (!uni.isActive || !automaticEligible);
 
   return (
@@ -981,7 +984,7 @@ function UniversityRow({ uni, onToggle, onToggleAutoProcess, onSetFanOutMode, on
                           className="text-xs"
                           disabled={
                             m === "manual"
-                              ? !uni.isActive || !configurationReady
+                              ? !uni.isActive || !manualPilotEligible
                               : m === "auto"
                                 ? !uni.isActive || !automaticEligible
                                 : false
@@ -1351,19 +1354,9 @@ export default function PortalUniversitiesTab() {
   const handleTestLogin = async (id: number) => {
     setTestingId(id);
     try {
-      const res = await customFetch<{ ok: boolean; message: string }>(
-        `/api/portal-universities/${id}/test-login`,
-        { method: "POST" },
-      );
-      if (res.ok) {
-        toast({ title: t("portalAutomation.unis.testLoginSuccess"), description: res.message });
-      } else {
-        toast({
-          title: t("portalAutomation.unis.testLoginFailed"),
-          description: res.message,
-          variant: "destructive",
-        });
-      }
+      const outcome = await runPortalTestLoginJob(id);
+      if (outcome !== "PASSED") throw new Error("PORTAL_LOGIN_FAILED");
+      toast({ title: t("portalAutomation.unis.testLoginSuccess") });
     } catch {
       toast({ title: t("portalAutomation.unis.testLoginFailed"), variant: "destructive" });
     } finally {

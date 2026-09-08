@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/hooks/use-i18n";
+import { getLocale } from "@/lib/i18n";
 import {
   Building2, Plus, Edit, Trash2, Loader2, Save, Search,
   Upload, Download, FileText, AlertTriangle, AlertOctagon, CheckCircle2,
@@ -84,11 +85,6 @@ const STATUS_META: Record<Status, { tone: "default" | "secondary" | "destructive
   no_dates: { tone: "outline", icon: FileText },
 };
 
-const LANG_TO_LOCALE: Record<string, string> = {
-  tr: "tr-TR", en: "en-US", ar: "ar", es: "es-ES", fa: "fa-IR",
-  fr: "fr-FR", hi: "hi-IN", id: "id-ID", ru: "ru-RU", zh: "zh-CN",
-};
-
 const ALLOWED_CONTRACT_EXTS = /\.(pdf|docx|doc)$/i;
 const ALLOWED_CONTRACT_MIMES = new Set([
   "application/pdf",
@@ -114,7 +110,7 @@ interface Props { openId?: number }
 export default function CompanyContractsPage({ openId }: Props = {}) {
   const { toast } = useToast();
   const { t, lang } = useI18n();
-  const locale = LANG_TO_LOCALE[lang] || "en-US";
+  const locale = getLocale(lang);
   const STATUS_LABELS: Record<Status, { label: string; tone: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
     active: { label: t("companyContracts.statusActive"), tone: STATUS_META.active.tone, icon: STATUS_META.active.icon },
     expiring_soon: { label: t("companyContracts.statusExpiringSoon"), tone: STATUS_META.expiring_soon.tone, icon: STATUS_META.expiring_soon.icon },

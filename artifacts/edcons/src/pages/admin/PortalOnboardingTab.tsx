@@ -1,24 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
 import { customFetch } from "@workspace/api-client-react";
 import { useI18n } from "@/hooks/use-i18n";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PortalEmptyState, PortalErrorState, PortalListSkeleton } from "@/components/admin/PortalTabStates";
 import { cn } from "@/lib/utils";
+import { runPortalTestLoginJob } from "@/lib/portalWorkerJobs";
 import {
   Bot,
   Building2,
   CheckCircle2,
   CircleAlert,
+  ArrowRight,
   FlaskConical,
+  Loader2,
+  LogIn,
   RefreshCw,
+  Settings2,
   ShieldCheck,
 } from "lucide-react";
 
 type Phase =
   | "configuration_required"
+  | "test_login_required"
   | "manual_pilot"
+  | "strict_dry_run_required"
   | "activation_ready"
   | "automation_ready"
   | "automated";
@@ -28,13 +36,21 @@ type Blocker =
   | "SECURE_PORTAL_URL_REQUIRED"
   | "CREDENTIALS_REQUIRED"
   | "CATALOG_LINK_REQUIRED"
-  | "ACTIVE_PROGRAM_REQUIRED";
+  | "ACTIVE_PROGRAM_REQUIRED"
+  | "RUNTIME_IDENTITY_REQUIRED"
+  | "TEST_LOGIN_REQUIRED"
+  | "STRICT_DRY_RUN_ADAPTER_REQUIRED"
+  | "STRICT_DRY_RUN_REQUIRED";
 
 interface PartnerReadiness {
   configurationReady: boolean;
+  activationEligible: boolean;
   manualPilotEligible: boolean;
   automaticEligible: boolean;
   blockers: Blocker[];
+  configurationBlockers: Blocker[];
+  activationBlockers: Blocker[];
+  executionBlockers: Blocker[];
   successProofsRemaining: number;
   requiredVerifications: ["TEST_LOGIN", "STRICT_DRY_RUN"];
   phase: Phase;
@@ -57,6 +73,15 @@ interface PartnerRow {
   successCount: number;
   graduationThreshold: number;
   readiness: PartnerReadiness;
+  verificationGeneration: number;
+  runtimeReleaseId: string | null;
+  adapterSpecVersion: number | null;
+  adapterSpecSha256: string | null;
+  testLoginPassed: boolean;
+  testLoginVerifiedAt: string | null;
+  strictDryRunCapable: boolean;
+  strictDryRunPassed: boolean;
+  strictDryRunVerifiedAt: string | null;
 }
 
 interface OnboardingSnapshot {
@@ -101,11 +126,19 @@ function PhaseBadge({ phase }: { phase: Phase }) {
   );
 }
 
-export default function PortalOnboardingTab() {
+type PortalSetupTab = "rules" | "operations" | "universities" | "programMapping" | "adapters" | "submissions";
+
+export default function PortalOnboardingTab({
+  onNavigate,
+}: {
+  onNavigate: (tab: PortalSetupTab) => void;
+}) {
   const { t } = useI18n();
+  const { toast } = useToast();
   const [data, setData] = useState<OnboardingSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -122,6 +155,44 @@ export default function PortalOnboardingTab() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const testLogin = async (partner: PartnerRow) => {
+    setBusyAction(`login:${partner.id}`);
+    try {
+      const outcome = await runPortalTestLoginJob(partner.id);
+      if (outcome !== "PASSED") throw new Error("PORTAL_LOGIN_FAILED");
+      toast({ title: t("portalAutomation.unis.testLoginSuccess") });
+      await load();
+    } catch {
+      toast({ title: t("portalAutomation.unis.testLoginFailed"), variant: "destructive" });
+      await load();
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const activate = async (partner: PartnerRow) => {
+    setBusyAction(`activate:${partner.id}`);
+    try {
+      await customFetch(`/api/portal-universities/${partner.id}/active`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ isActive: true }),
+      });
+      await load();
+    } catch {
+      toast({ title: t("portalAutomation.onboarding.actionFailed"), variant: "destructive" });
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const configurationDestination = (partner: PartnerRow): PortalSetupTab => {
+    const blocker = partner.readiness.configurationBlockers[0];
+    if (blocker === "ADAPTER_REQUIRED" || blocker === "SECURE_PORTAL_URL_REQUIRED" || blocker === "STRICT_DRY_RUN_ADAPTER_REQUIRED") return "adapters";
+    if (blocker === "ACTIVE_PROGRAM_REQUIRED") return "programMapping";
+    return "universities";
+  };
 
   if (loading && !data) {
     return <PortalListSkeleton rows={4} rowClassName="h-28" className="py-2" />;
@@ -193,11 +264,19 @@ export default function PortalOnboardingTab() {
       </div>
 
       {data.partners.length === 0 ? (
-        <PortalEmptyState
-          icon={Building2}
-          title={t("portalAutomation.onboarding.emptyTitle")}
-          description={t("portalAutomation.onboarding.emptyDescription")}
-        />
+        <div className="space-y-3">
+          <PortalEmptyState
+            icon={Building2}
+            title={t("portalAutomation.onboarding.emptyTitle")}
+            description={t("portalAutomation.onboarding.emptyDescription")}
+          />
+          <div className="flex justify-center">
+            <Button onClick={() => onNavigate("universities")} className="gap-2">
+              {t("portalAutomation.onboarding.addPartner")}
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       ) : (
         <div className="space-y-3">
           {data.partners.map((partner) => {
@@ -221,7 +300,7 @@ export default function PortalOnboardingTab() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
                     <span className={partner.adapterRegistered ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
                       {t("portalAutomation.onboarding.signals.adapter")}: {partner.adapterRegistered ? "✓" : "—"}
                     </span>
@@ -236,6 +315,18 @@ export default function PortalOnboardingTab() {
                     </span>
                     <span className={partner.activeProgramCount > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
                       {t("portalAutomation.onboarding.signals.programs")}: {partner.activeProgramCount}
+                    </span>
+                    <span className={partner.testLoginPassed ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+                      {t("portalAutomation.onboarding.signals.testLogin")}: {partner.testLoginPassed ? "✓" : "—"}
+                    </span>
+                    <span className={partner.strictDryRunCapable ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+                      {t("portalAutomation.onboarding.signals.strictAdapter")}: {partner.strictDryRunCapable ? "✓" : "—"}
+                    </span>
+                    <span className={partner.strictDryRunPassed ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+                      {t("portalAutomation.onboarding.signals.strictDryRun")}: {partner.strictDryRunPassed ? "✓" : "—"}
+                    </span>
+                    <span className={partner.runtimeReleaseId ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+                      {t("portalAutomation.onboarding.signals.runtime")}: {partner.runtimeReleaseId ?? "—"}
                     </span>
                   </div>
 
@@ -264,6 +355,54 @@ export default function PortalOnboardingTab() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
                     <span>{t("portalAutomation.onboarding.requiredChecks")}</span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+                    {partner.readiness.phase === "configuration_required" && (
+                      <Button size="sm" variant="outline" className="gap-2" onClick={() => onNavigate(configurationDestination(partner))}>
+                        <Settings2 className="h-3.5 w-3.5" />
+                        {t("portalAutomation.onboarding.configure")}
+                      </Button>
+                    )}
+                    {partner.readiness.phase === "test_login_required" && (
+                      <Button size="sm" className="gap-2" onClick={() => void testLogin(partner)} disabled={busyAction !== null}>
+                        {busyAction === `login:${partner.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />}
+                        {t("portalAutomation.onboarding.runTestLogin")}
+                      </Button>
+                    )}
+                    {partner.readiness.phase === "activation_ready" && (
+                      <Button size="sm" onClick={() => void activate(partner)} disabled={busyAction !== null}>
+                        {busyAction === `activate:${partner.id}` && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                        {t("portalAutomation.onboarding.activateForVerification")}
+                      </Button>
+                    )}
+                    {partner.readiness.phase === "strict_dry_run_required" && (
+                      <Button size="sm" className="gap-2" onClick={() => onNavigate("submissions")}>
+                        <FlaskConical className="h-3.5 w-3.5" />
+                        {t("portalAutomation.onboarding.runStrictDry")}
+                      </Button>
+                    )}
+                    {partner.readiness.phase === "manual_pilot" && (
+                      <Button size="sm" className="gap-2" onClick={() => onNavigate("submissions")}>
+                        {t("portalAutomation.onboarding.openManualPilot")}
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {partner.readiness.phase === "automation_ready" && (
+                      <Button size="sm" className="gap-2" onClick={() => onNavigate("rules")}>
+                        {t("portalAutomation.onboarding.openAutomationRules")}
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {partner.readiness.phase === "automated" && (
+                      <Button size="sm" variant="outline" className="gap-2" onClick={() => onNavigate("operations")}>
+                        {t("portalAutomation.onboarding.openOperations")}
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    <span className="ml-auto text-[11px] text-muted-foreground">
+                      {t("portalAutomation.onboarding.generation", { generation: String(partner.verificationGeneration) })}
+                    </span>
                   </div>
                 </CardContent>
               </Card>

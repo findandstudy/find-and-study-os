@@ -33,6 +33,12 @@ import {
 import portalAutomationRouter, {
   buildManualFanOutMeta,
 } from "../src/routes/portalAutomation.js";
+import {
+  assertDisposablePortalVerificationTarget,
+  seedVerifiedPortalPartnerFixture,
+} from "./portalVerificationFixture.js";
+
+assertDisposablePortalVerificationTarget();
 
 // ---------------------------------------------------------------------------
 // Run-specific tag + fixtures
@@ -43,19 +49,22 @@ const UNI_KEY = `uni_${RUN}`;
 
 let studentId = 0;
 let portalUniId = 0;
-let rlUserId = 1; // an existing user id for the rate-limit burst (avoids audit FK noise)
+let unverifiedPortalUniId = 0;
+let authUserId = 0;
+let rlUserId = 0;
 let appA = 0; // dry single + dedup
 let appB = 0; // bulk
 let appC = 0; // real-confirm
 let appD = 0; // soft-deleted
 let appE = 0; // no matching portal university
 let appF = 0; // concurrent idempotency
+let appG = 0; // mapped partner without current verification receipts
 
 // ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 after(async () => {
-  const appIds = [appA, appB, appC, appD, appE, appF].filter((x) => x > 0);
+  const appIds = [appA, appB, appC, appD, appE, appF, appG].filter((x) => x > 0);
   if (appIds.length > 0) {
     await db.delete(portalSubmissionsTable).where(inArray(portalSubmissionsTable.applicationId, appIds)).catch(() => {});
     await db.delete(applicationsTable).where(inArray(applicationsTable.id, appIds)).catch(() => {});
@@ -63,8 +72,14 @@ after(async () => {
   if (portalUniId > 0) {
     await db.delete(portalUniversitiesTable).where(eq(portalUniversitiesTable.id, portalUniId)).catch(() => {});
   }
+  if (unverifiedPortalUniId > 0) {
+    await db.delete(portalUniversitiesTable).where(eq(portalUniversitiesTable.id, unverifiedPortalUniId)).catch(() => {});
+  }
   if (studentId > 0) {
     await db.delete(studentsTable).where(eq(studentsTable.id, studentId)).catch(() => {});
+  }
+  if (authUserId > 0) {
+    await db.delete(usersTable).where(eq(usersTable.id, authUserId)).catch(() => {});
   }
   setImmediate(() => process.exit(process.exitCode ?? 0));
 });
@@ -72,7 +87,7 @@ after(async () => {
 // ---------------------------------------------------------------------------
 // Auth stub — role/id parametrized so RBAC + rate-limit can use distinct users
 // ---------------------------------------------------------------------------
-function buildApp(role = "super_admin", id = 1): Express {
+function buildApp(role = "super_admin", id = authUserId): Express {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -132,8 +147,19 @@ function close(server: http.Server): Promise<void> {
 // Fixture setup (runs first as a test so node:test ordering is deterministic)
 // ---------------------------------------------------------------------------
 test("MSUB0: seed fixtures", async () => {
-  const [anyUser] = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-  if (anyUser) rlUserId = anyUser.id;
+  const [authUser] = await db
+    .insert(usersTable)
+    .values({
+      email: `${RUN}.admin@example.com`,
+      firstName: "Portal",
+      lastName: "Admin",
+      role: "super_admin",
+      isActive: true,
+      emailVerified: true,
+    })
+    .returning({ id: usersTable.id });
+  authUserId = authUser.id;
+  rlUserId = authUser.id;
 
   const [stu] = await db
     .insert(studentsTable)
@@ -178,7 +204,35 @@ test("MSUB0: seed fixtures", async () => {
     .returning({ id: applicationsTable.id });
   appE = e.id;
 
-  assert.ok(studentId && portalUniId && appA && appB && appC && appD && appE && appF);
+  const unverifiedUniversityName = `Unverified Portal Uni ${RUN}`;
+  const [unverifiedPortal] = await db
+    .insert(portalUniversitiesTable)
+    .values({
+      universityKey: `unverified_${RUN}`,
+      universityName: unverifiedUniversityName,
+      adapterKey: `unverified_adapter_${RUN}`,
+      isActive: true,
+    })
+    .returning({ id: portalUniversitiesTable.id });
+  unverifiedPortalUniId = unverifiedPortal.id;
+  const [unverifiedApplication] = await db
+    .insert(applicationsTable)
+    .values({
+      studentId,
+      universityName: unverifiedUniversityName,
+      stage: "offer",
+    })
+    .returning({ id: applicationsTable.id });
+  appG = unverifiedApplication.id;
+
+  await seedVerifiedPortalPartnerFixture({
+    portalUniversityId: portalUniId,
+    universityKey: UNI_KEY,
+    universityName: UNI_NAME,
+    adapterKey: `adapter_${RUN}`,
+  });
+
+  assert.ok(studentId && portalUniId && unverifiedPortalUniId && appA && appB && appC && appD && appE && appF && appG);
 });
 
 test("MSUB0b: manual fan-out metadata marks direct and aggregator rows as manual", () => {
@@ -237,7 +291,7 @@ test("MSUB2: POST submit single dry → 201, queued mode=dry", async () => {
     assert.equal(row.mode, "dry");
     assert.equal(row.status, "queued");
     assert.equal(row.universityKey, UNI_KEY, "universityKey resolved from app's own record");
-    assert.equal(row.enqueuedBy, 1);
+    assert.equal(row.enqueuedBy, authUserId);
     assert.equal((row.meta as Record<string, unknown> | null)?.manual, true);
   } finally {
     await close(server);
@@ -438,6 +492,25 @@ test("MSUB12: eligible-applications stage + universityKey filters", async () => 
     );
     assert.equal(wrongKey.status, 200);
     assert.equal(wrongKey.body.data.length, 0, "unknown key returns nothing");
+  } finally {
+    await close(server);
+  }
+});
+
+test("MSUB12b: mapped but unverified partner fails closed with an explicit 409", async () => {
+  const server = await listen(buildApp());
+  try {
+    const res = await sendReq(server, "POST", "/api/portal-automation/submit", {
+      applicationIds: [appG],
+      mode: "dry",
+    });
+    assert.equal(res.status, 409, JSON.stringify(res.body));
+    assert.equal(res.body.error, "PARTNER_VERIFICATION_REQUIRED");
+    const rows = await db
+      .select()
+      .from(portalSubmissionsTable)
+      .where(eq(portalSubmissionsTable.applicationId, appG));
+    assert.equal(rows.length, 0, "verification gate must run before queue insertion");
   } finally {
     await close(server);
   }

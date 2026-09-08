@@ -21,14 +21,26 @@ const mode = cliArgs.length === 1 ? cliArgs[0] : undefined;
 const adminUrl = process.env.PG_GATE_ADMIN_URL ?? "";
 const migratorUrl = process.env.PG_GATE_MIGRATOR_URL ?? "";
 const appUrl = process.env.PG_GATE_APP_URL ?? "";
+const isDynamicCiTarget = process.env.PG_GATE_TARGET_MODE === "ci-dynamic";
+const dynamicCiDatabase = `fas_it_${process.env.GITHUB_RUN_ID ?? ""}_${process.env.GITHUB_RUN_ATTEMPT ?? ""}`;
+
+if (isDynamicCiTarget) {
+  assert.equal(process.env.CI, "true");
+  assert.equal(process.env.GITHUB_ACTIONS, "true");
+  assert.match(process.env.GITHUB_RUN_ID ?? "", /^[1-9]\d*$/);
+  assert.match(process.env.GITHUB_RUN_ATTEMPT ?? "", /^[1-9]\d*$/);
+}
 
 function safeTarget(value: string, label: string) {
   assert.ok(value, `${label} is required`);
   const target = new URL(value);
   assert.equal(target.protocol, "postgresql:");
   assert.equal(target.hostname, "127.0.0.1");
-  assert.equal(target.port, "5433");
-  assert.equal(target.pathname.slice(1), "fasos_apply_local");
+  assert.equal(target.port, isDynamicCiTarget ? "5432" : "5433");
+  assert.equal(
+    target.pathname.slice(1),
+    isDynamicCiTarget ? dynamicCiDatabase : "fasos_apply_local",
+  );
   assert.equal(target.search, "");
   assert.equal(target.hash, "");
   return target;
@@ -37,9 +49,12 @@ function safeTarget(value: string, label: string) {
 const adminTarget = safeTarget(adminUrl, "PG_GATE_ADMIN_URL");
 const migratorTarget = safeTarget(migratorUrl, "PG_GATE_MIGRATOR_URL");
 const appTarget = safeTarget(appUrl, "PG_GATE_APP_URL");
-// CI reaches the disposable container through loopback 5433 while PostgreSQL
-// itself listens on 5432. Keep endpoint and server identity checks explicit.
-const expectedServerPort = Number(process.env.PG_GATE_SERVER_PORT ?? "5433");
+// The combined local gate reaches its disposable container through loopback
+// 5433. The isolated GitHub Actions gate uses a run-bound database on 5432.
+// Keep endpoint and PostgreSQL-reported server identity checks explicit.
+const expectedServerPort = Number(
+  process.env.PG_GATE_SERVER_PORT ?? (isDynamicCiTarget ? "5432" : "5433"),
+);
 assert.ok(Number.isSafeInteger(expectedServerPort));
 assert.ok(expectedServerPort >= 1 && expectedServerPort <= 65_535);
 assert.equal(process.env.ALLOW_LIVE_INTEGRATIONS, "false");
@@ -110,6 +125,43 @@ async function mustFail(operation: () => Promise<unknown>, pattern: RegExp) {
 
 async function setup() {
   await withClient(adminUrl, async (client) => {
+    if (isDynamicCiTarget) {
+      const dynamicRoles = [
+        { name: migratorRole, login: true, password: "fas_migrator_it_2026" },
+        { name: appRole, login: true, password: "fas_app_it_2026" },
+        { name: commandOwnerRole, login: false },
+        { name: commandExecutorRole, login: true },
+        { name: evidenceOwnerRole, login: false },
+        { name: evidenceIssuerRole, login: true },
+        { name: auditOwnerRole, login: false },
+        { name: auditWriterRole, login: true },
+        { name: contextOwnerRole, login: false },
+        { name: contextResolverRole, login: true },
+        { name: sessionOwnerRole, login: false },
+        { name: sessionResolverRole, login: true },
+        { name: rateLimitOwnerRole, login: false },
+        { name: rateLimitExecutorRole, login: true },
+        { name: sessionLifecycleOwnerRole, login: false },
+        { name: sessionLifecycleExecutorRole, login: true },
+        { name: sessionRepairOwnerRole, login: false },
+        { name: sessionRepairExecutorRole, login: true },
+        { name: "fas_repair_owner", login: false },
+        { name: "fas_repair_worker", login: true },
+        { name: "fas_journey_owner", login: false },
+        { name: "fas_journey_executor", login: true },
+        { name: "fas_institution_executor", login: true },
+      ] as const;
+      for (const role of dynamicRoles) {
+        assert.match(role.name, /^fas_[a-z0-9_]+$/);
+        const loginClause = role.login ? "LOGIN" : "NOLOGIN";
+        const passwordClause = "password" in role
+          ? ` PASSWORD '${role.password}'`
+          : "";
+        await client.query(
+          `CREATE ROLE ${role.name} ${loginClause} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS${passwordClause}`,
+        );
+      }
+    }
     await client.query(`
       ALTER DATABASE ${databaseName} OWNER TO ${migratorRole};
       REVOKE TEMPORARY ON DATABASE ${databaseName} FROM PUBLIC;
@@ -661,7 +713,7 @@ async function verifyAtomicDdlRollback(migrator: pg.Client) {
         "SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations",
       )
     ).rows[0].count,
-    92,
+    108,
   );
 }
 
@@ -1612,7 +1664,7 @@ async function verify() {
     const migrationCount = await migrator.query(
       "SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations",
     );
-    assert.equal(migrationCount.rows[0].count, 92);
+    assert.equal(migrationCount.rows[0].count, 109);
     await verifyAtomicDdlRollback(migrator);
     await migrator.query(
       `INSERT INTO public.branches (id, name) VALUES
