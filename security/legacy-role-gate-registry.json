@@ -8,9 +8,9 @@
     "defaultEnforcement": "legacy_quarantine"
   },
   "totals": {
-    "routeRegistrations": 840,
-    "requireAuth": 759,
-    "requireRole": 485,
+    "routeRegistrations": 844,
+    "requireAuth": 763,
+    "requireRole": 489,
     "requirePermission": 78,
     "requireScope": 0,
     "directRoleChecks": 29,
@@ -305,7 +305,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/catalog.ts",
-      "sha256": "849c63e677a2af7545bf68f39a17f184ee89be2ffd03e40de8f22234279b139b",
+      "sha256": "682c9241dd503e98bcb3797b1361e5f8e6073654bf6902d22fe7ae55ea196c05",
       "routeRegistrations": 21,
       "requireAuth": 19,
       "requireRole": 17,
@@ -425,7 +425,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/course-finder.ts",
-      "sha256": "ad402b6bae5f71554ea20bd1ce2bcc99408638be3325f1087ca7db6ed27209cf",
+      "sha256": "3300f8595d669414ec5b6478e6eb39d6f62b263fa7cde9ee023d42fc4d5edd46",
       "routeRegistrations": 10,
       "requireAuth": 9,
       "requireRole": 3,
@@ -530,7 +530,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/embed.ts",
-      "sha256": "9d7e29f5358dde6ce971a253b4b6553cebb8bd779965f66abeeba9dd03a5b1a5",
+      "sha256": "598fa7745182dddddaabab23bb2a6b415ffeea4df103f85e15a789f2634befb0",
       "routeRegistrations": 29,
       "requireAuth": 14,
       "requireRole": 13,
@@ -605,7 +605,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/inbox.ts",
-      "sha256": "f4e9e9a9da7efb4b41313f0636fa9c4532d45fe6f0e40f34fa5e5494d59947ce",
+      "sha256": "25c4443ebdd6e4c31244303fa11b39a2fc26881f377d27a0b8a794c53baa2544",
       "routeRegistrations": 55,
       "requireAuth": 56,
       "requireRole": 54,
@@ -965,7 +965,7 @@
     },
     {
       "path": "artifacts/api-server/src/routes/settings.ts",
-      "sha256": "ae48ab96ddc96358ea9f4285689709916d6897c60201acf40ce38f016e1de544",
+      "sha256": "8239165a921c392d54c91bc138bccb6f629e26128a2ecdacb6c0b23af3152e05",
       "routeRegistrations": 8,
       "requireAuth": 7,
       "requireRole": 4,
@@ -1085,10 +1085,10 @@
     },
     {
       "path": "artifacts/api-server/src/routes/universities.ts",
-      "sha256": "3c317ab055f38b0fa3bc3a9a1fe6d1c3c520b49e6e0c894c20311f5b9e8cc078",
-      "routeRegistrations": 18,
-      "requireAuth": 12,
-      "requireRole": 10,
+      "sha256": "1ecfd7691448e8fdfd5c8d3071759ab766efc132c3e537d3518b7be020bcdaff",
+      "routeRegistrations": 22,
+      "requireAuth": 16,
+      "requireRole": 14,
       "requirePermission": 0,
       "requireScope": 0,
       "directRoleChecks": 0,
