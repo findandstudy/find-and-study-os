@@ -54,6 +54,14 @@ interface State {
 }
 
 const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+const toastAutoDismissTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
+
+const clearAutoDismissTimeout = (toastId: string) => {
+  const timeout = toastAutoDismissTimeouts.get(toastId)
+  if (!timeout) return
+  clearTimeout(timeout)
+  toastAutoDismissTimeouts.delete(toastId)
+}
 
 const addToRemoveQueue = (toastId: string) => {
   if (toastTimeouts.has(toastId)) {
@@ -147,7 +155,10 @@ function toast({ ...props }: Toast) {
       type: "UPDATE_TOAST",
       toast: { ...props, id },
     })
-  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+  const dismiss = () => {
+    clearAutoDismissTimeout(id)
+    dispatch({ type: "DISMISS_TOAST", toastId: id })
+  }
 
   dispatch({
     type: "ADD_TOAST",
@@ -160,6 +171,14 @@ function toast({ ...props }: Toast) {
       },
     },
   })
+
+  if (
+    typeof props.duration === "number"
+    && Number.isFinite(props.duration)
+    && props.duration > 0
+  ) {
+    toastAutoDismissTimeouts.set(id, setTimeout(dismiss, props.duration))
+  }
 
   return {
     id: id,

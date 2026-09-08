@@ -73,9 +73,15 @@ test("application warning contract keeps a visible close button and 30 second du
     new URL("../src/components/ApplicationCreationErrorToast.tsx", import.meta.url),
     "utf8",
   );
+  const toastHookSource = readFileSync(
+    new URL("../src/hooks/use-toast.ts", import.meta.url),
+    "utf8",
+  );
   assert.match(toastSource, /aria-label="Close notification"/);
   assert.match(toastSource, /opacity-100/);
   assert.doesNotMatch(toastSource, /group-hover:opacity-100/);
   assert.match(applicationToastSource, /APPLICATION_CREATION_ERROR_TOAST_DURATION_MS = 30_000/);
   assert.match(applicationToastSource, /disappear automatically in 30 seconds/);
+  assert.match(toastHookSource, /setTimeout\(dismiss, props\.duration\)/);
+  assert.match(toastHookSource, /clearAutoDismissTimeout\(id\)/);
 });
